@@ -24,6 +24,9 @@ const SYNC_RUNS_PER_SOURCE: usize = 100;
 struct ExistingMemory {
     id: String,
     kind: String,
+    content_type: String,
+    retention_tier: String,
+    scope: String,
     project: String,
     title: String,
     content: String,
@@ -246,6 +249,9 @@ impl Store {
              CREATE TABLE IF NOT EXISTS memories(
                id TEXT PRIMARY KEY,
                kind TEXT NOT NULL,
+               content_type TEXT NOT NULL DEFAULT 'semantic',
+               retention_tier TEXT NOT NULL DEFAULT 'durable',
+               scope TEXT NOT NULL DEFAULT 'workspace',
                project TEXT NOT NULL,
                title TEXT NOT NULL,
                content TEXT NOT NULL,
@@ -315,12 +321,15 @@ impl Store {
         ensure_column(&connection, "sync_runs", "progress_updated_at", "TEXT")?;
         backfill_document_links(&mut connection)?;
         migrate_embedding_blobs(&mut connection)?;
+        migrate_memory_axes(&mut connection)?;
         migrate_memory_dedupe_scope(&mut connection)?;
         connection.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_memories_scope
                ON memories(project,kind,status,updated_at DESC);
              CREATE INDEX IF NOT EXISTS idx_memories_status
                ON memories(status,updated_at DESC);
+             CREATE INDEX IF NOT EXISTS idx_memories_axes
+               ON memories(project,content_type,retention_tier,scope,status,updated_at DESC);
              CREATE UNIQUE INDEX IF NOT EXISTS idx_memories_project_dedupe
                ON memories(project,dedupe_key) WHERE dedupe_key IS NOT NULL",
         )?;
@@ -1183,7 +1192,32 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
     ) -> Result<MemoryRecord> {
-        let (kind, acl, provenance_json, valid_until) = memory::validate_input(input)?;
+        let axes = memory::MemoryAxes::from_legacy_kind(&input.kind)?;
+        self.remember_scoped_with_axes(input, principal_acl, owner, axes)
+    }
+
+    /// Persist memory with independently selectable content, retention, and
+    /// scope axes. The legacy `kind` field remains a compatibility projection
+    /// (`working` for working retention, otherwise the content type).
+    pub fn remember_scoped_with_axes(
+        &self,
+        input: &MemoryInput,
+        principal_acl: &[String],
+        owner: bool,
+        axes: memory::MemoryAxes,
+    ) -> Result<MemoryRecord> {
+        anyhow::ensure!(
+            axes.scope != memory::MemoryScope::OwnerGlobal || owner,
+            "owner-global memory scope requires owner authorization"
+        );
+        anyhow::ensure!(
+            matches!(
+                axes.scope,
+                memory::MemoryScope::Workspace | memory::MemoryScope::OwnerGlobal
+            ),
+            "session and principal memory scopes require an identity binding and are not yet supported"
+        );
+        let (_kind, acl, provenance_json, valid_until) = memory::validate_input(input)?;
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
@@ -1191,16 +1225,16 @@ impl Store {
         let existing: Option<ExistingMemory> = if let Some(key) = input.dedupe_key.as_deref() {
             transaction
                 .query_row(
-                    "SELECT id,kind,project,title,content,source,source_id,status,
-                            acl_json,confidence,importance,provenance_json,valid_until,
-                            supersedes_id
+                    "SELECT id,kind,content_type,retention_tier,scope,project,title,content,
+                            source,source_id,status,acl_json,confidence,importance,
+                            provenance_json,valid_until,supersedes_id
                      FROM memories WHERE project=?1 AND dedupe_key=?2",
                     params![input.project, key],
                     |row| {
-                        let acl_json: String = row.get(8)?;
+                        let acl_json: String = row.get(11)?;
                         let acl = serde_json::from_str(&acl_json).map_err(|error| {
                             rusqlite::Error::FromSqlConversionFailure(
-                                8,
+                                11,
                                 Type::Text,
                                 Box::new(error),
                             )
@@ -1208,18 +1242,21 @@ impl Store {
                         Ok(ExistingMemory {
                             id: row.get(0)?,
                             kind: row.get(1)?,
-                            project: row.get(2)?,
-                            title: row.get(3)?,
-                            content: row.get(4)?,
-                            source: row.get(5)?,
-                            source_id: row.get(6)?,
-                            status: row.get(7)?,
+                            content_type: row.get(2)?,
+                            retention_tier: row.get(3)?,
+                            scope: row.get(4)?,
+                            project: row.get(5)?,
+                            title: row.get(6)?,
+                            content: row.get(7)?,
+                            source: row.get(8)?,
+                            source_id: row.get(9)?,
+                            status: row.get(10)?,
                             acl,
-                            confidence: row.get(9)?,
-                            importance: row.get(10)?,
-                            provenance_json: row.get(11)?,
-                            valid_until: row.get(12)?,
-                            supersedes_id: row.get(13)?,
+                            confidence: row.get(12)?,
+                            importance: row.get(13)?,
+                            provenance_json: row.get(14)?,
+                            valid_until: row.get(15)?,
+                            supersedes_id: row.get(16)?,
                         })
                     },
                 )
@@ -1228,6 +1265,10 @@ impl Store {
             None
         };
         if let Some(existing) = &existing {
+            anyhow::ensure!(
+                existing.scope != "owner-global" || owner,
+                "owner-global memory scope requires owner authorization"
+            );
             anyhow::ensure!(
                 owner || acl_allows(&existing.acl, principal_acl),
                 "memory dedupe key is outside principal visibility"
@@ -1255,7 +1296,10 @@ impl Store {
         // turn preserves answer-cache hits for idempotent agent retries.
         if let Some(existing) = &existing {
             if existing.status == "active"
-                && existing.kind == kind.as_str()
+                && existing.kind == axes.legacy_kind()
+                && existing.content_type == axes.content_type.as_str()
+                && existing.retention_tier == axes.retention_tier.as_str()
+                && existing.scope == axes.scope.as_str()
                 && existing.project == input.project
                 && existing.title == input.title
                 && existing.content == input.content
@@ -1284,30 +1328,34 @@ impl Store {
             memory.status == "active"
                 && memory::valid_until_is_active(memory.valid_until.as_deref(), &now)
         });
-        let supersession_target: Option<(String, Vec<String>, Option<String>)> =
+        let supersession_target: Option<(String, String, Vec<String>, Option<String>)> =
             if let Some(previous_id) = input.supersedes_id.as_deref() {
                 transaction
                     .query_row(
-                        "SELECT project,acl_json,valid_until FROM memories
+                        "SELECT project,scope,acl_json,valid_until FROM memories
                          WHERE id=?1 AND status='active'",
                         [previous_id],
                         |row| {
-                            let acl_json: String = row.get(1)?;
+                            let acl_json: String = row.get(2)?;
                             let acl = serde_json::from_str(&acl_json).map_err(|error| {
                                 rusqlite::Error::FromSqlConversionFailure(
-                                    1,
+                                    2,
                                     Type::Text,
                                     Box::new(error),
                                 )
                             })?;
-                            Ok((row.get(0)?, acl, row.get(2)?))
+                            Ok((row.get(0)?, row.get(1)?, acl, row.get(3)?))
                         },
                     )
                     .optional()?
             } else {
                 None
             };
-        if let Some((previous_project, previous_acl, _)) = &supersession_target {
+        if let Some((previous_project, previous_scope, previous_acl, _)) = &supersession_target {
+            anyhow::ensure!(
+                previous_scope != "owner-global" || owner,
+                "owner-global memory scope requires owner authorization"
+            );
             anyhow::ensure!(
                 owner || acl_allows(previous_acl, principal_acl),
                 "memory supersession target is outside principal visibility"
@@ -1320,11 +1368,12 @@ impl Store {
         if let Some(previous_id) = input.supersedes_id.as_deref() {
             anyhow::ensure!(previous_id != id, "memory cannot supersede itself");
         }
-        let supersedes_active = supersession_target
-            .as_ref()
-            .is_some_and(|(_, _, valid_until)| {
-                memory::valid_until_is_active(valid_until.as_deref(), &now)
-            });
+        let supersedes_active =
+            supersession_target
+                .as_ref()
+                .is_some_and(|(_, _, _, valid_until)| {
+                    memory::valid_until_is_active(valid_until.as_deref(), &now)
+                });
         anyhow::ensure!(
             replaces_active || supersedes_active || active_count < max_active as i64,
             "active memory limit reached ({max_active}); retract or supersede an existing memory before adding another"
@@ -1342,21 +1391,26 @@ impl Store {
         }
         transaction.execute(
             "INSERT INTO memories(
-               id,kind,project,title,content,source,source_id,dedupe_key,
+               id,kind,content_type,retention_tier,scope,project,title,content,source,source_id,dedupe_key,
                confidence,importance,status,acl_json,provenance_json,
                observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,'active',?11,?12,?13,?13,?14,?15,?13,?13)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,'active',?14,?15,?16,?16,?17,?18,?16,?16)
              ON CONFLICT(id) DO UPDATE SET
-               kind=excluded.kind,project=excluded.project,title=excluded.title,
-               content=excluded.content,source=excluded.source,source_id=excluded.source_id,
-               dedupe_key=excluded.dedupe_key,confidence=excluded.confidence,
-               importance=excluded.importance,status='active',acl_json=excluded.acl_json,
+               kind=excluded.kind,content_type=excluded.content_type,
+               retention_tier=excluded.retention_tier,scope=excluded.scope,
+               project=excluded.project,title=excluded.title,content=excluded.content,
+               source=excluded.source,source_id=excluded.source_id,dedupe_key=excluded.dedupe_key,
+               confidence=excluded.confidence,importance=excluded.importance,status='active',
+               acl_json=excluded.acl_json,
                provenance_json=excluded.provenance_json,observed_at=excluded.observed_at,
                valid_from=excluded.valid_from,valid_until=excluded.valid_until,
                supersedes_id=excluded.supersedes_id,updated_at=excluded.updated_at",
             params![
                 id,
-                kind.as_str(),
+                axes.legacy_kind(),
+                axes.content_type.as_str(),
+                axes.retention_tier.as_str(),
+                axes.scope.as_str(),
                 input.project,
                 input.title,
                 input.content,
@@ -1393,6 +1447,103 @@ impl Store {
         limit: usize,
         principal_acl: &[String],
     ) -> Result<Vec<MemorySearchResult>> {
+        self.recall_memories_with_axes_authorized(
+            query,
+            project,
+            kind,
+            None,
+            None,
+            None,
+            limit,
+            principal_acl,
+            false,
+        )
+    }
+
+    pub fn recall_memories_as_owner(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemorySearchResult>> {
+        self.recall_memories_with_axes_authorized(
+            query,
+            project,
+            kind,
+            None,
+            None,
+            None,
+            limit,
+            &["*".into()],
+            true,
+        )
+    }
+
+    /// Recall memories with independent compatibility-kind, content-type,
+    /// retention-tier, and scope filters.
+    #[allow(clippy::too_many_arguments)]
+    pub fn recall_memories_with_axes(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+    ) -> Result<Vec<MemorySearchResult>> {
+        self.recall_memories_with_axes_authorized(
+            query,
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            principal_acl,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn recall_memories_with_axes_as_owner(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemorySearchResult>> {
+        self.recall_memories_with_axes_authorized(
+            query,
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            &["*".into()],
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn recall_memories_with_axes_authorized(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Vec<MemorySearchResult>> {
         let match_query = memory::fts_query(query)?;
         let fallback_query = memory::fts_query_or(query)?;
         let query_terms = memory::term_tokens(query)?;
@@ -1401,6 +1552,21 @@ impl Store {
             .map(memory::MemoryKind::parse)
             .transpose()?
             .map(|kind| kind.as_str().to_string());
+        let normalized_content_type = content_type
+            .map(memory::MemoryContentType::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        let normalized_retention_tier = retention_tier
+            .map(memory::MemoryRetentionTier::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        let normalized_scope = scope
+            .map(memory::MemoryScope::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        if normalized_scope.as_deref() == Some("owner-global") && !owner {
+            bail!("owner-global memory scope requires owner authorization");
+        }
         let connection = self.read_connection.lock().expect("store lock poisoned");
         let candidate_limit = i64::try_from(result_limit * 4).unwrap_or(i64::MAX);
         let now = memory::now();
@@ -1412,17 +1578,21 @@ impl Store {
                 break;
             }
             let mut statement = connection.prepare(
-                "SELECT m.id,m.kind,m.project,m.title,m.content,m.source,m.source_id,
-                        m.dedupe_key,m.confidence,m.importance,m.status,m.acl_json,
-                        m.provenance_json,m.observed_at,m.valid_from,m.valid_until,
-                        m.supersedes_id,m.created_at,m.updated_at,bm25(memories_fts)
+                "SELECT m.id,m.kind,m.content_type,m.retention_tier,m.scope,m.project,m.title,
+                        m.content,m.source,m.source_id,m.dedupe_key,m.confidence,m.importance,
+                        m.status,m.acl_json,m.provenance_json,m.observed_at,m.valid_from,
+                        m.valid_until,m.supersedes_id,m.created_at,m.updated_at,bm25(memories_fts)
                  FROM memories_fts
                  JOIN memories m ON m.id=memories_fts.memory_id
                  WHERE memories_fts MATCH ?1 AND m.status='active'
                    AND (?2 IS NULL OR m.project=?2)
                    AND (?3 IS NULL OR m.kind=?3)
-                   AND m.valid_from<=?4
-                   AND (m.valid_until IS NULL OR julianday(m.valid_until)>julianday(?4))
+                   AND (?4 IS NULL OR m.content_type=?4)
+                   AND (?5 IS NULL OR m.retention_tier=?5)
+                   AND (?6 IS NULL OR m.scope=?6)
+                   AND (?7 OR m.scope<>'owner-global')
+                   AND m.valid_from<=?8
+                   AND (m.valid_until IS NULL OR julianday(m.valid_until)>julianday(?8))
                    AND json_valid(m.acl_json)
                    AND json_type(m.acl_json)='array'
                    AND NOT EXISTS (
@@ -1432,7 +1602,7 @@ impl Store {
                    AND (
                      json_array_length(m.acl_json)=0
                      OR EXISTS (
-                       SELECT 1 FROM json_each(?5) AS principal_acl
+                       SELECT 1 FROM json_each(?9) AS principal_acl
                        WHERE principal_acl.type='text'
                          AND (
                            principal_acl.value='*'
@@ -1445,13 +1615,17 @@ impl Store {
                      )
                    )
                  ORDER BY bm25(memories_fts),m.importance DESC,m.confidence DESC,m.updated_at DESC
-                 LIMIT ?6",
+                 LIMIT ?10",
             )?;
             let rows = statement.query_map(
                 params![
                     query_variant,
                     project,
                     normalized_kind.as_deref(),
+                    normalized_content_type.as_deref(),
+                    normalized_retention_tier.as_deref(),
+                    normalized_scope.as_deref(),
+                    owner,
                     now,
                     principal_acl_json,
                     candidate_limit
@@ -1488,9 +1662,10 @@ impl Store {
         let connection = self.read_connection.lock().expect("store lock poisoned");
         connection
             .query_row(
-                "SELECT id,kind,project,title,content,source,source_id,dedupe_key,
-                        confidence,importance,status,acl_json,provenance_json,
-                        observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
+                "SELECT id,kind,content_type,retention_tier,scope,project,title,content,
+                        source,source_id,dedupe_key,confidence,importance,status,acl_json,
+                        provenance_json,observed_at,valid_from,valid_until,supersedes_id,
+                        created_at,updated_at
                  FROM memories WHERE id=?1",
                 [id],
                 memory_record_from_row,
@@ -1517,17 +1692,21 @@ impl Store {
         let now = memory::now();
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
-        let acl_json: Option<String> = transaction
+        let access: Option<(String, String)> = transaction
             .query_row(
-                "SELECT acl_json FROM memories WHERE id=?1 AND status='active'",
+                "SELECT scope,acl_json FROM memories WHERE id=?1 AND status='active'",
                 [id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        let Some(acl_json) = acl_json else {
+        let Some((scope, acl_json)) = access else {
             transaction.commit()?;
             return Ok(false);
         };
+        anyhow::ensure!(
+            scope != "owner-global" || owner,
+            "owner-global memory scope requires owner authorization"
+        );
         let acl: Vec<String> = serde_json::from_str(&acl_json)?;
         anyhow::ensure!(
             owner || acl_allows(&acl, principal_acl),
@@ -1589,7 +1768,8 @@ impl Store {
                    COALESCE(SUM(CASE WHEN status='retracted' THEN 1 ELSE 0 END),0),
                    COALESCE(SUM(CASE WHEN status='superseded' THEN 1 ELSE 0 END),0)
                  FROM memories
-                 WHERE json_valid(acl_json)
+                 WHERE scope<>'owner-global'
+                   AND json_valid(acl_json)
                    AND json_type(acl_json)='array'
                    AND NOT EXISTS (
                      SELECT 1 FROM json_each(acl_json) AS memory_acl
@@ -1632,29 +1812,137 @@ impl Store {
         limit: usize,
         principal_acl: &[String],
     ) -> Result<Vec<MemoryRecord>> {
-        if let Some(kind) = kind {
-            memory::MemoryKind::parse(kind)?;
+        self.export_memories_with_axes_authorized(
+            project,
+            kind,
+            None,
+            None,
+            None,
+            limit,
+            principal_acl,
+            false,
+        )
+    }
+
+    pub fn export_memories_as_owner(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryRecord>> {
+        self.export_memories_with_axes_authorized(
+            project,
+            kind,
+            None,
+            None,
+            None,
+            limit,
+            &["*".into()],
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_memories_with_axes(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+    ) -> Result<Vec<MemoryRecord>> {
+        self.export_memories_with_axes_authorized(
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            principal_acl,
+            false,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_memories_with_axes_as_owner(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryRecord>> {
+        self.export_memories_with_axes_authorized(
+            project,
+            kind,
+            content_type,
+            retention_tier,
+            scope,
+            limit,
+            &["*".into()],
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn export_memories_with_axes_authorized(
+        &self,
+        project: Option<&str>,
+        kind: Option<&str>,
+        content_type: Option<&str>,
+        retention_tier: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Vec<MemoryRecord>> {
+        let normalized_kind = kind
+            .map(memory::MemoryKind::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        let normalized_content_type = content_type
+            .map(memory::MemoryContentType::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        let normalized_retention_tier = retention_tier
+            .map(memory::MemoryRetentionTier::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        let normalized_scope = scope
+            .map(memory::MemoryScope::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        if normalized_scope.as_deref() == Some("owner-global") && !owner {
+            bail!("owner-global memory scope requires owner authorization");
         }
         let limit = limit.clamp(1, memory::MAX_MEMORY_EXPORT_LIMIT);
         let connection = self.read_connection.lock().expect("store lock poisoned");
         let principal_acl_json = serde_json::to_string(principal_acl)?;
         let mut statement = connection.prepare(
-            "SELECT id,kind,project,title,content,source,source_id,dedupe_key,
-                    confidence,importance,status,acl_json,provenance_json,
-                    observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
+            "SELECT id,kind,content_type,retention_tier,scope,project,title,content,
+                    source,source_id,dedupe_key,confidence,importance,status,acl_json,
+                    provenance_json,observed_at,valid_from,valid_until,supersedes_id,
+                    created_at,updated_at
              FROM memories
                WHERE (?1 IS NULL OR project=?1)
                AND (?2 IS NULL OR kind=?2)
+               AND (?3 IS NULL OR content_type=?3)
+               AND (?4 IS NULL OR retention_tier=?4)
+               AND (?5 IS NULL OR scope=?5)
+               AND (?6 OR scope<>'owner-global')
                AND json_valid(acl_json)
                AND json_type(acl_json)='array'
                AND NOT EXISTS (
                  SELECT 1 FROM json_each(acl_json) AS memory_acl
                  WHERE memory_acl.type<>'text'
                )
-               AND (
+                   AND (
                  json_array_length(acl_json)=0
                  OR EXISTS (
-                   SELECT 1 FROM json_each(?3) AS principal_acl
+                       SELECT 1 FROM json_each(?7) AS principal_acl
                    WHERE principal_acl.type='text'
                      AND (
                        principal_acl.value='*'
@@ -1667,12 +1955,16 @@ impl Store {
                  )
                )
              ORDER BY updated_at DESC,id DESC
-             LIMIT ?4",
+             LIMIT ?8",
         )?;
         let rows = statement.query_map(
             params![
                 project,
-                kind,
+                normalized_kind,
+                normalized_content_type,
+                normalized_retention_tier,
+                normalized_scope,
+                owner,
                 principal_acl_json,
                 i64::try_from(limit).unwrap_or(i64::MAX)
             ],
@@ -3021,6 +3313,9 @@ fn migrate_memory_dedupe_scope(connection: &mut Connection) -> Result<()> {
          CREATE TABLE memories(
            id TEXT PRIMARY KEY,
            kind TEXT NOT NULL,
+           content_type TEXT NOT NULL DEFAULT 'semantic',
+           retention_tier TEXT NOT NULL DEFAULT 'durable',
+           scope TEXT NOT NULL DEFAULT 'workspace',
            project TEXT NOT NULL,
            title TEXT NOT NULL,
            content TEXT NOT NULL,
@@ -3039,14 +3334,78 @@ fn migrate_memory_dedupe_scope(connection: &mut Connection) -> Result<()> {
            created_at TEXT NOT NULL,
            updated_at TEXT NOT NULL);
          INSERT INTO memories(
-           id,kind,project,title,content,source,source_id,dedupe_key,
+           id,kind,content_type,retention_tier,scope,project,title,content,source,source_id,dedupe_key,
            confidence,importance,status,acl_json,provenance_json,
            observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
-         SELECT id,kind,project,title,content,source,source_id,dedupe_key,
+         SELECT id,kind,content_type,retention_tier,scope,project,title,content,source,source_id,dedupe_key,
            confidence,importance,status,acl_json,provenance_json,
            observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at
          FROM memories_legacy;
          DROP TABLE memories_legacy;",
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Add the independent M6 memory axes without rewriting canonical meaning or
+/// bumping `memory_revision`. The columns are additive so an older binary can
+/// still read the legacy `kind` field while the new binary exposes the
+/// separated contract. Legacy `working` rows become semantic working records;
+/// all other legacy kinds become durable records of the same content type.
+fn migrate_memory_axes(connection: &mut Connection) -> Result<()> {
+    let transaction = connection.transaction()?;
+    ensure_column(
+        &transaction,
+        "memories",
+        "content_type",
+        "TEXT NOT NULL DEFAULT 'semantic'",
+    )?;
+    ensure_column(
+        &transaction,
+        "memories",
+        "retention_tier",
+        "TEXT NOT NULL DEFAULT 'durable'",
+    )?;
+    ensure_column(
+        &transaction,
+        "memories",
+        "scope",
+        "TEXT NOT NULL DEFAULT 'workspace'",
+    )?;
+    let migration_complete = transaction
+        .query_row(
+            "SELECT value FROM meta WHERE key='memory_axes_schema'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .as_deref()
+        == Some("1");
+    if !migration_complete {
+        transaction.execute(
+            "UPDATE memories SET content_type=CASE lower(trim(kind))
+               WHEN 'episodic' THEN 'episodic'
+               WHEN 'procedural' THEN 'procedural'
+               WHEN 'preference' THEN 'preference'
+               ELSE 'semantic' END",
+            [],
+        )?;
+        transaction.execute(
+            "UPDATE memories SET retention_tier=CASE lower(trim(kind))
+               WHEN 'working' THEN 'working' ELSE 'durable' END",
+            [],
+        )?;
+        transaction.execute("UPDATE memories SET scope='workspace'", [])?;
+    }
+    transaction.execute(
+        "INSERT INTO meta(key,value) VALUES('memory_axes_schema','1')
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [],
+    )?;
+    transaction.execute(
+        "CREATE INDEX IF NOT EXISTS idx_memories_axes
+         ON memories(project,content_type,retention_tier,scope,status,updated_at DESC)",
+        [],
     )?;
     transaction.commit()?;
     Ok(())
@@ -3157,7 +3516,7 @@ fn cosine(left: &[f32], right: &[f32]) -> f32 {
 fn memory_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemorySearchResult> {
     Ok(MemorySearchResult {
         memory: memory_record_from_row(row)?,
-        lexical_score: row.get(19)?,
+        lexical_score: row.get(22)?,
         relevance_score: 0.0,
     })
 }
@@ -3217,32 +3576,35 @@ fn memory_freshness_score(updated_at: &str, now: &str) -> f64 {
 }
 
 fn memory_record_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MemoryRecord> {
-    let acl_json: String = row.get(11)?;
-    let provenance_json: String = row.get(12)?;
+    let acl_json: String = row.get(14)?;
+    let provenance_json: String = row.get(15)?;
     Ok(MemoryRecord {
         id: row.get(0)?,
         kind: row.get(1)?,
-        project: row.get(2)?,
-        title: row.get(3)?,
-        content: row.get(4)?,
-        source: row.get(5)?,
-        source_id: row.get(6)?,
-        dedupe_key: row.get(7)?,
-        confidence: row.get(8)?,
-        importance: row.get(9)?,
-        status: row.get(10)?,
+        content_type: row.get(2)?,
+        retention_tier: row.get(3)?,
+        scope: row.get(4)?,
+        project: row.get(5)?,
+        title: row.get(6)?,
+        content: row.get(7)?,
+        source: row.get(8)?,
+        source_id: row.get(9)?,
+        dedupe_key: row.get(10)?,
+        confidence: row.get(11)?,
+        importance: row.get(12)?,
+        status: row.get(13)?,
         acl: serde_json::from_str(&acl_json).map_err(|error| {
-            rusqlite::Error::FromSqlConversionFailure(11, Type::Text, Box::new(error))
+            rusqlite::Error::FromSqlConversionFailure(14, Type::Text, Box::new(error))
         })?,
         provenance: serde_json::from_str(&provenance_json).map_err(|error| {
-            rusqlite::Error::FromSqlConversionFailure(12, Type::Text, Box::new(error))
+            rusqlite::Error::FromSqlConversionFailure(15, Type::Text, Box::new(error))
         })?,
-        observed_at: row.get(13)?,
-        valid_from: row.get(14)?,
-        valid_until: row.get(15)?,
-        supersedes_id: row.get(16)?,
-        created_at: row.get(17)?,
-        updated_at: row.get(18)?,
+        observed_at: row.get(16)?,
+        valid_from: row.get(17)?,
+        valid_until: row.get(18)?,
+        supersedes_id: row.get(19)?,
+        created_at: row.get(20)?,
+        updated_at: row.get(21)?,
     })
 }
 
@@ -3549,6 +3911,333 @@ mod tests {
             )
             .expect("backfilled link");
         assert_eq!(link_count, 1);
+    }
+
+    #[test]
+    fn migrates_legacy_memory_kind_into_independent_axes_without_revision_bump() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("legacy-memory.sqlite3");
+        let connection = Connection::open(&path).expect("legacy database");
+        connection
+            .execute_batch(
+                "CREATE TABLE memories(
+                   id TEXT PRIMARY KEY,kind TEXT NOT NULL,project TEXT NOT NULL,
+                   title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,
+                   source_id TEXT NOT NULL,dedupe_key TEXT,confidence REAL NOT NULL,
+                   importance REAL NOT NULL,status TEXT NOT NULL,acl_json TEXT NOT NULL,
+                   provenance_json TEXT NOT NULL,observed_at TEXT NOT NULL,
+                   valid_from TEXT NOT NULL,valid_until TEXT,supersedes_id TEXT,
+                   created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+                 INSERT INTO memories(
+                   id,kind,project,title,content,source,source_id,dedupe_key,
+                   confidence,importance,status,acl_json,provenance_json,
+                   observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
+                 VALUES
+                   ('working-id','working','work','Working','temporary context','agent','working-id',NULL,
+                    0.7,0.5,'active','[\"work\"]','{}','2026-01-01T00:00:00Z',
+                    '2026-01-01T00:00:00Z',NULL,NULL,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z'),
+                   ('preference-id','preference','work','Preference','durable preference','agent','preference-id',NULL,
+                    0.8,0.6,'retracted','[\"work\"]','{}','2026-01-01T00:00:00Z',
+                    '2026-01-01T00:00:00Z',NULL,NULL,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');",
+            )
+            .expect("legacy schema");
+        drop(connection);
+
+        let migrated = Store::open(&path).expect("migrate store");
+        assert_eq!(migrated.memory_revision().expect("revision"), 0);
+        let connection = Connection::open(&path).expect("inspect migration metadata");
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT value FROM meta WHERE key='memory_axes_schema'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("axes schema marker"),
+            "1"
+        );
+        drop(connection);
+        let working = migrated
+            .memory("working-id")
+            .expect("working memory")
+            .expect("working record");
+        assert_eq!(working.kind, "working");
+        assert_eq!(working.content_type, "semantic");
+        assert_eq!(working.retention_tier, "working");
+        assert_eq!(working.scope, "workspace");
+        let preference = migrated
+            .memory("preference-id")
+            .expect("preference memory")
+            .expect("preference record");
+        assert_eq!(preference.content_type, "preference");
+        assert_eq!(preference.retention_tier, "durable");
+        assert_eq!(preference.status, "retracted");
+        drop(migrated);
+
+        let reopened = Store::open(&path).expect("idempotent reopen");
+        assert_eq!(reopened.memory_revision().expect("revision"), 0);
+        assert_eq!(
+            reopened
+                .memory("working-id")
+                .expect("working memory")
+                .expect("working record")
+                .retention_tier,
+            "working"
+        );
+        let indexes = Connection::open(&path)
+            .expect("inspect indexes")
+            .prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='memories'")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+            .expect("memory indexes");
+        assert!(indexes.iter().any(|name| name == "idx_memories_axes"));
+    }
+
+    #[test]
+    fn resumes_partially_applied_memory_axes_migration_without_losing_legacy_meaning() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("partial-memory-axes.sqlite3");
+        let connection = Connection::open(&path).expect("partial database");
+        connection
+            .execute_batch(
+                "CREATE TABLE memories(
+                   id TEXT PRIMARY KEY,kind TEXT NOT NULL,
+                   content_type TEXT NOT NULL DEFAULT 'semantic',
+                   retention_tier TEXT NOT NULL DEFAULT 'durable',
+                   scope TEXT NOT NULL DEFAULT 'workspace',project TEXT NOT NULL,
+                   title TEXT NOT NULL,content TEXT NOT NULL,source TEXT NOT NULL,
+                   source_id TEXT NOT NULL,dedupe_key TEXT,confidence REAL NOT NULL,
+                   importance REAL NOT NULL,status TEXT NOT NULL,acl_json TEXT NOT NULL,
+                   provenance_json TEXT NOT NULL,observed_at TEXT NOT NULL,
+                   valid_from TEXT NOT NULL,valid_until TEXT,supersedes_id TEXT,
+                   created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+                 INSERT INTO memories(
+                   id,kind,project,title,content,source,source_id,dedupe_key,
+                   confidence,importance,status,acl_json,provenance_json,
+                   observed_at,valid_from,valid_until,supersedes_id,created_at,updated_at)
+                 VALUES(
+                   'preference-id','preference','work','Preference','durable preference',
+                   'agent','preference-id',NULL,0.8,0.6,'active','[\"work\"]','{}',
+                   '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z',NULL,NULL,
+                   '2026-01-01T00:00:00Z','2026-01-01T00:00:00Z');",
+            )
+            .expect("partial schema");
+        drop(connection);
+
+        let migrated = Store::open(&path).expect("resume migration");
+        let preference = migrated
+            .memory("preference-id")
+            .expect("preference memory")
+            .expect("preference record");
+        assert_eq!(preference.content_type, "preference");
+        assert_eq!(preference.retention_tier, "durable");
+        assert_eq!(preference.scope, "workspace");
+        assert_eq!(migrated.memory_revision().expect("revision"), 0);
+    }
+
+    #[test]
+    fn recall_filters_memory_axes_independently_and_keeps_idempotent_revision() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let base = |title: &str, content: &str| crate::memory::MemoryInput {
+            kind: "semantic".into(),
+            project: "work".into(),
+            title: title.into(),
+            content: content.into(),
+            source: "agent".into(),
+            source_id: title.into(),
+            dedupe_key: Some(title.into()),
+            confidence: 0.8,
+            importance: 0.6,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"test":true}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        let working_axes = crate::memory::MemoryAxes::with_overrides(
+            "semantic",
+            Some("semantic"),
+            Some("working"),
+            Some("workspace"),
+        )
+        .expect("working axes");
+        store
+            .remember_scoped_with_axes(
+                &base("working-note", "release checklist working note"),
+                &["work".into()],
+                false,
+                working_axes,
+            )
+            .expect("working memory");
+        store
+            .remember(&base("durable-note", "release checklist durable note"))
+            .expect("durable memory");
+        let revision = store.memory_revision().expect("revision");
+        store
+            .remember_scoped_with_axes(
+                &base("working-note", "release checklist working note"),
+                &["work".into()],
+                false,
+                working_axes,
+            )
+            .expect("idempotent working memory");
+        assert_eq!(store.memory_revision().expect("stable revision"), revision);
+
+        let working = store
+            .recall_memories_with_axes(
+                "release checklist",
+                Some("work"),
+                None,
+                None,
+                Some("working"),
+                Some("workspace"),
+                10,
+                &["work".into()],
+            )
+            .expect("working recall");
+        assert_eq!(working.len(), 1);
+        assert_eq!(working[0].memory.source_id, "working-note");
+        let durable = store
+            .recall_memories_with_axes(
+                "release checklist",
+                Some("work"),
+                None,
+                Some("semantic"),
+                Some("durable"),
+                Some("workspace"),
+                10,
+                &["work".into()],
+            )
+            .expect("durable recall");
+        assert_eq!(durable.len(), 1);
+        assert_eq!(durable[0].memory.source_id, "durable-note");
+    }
+
+    #[test]
+    fn unbound_session_and_principal_memory_scopes_fail_closed() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let input = crate::memory::MemoryInput {
+            kind: "semantic".into(),
+            project: "work".into(),
+            title: "Scoped note".into(),
+            content: "Scoped content".into(),
+            source: "agent".into(),
+            source_id: "scoped-note".into(),
+            dedupe_key: None,
+            confidence: 0.8,
+            importance: 0.6,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"test":true}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        for scope in ["session", "principal"] {
+            let axes = crate::memory::MemoryAxes::with_overrides(
+                "semantic",
+                None,
+                Some("working"),
+                Some(scope),
+            )
+            .expect("axes");
+            let error = store
+                .remember_scoped_with_axes(&input, &["work".into()], false, axes)
+                .expect_err("unbound narrow scope must fail closed");
+            assert!(error.to_string().contains("identity binding"));
+        }
+    }
+
+    #[test]
+    fn owner_global_memory_is_hidden_from_acl_matching_non_owners() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let input = crate::memory::MemoryInput {
+            kind: "preference".into(),
+            project: "work".into(),
+            title: "Owner preference".into(),
+            content: "Prefer private owner policy".into(),
+            source: "owner".into(),
+            source_id: "owner-preference".into(),
+            dedupe_key: Some("owner-preference".into()),
+            confidence: 0.9,
+            importance: 0.8,
+            acl: vec!["work".into()],
+            provenance: serde_json::json!({"test":true}),
+            supersedes_id: None,
+            valid_until: None,
+        };
+        let axes = crate::memory::MemoryAxes::with_overrides(
+            "preference",
+            None,
+            None,
+            Some("owner-global"),
+        )
+        .expect("owner axes");
+        let owner_memory = store
+            .remember_scoped_with_axes(&input, &["*".into()], true, axes)
+            .expect("owner memory");
+
+        assert!(
+            store
+                .recall_memories(
+                    "private owner policy",
+                    Some("work"),
+                    None,
+                    10,
+                    &["work".into()]
+                )
+                .expect("scoped recall")
+                .is_empty()
+        );
+        assert!(
+            store
+                .export_memories(None, None, 100, &["work".into()])
+                .expect("scoped export")
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .memory_stats_scoped(&["work".into()])
+                .expect("scoped stats")
+                .total,
+            0
+        );
+        assert!(
+            store
+                .forget_memory_scoped(&owner_memory.id, &["work".into()], false)
+                .is_err()
+        );
+
+        let overwrite_error = store
+            .remember_scoped_with_axes(
+                &crate::memory::MemoryInput {
+                    content: "Overwrite owner policy".into(),
+                    ..input.clone()
+                },
+                &["work".into()],
+                false,
+                crate::memory::MemoryAxes::from_legacy_kind("preference").expect("workspace axes"),
+            )
+            .expect_err("non-owner dedupe must not reach owner-global memory");
+        assert!(overwrite_error.to_string().contains("owner authorization"));
+
+        let supersede_error = store
+            .remember_scoped(
+                &crate::memory::MemoryInput {
+                    title: "Replacement".into(),
+                    source_id: "replacement".into(),
+                    dedupe_key: Some("replacement".into()),
+                    supersedes_id: Some(owner_memory.id),
+                    ..input
+                },
+                &["work".into()],
+                false,
+            )
+            .expect_err("non-owner must not supersede owner-global memory");
+        assert!(supersede_error.to_string().contains("owner authorization"));
     }
 
     #[test]

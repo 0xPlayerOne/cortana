@@ -58,6 +58,9 @@ pub struct DomainSearchParams {
 #[serde(deny_unknown_fields)]
 pub struct MemoryRememberParams {
     kind: String,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     project: String,
     title: String,
     content: String,
@@ -84,6 +87,9 @@ pub struct MemoryRecallParams {
     query: String,
     project: Option<String>,
     kind: Option<String>,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     limit: Option<usize>,
 }
 
@@ -92,6 +98,9 @@ pub struct MemoryRecallParams {
 pub struct MemoryExportParams {
     project: Option<String>,
     kind: Option<String>,
+    content_type: Option<String>,
+    retention_tier: Option<String>,
+    scope: Option<String>,
     limit: Option<usize>,
 }
 
@@ -408,9 +417,18 @@ impl BrainServer {
                     self.retrieval_fallbacks.fetch_add(1, Ordering::Relaxed);
                 }
                 let memories = if principal.has_scope(MEMORY_SCOPE) {
-                    self
-                        .store
-                        .recall_memories(
+                    let recalled = if principal.is_owner() {
+                        self.store.recall_memories_as_owner(
+                            &params.query,
+                            params.project.as_deref(),
+                            None,
+                            params
+                                .limit
+                                .unwrap_or(20)
+                                .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
+                        )
+                    } else {
+                        self.store.recall_memories(
                             &params.query,
                             params.project.as_deref(),
                             None,
@@ -420,7 +438,8 @@ impl BrainServer {
                                 .clamp(1, crate::memory::MAX_MEMORY_RECALL_LIMIT),
                             &acl,
                         )
-                        .unwrap_or_else(|error| {
+                    };
+                    recalled.unwrap_or_else(|error| {
                             tracing::warn!(%error, "native memory recall unavailable while building MCP context");
                             Vec::new()
                         })
@@ -587,9 +606,18 @@ impl BrainServer {
             supersedes_id: params.supersedes_id,
             valid_until: params.valid_until,
         };
+        let axes = match crate::memory::MemoryAxes::with_overrides(
+            &input.kind,
+            params.content_type.as_deref(),
+            params.retention_tier.as_deref(),
+            params.scope.as_deref(),
+        ) {
+            Ok(axes) => axes,
+            Err(error) => return format!("invalid memory axes: {error}"),
+        };
         match self
             .store
-            .remember_scoped(&input, &visible_acl, principal.is_owner())
+            .remember_scoped_with_axes(&input, &visible_acl, principal.is_owner(), axes)
         {
             Ok(memory) => {
                 self.audit_principal(
@@ -670,13 +698,29 @@ impl BrainServer {
             );
             return format!("invalid request: {error}");
         }
-        match self.store.recall_memories(
-            &params.query,
-            params.project.as_deref(),
-            params.kind.as_deref(),
-            params.limit.unwrap_or(10),
-            &principal.visible_acl(),
-        ) {
+        let recalled = if principal.is_owner() {
+            self.store.recall_memories_with_axes_as_owner(
+                &params.query,
+                params.project.as_deref(),
+                params.kind.as_deref(),
+                params.content_type.as_deref(),
+                params.retention_tier.as_deref(),
+                params.scope.as_deref(),
+                params.limit.unwrap_or(10),
+            )
+        } else {
+            self.store.recall_memories_with_axes(
+                &params.query,
+                params.project.as_deref(),
+                params.kind.as_deref(),
+                params.content_type.as_deref(),
+                params.retention_tier.as_deref(),
+                params.scope.as_deref(),
+                params.limit.unwrap_or(10),
+                &principal.visible_acl(),
+            )
+        };
+        match recalled {
             Ok(memories) => {
                 self.audit_principal(
                     &principal,
@@ -829,15 +873,31 @@ impl BrainServer {
             );
             return "authorization error: memory scope required".into();
         }
-        match self.store.export_memories(
-            params.project.as_deref(),
-            params.kind.as_deref(),
-            params
-                .limit
-                .unwrap_or(10_000)
-                .min(crate::memory::MAX_MEMORY_EXPORT_LIMIT),
-            &principal.visible_acl(),
-        ) {
+        let limit = params
+            .limit
+            .unwrap_or(10_000)
+            .min(crate::memory::MAX_MEMORY_EXPORT_LIMIT);
+        let exported = if principal.is_owner() {
+            self.store.export_memories_with_axes_as_owner(
+                params.project.as_deref(),
+                params.kind.as_deref(),
+                params.content_type.as_deref(),
+                params.retention_tier.as_deref(),
+                params.scope.as_deref(),
+                limit,
+            )
+        } else {
+            self.store.export_memories_with_axes(
+                params.project.as_deref(),
+                params.kind.as_deref(),
+                params.content_type.as_deref(),
+                params.retention_tier.as_deref(),
+                params.scope.as_deref(),
+                limit,
+                &principal.visible_acl(),
+            )
+        };
+        match exported {
             Ok(memories) => {
                 self.audit_principal(
                     &principal,
@@ -1518,6 +1578,9 @@ mod tests {
                     query: "shared launch phrase".into(),
                     project: Some("demo".into()),
                     kind: None,
+                    content_type: None,
+                    retention_tier: None,
+                    scope: None,
                     limit: Some(10),
                 }))
                 .await,
@@ -1545,6 +1608,9 @@ mod tests {
                     query: "shared launch phrase".into(),
                     project: Some("demo".into()),
                     kind: None,
+                    content_type: None,
+                    retention_tier: None,
+                    scope: None,
                     limit: Some(10),
                 }))
                 .await,

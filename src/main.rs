@@ -52,6 +52,7 @@ struct Cli {
     command: Option<Command>,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Create a safe local configuration and data directory.
@@ -338,6 +339,15 @@ enum MemoryAction {
     Remember {
         #[arg(long)]
         kind: String,
+        #[arg(long, help = "Independent semantic type; defaults from --kind")]
+        content_type: Option<String>,
+        #[arg(long, help = "Independent working or durable retention tier")]
+        retention_tier: Option<String>,
+        #[arg(
+            long,
+            help = "Independent session, principal, workspace, or owner-global scope"
+        )]
+        scope: Option<String>,
         #[arg(long)]
         project: String,
         #[arg(long)]
@@ -370,6 +380,12 @@ enum MemoryAction {
         project: Option<String>,
         #[arg(long)]
         kind: Option<String>,
+        #[arg(long)]
+        content_type: Option<String>,
+        #[arg(long)]
+        retention_tier: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
         #[arg(short = 'n', long, default_value_t = 10)]
         limit: usize,
     },
@@ -379,6 +395,12 @@ enum MemoryAction {
         project: Option<String>,
         #[arg(long)]
         kind: Option<String>,
+        #[arg(long)]
+        content_type: Option<String>,
+        #[arg(long)]
+        retention_tier: Option<String>,
+        #[arg(long)]
+        scope: Option<String>,
         #[arg(short = 'n', long, default_value_t = 10_000)]
         limit: usize,
     },
@@ -1948,6 +1970,9 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
     match action {
         MemoryAction::Remember {
             kind,
+            content_type,
+            retention_tier,
+            scope,
             project,
             title,
             content,
@@ -1972,21 +1997,32 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                         "interface": "cli"
                     })
                 });
-            let result = store.remember(&MemoryInput {
-                kind: kind.clone(),
-                project: project.clone(),
-                title: title.clone(),
-                content: content.clone(),
-                source: source.clone(),
-                source_id: source_id.clone(),
-                dedupe_key: dedupe_key.clone(),
-                confidence: confidence.unwrap_or(config.memory.default_confidence),
-                importance: importance.unwrap_or(config.memory.default_importance),
-                acl: acl.clone(),
-                provenance,
-                supersedes_id: supersedes_id.clone(),
-                valid_until: valid_until.clone(),
-            });
+            let axes = cortana::memory::MemoryAxes::with_overrides(
+                kind,
+                content_type.as_deref(),
+                retention_tier.as_deref(),
+                scope.as_deref(),
+            )?;
+            let result = store.remember_scoped_with_axes(
+                &MemoryInput {
+                    kind: kind.clone(),
+                    project: project.clone(),
+                    title: title.clone(),
+                    content: content.clone(),
+                    source: source.clone(),
+                    source_id: source_id.clone(),
+                    dedupe_key: dedupe_key.clone(),
+                    confidence: confidence.unwrap_or(config.memory.default_confidence),
+                    importance: importance.unwrap_or(config.memory.default_importance),
+                    acl: acl.clone(),
+                    provenance,
+                    supersedes_id: supersedes_id.clone(),
+                    valid_until: valid_until.clone(),
+                },
+                &["*".into()],
+                true,
+                axes,
+            );
             match result {
                 Ok(record) => {
                     record_cli_memory_audit(
@@ -2021,14 +2057,19 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
             query,
             project,
             kind,
+            content_type,
+            retention_tier,
+            scope,
             limit,
         } => {
-            let result = store.recall_memories(
+            let result = store.recall_memories_with_axes_as_owner(
                 query,
                 project.as_deref(),
                 kind.as_deref(),
+                content_type.as_deref(),
+                retention_tier.as_deref(),
+                scope.as_deref(),
                 *limit,
-                &["*".into()],
             );
             match result {
                 Ok(records) => {
@@ -2108,10 +2149,19 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
         MemoryAction::Export {
             project,
             kind,
+            content_type,
+            retention_tier,
+            scope,
             limit,
         } => {
-            let result =
-                store.export_memories(project.as_deref(), kind.as_deref(), *limit, &["*".into()]);
+            let result = store.export_memories_with_axes_as_owner(
+                project.as_deref(),
+                kind.as_deref(),
+                content_type.as_deref(),
+                retention_tier.as_deref(),
+                scope.as_deref(),
+                *limit,
+            );
             match result {
                 Ok(records) => {
                     record_cli_memory_audit(
@@ -5368,6 +5418,9 @@ mod tests {
             &store,
             &MemoryAction::Remember {
                 kind: "preference".into(),
+                content_type: None,
+                retention_tier: None,
+                scope: None,
                 project: "work".into(),
                 title: "Release style".into(),
                 content: "Prefer concise notes.".into(),
@@ -5397,6 +5450,9 @@ mod tests {
                 query: "concise notes".into(),
                 project: Some("work".into()),
                 kind: None,
+                content_type: None,
+                retention_tier: None,
+                scope: None,
                 limit: 1,
             },
         )

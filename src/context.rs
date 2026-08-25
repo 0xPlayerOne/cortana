@@ -430,6 +430,9 @@ mod tests {
             memory: crate::memory::MemoryRecord {
                 id: "memory-1".into(),
                 kind: "preference".into(),
+                content_type: "preference".into(),
+                retention_tier: "durable".into(),
+                scope: "workspace".into(),
                 project: "work".into(),
                 title: "Release style".into(),
                 content: "Prefer concise release notes.".into(),

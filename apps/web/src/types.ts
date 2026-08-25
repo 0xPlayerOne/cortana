@@ -670,6 +670,9 @@ export type ContextBundle = {
 export type AgentMemory = {
   id: string
   kind: string
+  content_type?: string
+  retention_tier?: string
+  scope?: string
   project: string
   title: string
   content: string
