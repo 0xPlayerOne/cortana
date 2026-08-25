@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.35.1](https://github.com/0xPlayerOne/cortana/compare/v0.35.0...v0.35.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **release:** merge updater manifest after parallel builds ([#2109](https://github.com/0xPlayerOne/cortana/issues/2109)) ([8b53761](https://github.com/0xPlayerOne/cortana/commit/8b53761f60f787260395e59264103eb69911f610))
+
 ## [0.35.0](https://github.com/0xPlayerOne/cortana/compare/v0.34.46...v0.35.0) (2026-08-25)
 
 
