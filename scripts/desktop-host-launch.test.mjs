@@ -8,6 +8,7 @@ import {
   buildIsolatedEnvironment,
   describeHostTarget,
   hostFailureEvidence,
+  runHostAcceptance,
   runHostLaunch,
   writeIsolatedConfig,
 } from './desktop-host-launch.mjs'
@@ -103,6 +104,37 @@ test('host launch rejects credential-shaped environment keys', async () => {
         timeoutMs: 2_000,
       })
     ).rejects.toThrow('credential-shaped key')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('historical host acceptance records verifier source-version drift', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'cortana-host-drift-test-'))
+  const app = join(root, 'fake-app.mjs')
+  try {
+    writeFileSync(app, 'setTimeout(() => {}, 5000)\n')
+    chmodSync(app, 0o755)
+    const evidence = await runHostAcceptance({
+      target: 'aarch64-apple-darwin',
+      version: '0.37.0',
+      app: process.execPath,
+      appArgs: [app],
+      allowSourceVersionDrift: true,
+      stableMs: 50,
+      timeoutMs: 1_000,
+    })
+    expect(evidence).toMatchObject({
+      status: 'passed',
+      version: '0.37.0',
+      component_versions: {
+        application: '0.37.0',
+        web: '0.37.0',
+        connector: '0.37.0',
+      },
+      source_project_version_match: false,
+    })
+    expect(evidence.cases).toContain('source-project-version-drift-recorded')
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
