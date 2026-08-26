@@ -113,9 +113,10 @@ Mental models and beliefs expose contradicting record IDs separately.
 These projections are recomputed rather than promoted or treated as evidence. Their
 `citation_authority` and `canonical_memory_mutated` fields are always false. Joining records with
 no common ACL produces no combined representation, so derivation cannot widen visibility. Only
-active, currently valid records support representations; a remember, supersede, expiry, retract,
-or forget advances `memory_revision`, and the next bounded read recomputes without the invalid
-support. Historical supersession relations may describe a visible tombstone, but the tombstone
+active, currently valid records support representations. Remember, supersede, retract, and forget
+writes advance `memory_revision`; wall-clock expiry is evaluated on every projection read. Answers
+that can see a future-expiring memory are not cache eligible, so a cached response cannot outlive
+its support. Historical supersession relations may describe a visible tombstone, but the tombstone
 cannot support an experience, observation, mental model, or belief.
 
 `GET /v1/memory/derived` and MCP `inspect_memory_representations` provide bounded inspection and

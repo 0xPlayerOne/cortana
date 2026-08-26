@@ -2951,6 +2951,37 @@ impl Store {
         Ok(stats)
     }
 
+    /// Answer-cache safety guard for wall-clock memory expiry. Responses that
+    /// can include a currently visible, time-bounded memory must not survive
+    /// past `valid_until`, which does not itself perform a database write.
+    pub fn has_visible_future_memory_expiry(
+        &self,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<bool> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let now = memory::now();
+        let principal_acl_json = serde_json::to_string(principal_acl)?;
+        connection
+            .query_row(
+                "SELECT EXISTS(
+                   SELECT 1 FROM memories
+                   WHERE status='active'
+                     AND valid_until IS NOT NULL
+                     AND julianday(valid_until)>julianday(?1)
+                     AND (?2 OR scope<>'owner-global')
+                     AND (?2 OR json_array_length(acl_json)=0 OR EXISTS(
+                       SELECT 1 FROM json_each(?3) principal_acl
+                       WHERE principal_acl.value='*' OR EXISTS(
+                         SELECT 1 FROM json_each(acl_json) memory_acl
+                         WHERE memory_acl.value=principal_acl.value)))
+                 )",
+                params![now, owner, principal_acl_json],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
+
     /// Return lifecycle counts visible to a scoped principal.  Status metrics
     /// must not reveal the existence of another workspace's memories even
     /// though they contain no record content.

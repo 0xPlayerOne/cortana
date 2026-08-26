@@ -312,6 +312,14 @@ impl AnswerEngine {
         let memory_revision = memory_acl
             .map(|_| self.store.memory_revision())
             .transpose()?;
+        let cache_eligible = memory_acl
+            .map(|acl| {
+                self.store
+                    .has_visible_future_memory_expiry(acl, memory_owner)
+                    .map(|has_expiry| !has_expiry)
+            })
+            .transpose()?
+            .unwrap_or(true);
         let cache_key = self.cache_key(
             &request,
             revision,
@@ -320,9 +328,10 @@ impl AnswerEngine {
             memory_acl,
             memory_owner,
         )?;
-        if let Some(cached) = self
-            .store
-            .cached_query(&cache_key, self.config.cache_ttl_seconds)?
+        if cache_eligible
+            && let Some(cached) = self
+                .store
+                .cached_query(&cache_key, self.config.cache_ttl_seconds)?
         {
             match serde_json::from_str::<AnswerResponse>(&cached) {
                 Ok(mut response) => {
@@ -472,7 +481,9 @@ impl AnswerEngine {
         // configured, but never persist a degraded response from a configured
         // model or a lexical retrieval fallback. A transient provider outage
         // must not mask recovery until the answer-cache TTL expires.
-        if self.model.is_none() || (response.mode == "synthesized" && !response.retrieval_degraded)
+        if cache_eligible
+            && (self.model.is_none()
+                || (response.mode == "synthesized" && !response.retrieval_degraded))
         {
             self.store.cache_query(
                 &cache_key,
@@ -1669,6 +1680,56 @@ mod tests {
             .await
             .expect("query-only answer");
         assert!(query_only.memories.is_empty());
+    }
+
+    #[tokio::test]
+    async fn expiring_memory_never_enters_the_answer_cache() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        seed(&store, &embedder, "release", "Release evidence.").await;
+        store
+            .remember(&crate::memory::MemoryInput {
+                kind: "working".into(),
+                project: "demo".into(),
+                title: "Temporary release state".into(),
+                content: "Temporary release blocker is active.".into(),
+                source: "agent".into(),
+                source_id: "expiring-answer".into(),
+                dedupe_key: Some("answer:expiring".into()),
+                confidence: 0.9,
+                importance: 0.8,
+                acl: vec!["work".into()],
+                provenance: serde_json::json!({"test": true}),
+                supersedes_id: None,
+                valid_until: Some((chrono::Utc::now() + chrono::Duration::seconds(1)).to_rfc3339()),
+            })
+            .expect("expiring memory");
+        let engine = AnswerEngine::new(store, embedder, None, QueryConfig::default());
+        let request = AnswerRequest {
+            query: "temporary release blocker".into(),
+            project: Some("demo".into()),
+            source: None,
+        };
+        let first = engine
+            .answer_scoped_with_memory(request.clone(), &["work".into()], Some(&["work".into()]))
+            .await
+            .expect("first expiring answer");
+        assert!(!first.cached);
+        assert_eq!(first.memories.len(), 1);
+        let second = engine
+            .answer_scoped_with_memory(request.clone(), &["work".into()], Some(&["work".into()]))
+            .await
+            .expect("second expiring answer");
+        assert!(!second.cached);
+
+        tokio::time::sleep(Duration::from_millis(1_100)).await;
+        let expired = engine
+            .answer_scoped_with_memory(request, &["work".into()], Some(&["work".into()]))
+            .await
+            .expect("post-expiry answer");
+        assert!(!expired.cached);
+        assert!(expired.memories.is_empty());
     }
 
     #[tokio::test]
