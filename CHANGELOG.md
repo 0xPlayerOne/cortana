@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.47.0](https://github.com/0xPlayerOne/cortana/compare/v0.46.0...v0.47.0) (2026-08-26)
+
+
+### Features
+
+* **memory:** add intelligence evaluation gates ([#2182](https://github.com/0xPlayerOne/cortana/issues/2182)) ([213675e](https://github.com/0xPlayerOne/cortana/commit/213675e8f12bfa2034d44c7b2b73df0afebf4559))
+
 ## [0.46.0](https://github.com/0xPlayerOne/cortana/compare/v0.45.0...v0.46.0) (2026-08-26)
 
 
