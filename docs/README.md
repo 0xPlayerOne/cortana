@@ -17,6 +17,7 @@ Cortana documentation is divided by authority. Each document should define one d
 | Agent setup and interface use                           | [Integrations](integrations.md)                                                                                                           |
 | Desktop architecture and privilege boundary             | [Desktop architecture](desktop-architecture.md)                                                                                           |
 | Desktop packaged-product acceptance                     | [Desktop UX audit](desktop-ux-audit.md)                                                                                                   |
+| Desktop shadcn migration baseline and architecture      | [Desktop shadcn migration record](desktop-shadcn-migration.md)                                                                            |
 | Services, readiness, backup, restore, and recovery      | [Operations](operations.md)                                                                                                               |
 | Evaluation methods and evidence                         | [Evaluation](evaluation.md)                                                                                                               |
 | Planning and documentation ownership                    | [Planning and tracking](planning.md)                                                                                                      |

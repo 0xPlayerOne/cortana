@@ -27,7 +27,7 @@ Cortana provides:
 - content-addressed embedding reuse and revision-aware derived caches;
 - native semantic, episodic, procedural, preference, and expiry-bounded working memory;
 - explicit remember, recall, forget, export, expiry, dedupe, supersession, provenance, and backup semantics;
-- an Obsidian-inspired Desktop workspace for sources, documents, graph exploration, memory, services, backups, and updates;
+- a polished, responsive, shadcn-based Desktop workspace with one accessible interaction language across sources, documents, graph exploration, memory, services, backups, and updates;
 - a narrow agent interface that works across supported harnesses without making any harness the canonical brain.
 
 ## Authority boundaries
@@ -59,6 +59,7 @@ Product claims must be supported by the appropriate evidence lane:
 - approved-corpus evaluation for representative retrieval and answer quality;
 - source-specific validation and bounded trials for connector activation;
 - real packaged-app acceptance for Desktop behavior;
+- matched responsive and theme screenshot evidence for Desktop visual-system changes;
 - artifact signing and operating-system checks for distribution trust;
 - backup and recovery drills for durability;
 - least-privilege integration tests for shared agents and first-party clients.
