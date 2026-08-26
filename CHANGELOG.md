@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.0](https://github.com/0xPlayerOne/cortana/compare/v0.45.0...v0.46.0) (2026-08-26)
+
+
+### Features
+
+* **memory:** add Desktop review control center ([#2180](https://github.com/0xPlayerOne/cortana/issues/2180)) ([84dd952](https://github.com/0xPlayerOne/cortana/commit/84dd952bbac459a1d628a433b34251b6e2da259c))
+
 ## [0.45.0](https://github.com/0xPlayerOne/cortana/compare/v0.44.0...v0.45.0) (2026-08-26)
 
 
