@@ -3,6 +3,7 @@
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
+import AxeBuilder from '@axe-core/playwright'
 import { chromium } from 'playwright'
 
 const args = new Map()
@@ -58,7 +59,34 @@ if (renderer === 'shadcn') {
     for (const width of widths) {
       const { context, page } = await openPage(theme, width)
       await screenshot(page, `shell-${theme}-${width}`)
+      const accessibility = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+        .analyze()
+      if (accessibility.violations.length > 0) {
+        const summary = accessibility.violations
+          .map((violation) => `${violation.id}: ${violation.help}`)
+          .join('\n')
+        throw new Error(`Accessibility violations in ${theme}/${width}:\n${summary}`)
+      }
+      if (theme === 'blue' && width === 320) {
+        const navigationTrigger = page.getByRole('button', { name: 'Open navigation' })
+        const navigationElement = await navigationTrigger.elementHandle()
+        if (!navigationElement) throw new Error('Mobile navigation trigger was not rendered')
+        await navigationTrigger.focus()
+        await navigationTrigger.press('Enter')
+        await page.getByText('Settings', { exact: true }).last().waitFor()
+        await screenshot(page, 'mobile-navigation-blue-320')
+        await page.keyboard.press('Escape')
+        await page.locator('[data-slot="sheet-content"]').waitFor({ state: 'detached' })
+        await page.waitForFunction(() =>
+          document.activeElement?.matches('[data-sidebar="trigger"]')
+        )
+      }
       if (theme === 'blue' && width === 1440) {
+        await page.getByRole('tab', { name: 'Answer' }).click()
+        await page
+          .getByText('Synthesized answers will compose the same evidence cards and citations.')
+          .waitFor()
         await page.getByRole('button', { name: 'Review context boundary' }).click()
         await page.getByRole('dialog').waitFor()
         await screenshot(page, 'dialog-blue-1440')
@@ -67,6 +95,8 @@ if (renderer === 'shadcn') {
     }
   }
 
+  // A 1440-physical-pixel window at 200% browser zoom exposes a 720 CSS-pixel
+  // layout viewport. Model that reflow and density together.
   const zoomContext = await browser.newContext({
     viewport: { width: 720, height: 500 },
     deviceScaleFactor: 2,
@@ -87,6 +117,8 @@ if (renderer === 'shadcn') {
   const motionPage = await motionContext.newPage()
   await motionPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, { waitUntil: 'networkidle' })
   const reviewButton = motionPage.getByRole('button', { name: 'Review context boundary' })
+  const reviewElement = await reviewButton.elementHandle()
+  if (!reviewElement) throw new Error('Context boundary trigger was not rendered')
   await reviewButton.focus()
   await reviewButton.press('Enter')
   const contextDialog = motionPage.getByRole('dialog')
@@ -98,9 +130,8 @@ if (renderer === 'shadcn') {
     throw new Error(`Reduced-motion dialog animation remained ${animationDuration}`)
   }
   await motionPage.keyboard.press('Escape')
-  if (!(await reviewButton.evaluate((element) => element === document.activeElement))) {
-    throw new Error('Dialog focus did not return to its trigger')
-  }
+  await contextDialog.waitFor({ state: 'detached' })
+  await motionPage.waitForFunction((element) => element === document.activeElement, reviewElement)
   await motionContext.close()
 } else {
   const labels = {

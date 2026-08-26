@@ -53,6 +53,7 @@ import {
 import { Switch } from '@/components/shadcn/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/shadcn/tabs'
 import { TooltipProvider } from '@/components/shadcn/tooltip'
+import '@/shadcn.css'
 
 const navigation = [
   { label: 'Knowledge', icon: BookOpenText, active: true },
@@ -98,7 +99,7 @@ export function M7ShadcnPrototype() {
             </SidebarGroup>
             <SidebarGroup>
               <SidebarGroupLabel>Sources</SidebarGroupLabel>
-              <SidebarGroupContent className="space-y-1 px-2 text-xs text-muted-foreground">
+              <SidebarGroupContent className="flex flex-col gap-1 px-2 text-xs text-muted-foreground">
                 <p className="flex items-center justify-between gap-2">
                   Work Drive <span className="tabular-nums">1,982</span>
                 </p>
@@ -131,9 +132,9 @@ export function M7ShadcnPrototype() {
                 defaultValue="How do releases work?"
               />
             </div>
-            <Button size="sm" className="hidden sm:inline-flex">
+            <Button size="sm" aria-label="Reflect on this objective">
               <Sparkles data-icon="inline-start" />
-              Reflect
+              <span className="hidden sm:inline">Reflect</span>
             </Button>
             <Button variant="ghost" size="icon-sm" aria-label="Filter evidence">
               <SlidersHorizontal />
@@ -142,7 +143,7 @@ export function M7ShadcnPrototype() {
 
           <main className="min-h-0 flex-1 overflow-auto p-3 md:p-5" id="main-content">
             <div className="mx-auto grid max-w-7xl gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-              <section className="min-w-0 space-y-4" aria-labelledby="evidence-title">
+              <section className="flex min-w-0 flex-col gap-4" aria-labelledby="evidence-title">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-medium tracking-[0.16em] text-primary uppercase">
@@ -183,7 +184,7 @@ export function M7ShadcnPrototype() {
                           <Badge variant="secondary">98% match</Badge>
                         </CardAction>
                       </CardHeader>
-                      <CardContent className="space-y-4 leading-6">
+                      <CardContent className="flex flex-col gap-4 leading-6">
                         <p>
                           Releases follow trunk-based development with short-lived feature branches
                           and automated delivery from main.
@@ -207,7 +208,7 @@ export function M7ShadcnPrototype() {
                 </Tabs>
               </section>
 
-              <aside className="space-y-4" aria-labelledby="prototype-settings-title">
+              <aside className="flex flex-col gap-4" aria-labelledby="prototype-settings-title">
                 <Card size="sm">
                   <CardHeader>
                     <CardTitle id="prototype-settings-title">Retrieval settings</CardTitle>

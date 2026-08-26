@@ -52,8 +52,19 @@ Install the matching browser once with `bunx playwright install chromium` when P
 that it is missing. The capture fails on browser console errors. The legacy run records 56 images:
 all primary wide-screen destinations; the default and accessibility themes at 320, 768, 1024,
 and 1440 CSS pixels; Forest and Plum at compact and desktop widths; command, source-sheet,
-settings, and graph states. The prototype run records the shell at all four widths in all four
-themes plus its dialog.
+settings, and graph states. The prototype run records 18 images: the shell at all four widths in
+all four themes, plus its mobile navigation and dialog.
+
+`.github/workflows/m7-visual-evidence.yml` runs the same capture on the exact pull-request revision,
+audits every prototype theme/width against WCAG 2.2 AA automation, and uploads the complete
+non-secret matrix as a 30-day GitHub Actions artifact. Link the exact run from the issue or pull
+request; local artifact paths alone are not acceptance evidence. Final packaged evidence uses the
+longer-lived release record required by the Desktop UX audit.
+
+The automated interaction gate also verifies keyboard-opened mobile navigation and focus return,
+tab switching, dialog focus return, reduced-motion dialog behavior, and a 720-CSS-pixel layout at
+2x density as the reflow equivalent of a 1,440-physical-pixel window at 200% zoom. Issue #2168
+retains the real packaged 200% zoom and assistive-technology checks.
 
 The baseline exposed acceptance failures that M7 must not preserve:
 
@@ -83,10 +94,21 @@ diagnostic comparison points, not packaged performance claims.
 
 The pre-migration production build transformed 1,699 modules in 1.55 seconds. Its renderer entry
 was 453,729 bytes (133.57 kB gzip), and legacy CSS was 72,299 bytes (13.67 kB gzip). The flag-disabled
-foundation build keeps the shadcn prototype in separate lazy chunks: the legacy entry is 455.09 kB
-(134.17 kB gzip), while the prototype is 199.81 kB (64.65 kB gzip) plus 106.54 kB CSS (17.52 kB
+foundation build keeps the shadcn prototype in separate lazy chunks: the complete legacy-default
+initial graph is 455.04 kB, while the prototype is 200.38 kB (64.85 kB gzip) plus 100.86 kB CSS (16.24 kB
 gzip). Issue #2167 must compare the final single renderer to the baseline and remove transition-only
 code before issue #2168 can accept performance.
+
+`bun run build` enforces reviewed uncompressed budgets from the Vite manifest: 475,000 bytes for
+the complete legacy-default initial JavaScript graph, 80,000 bytes for its CSS, 220,000 bytes for
+the lazy foundation prototype, and 120,000 bytes for its CSS. Raising a threshold requires an
+explicit measured review;
+the final migration replaces these transition budgets rather than silently carrying them forward.
+
+The added JavaScript packages use MIT or Apache-2.0 licenses. The bundled Geist font package uses
+OFL-1.1. No copyleft runtime, native library, hosted font request, or new executable is introduced.
+`bun audit --production` reports no known vulnerabilities after pinning the remediated transitive
+`js-yaml` and `nanoid` releases in `bun.lock`.
 
 ## Legacy control and CSS inventory
 
