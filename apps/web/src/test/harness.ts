@@ -4,6 +4,13 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 // test file (and therefore before @testing-library/react) evaluates.
 GlobalRegistrator.register()
 
+// Base UI's ScrollArea waits for subtree animations before measuring its
+// thumb. happy-dom does not implement the Web Animations API yet, so expose
+// the browser-compatible empty result used when no animations are active.
+if (!Element.prototype.getAnimations) {
+  Element.prototype.getAnimations = () => []
+}
+
 const { configure } = await import('@testing-library/dom')
 
 // Cold Bun workers and the first happy-dom render can exceed Testing

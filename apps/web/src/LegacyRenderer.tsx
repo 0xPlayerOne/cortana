@@ -5,7 +5,7 @@ import './styles.css'
 export function LegacyRenderer() {
   return (
     <AppErrorBoundary>
-      <App />
+      <App renderer="legacy" />
     </AppErrorBoundary>
   )
 }

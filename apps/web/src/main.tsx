@@ -9,8 +9,8 @@ const LegacyRenderer = lazy(() =>
   import('./LegacyRenderer').then((module) => ({ default: module.LegacyRenderer }))
 )
 const ShadcnRenderer = lazy(() =>
-  import('./components/m7/M7ShadcnPrototype').then((module) => ({
-    default: module.M7ShadcnPrototype,
+  import('./ShadcnRenderer').then((module) => ({
+    default: module.ShadcnRenderer,
   }))
 )
 
@@ -21,6 +21,8 @@ const renderer = resolveRendererMode({
   buildRenderer: typeof buildRenderer === 'string' ? buildRenderer : undefined,
   allowQueryOverride: String(env?.['DEV']) === 'true',
 })
+
+document.documentElement.dataset['cortanaRenderer'] = renderer
 
 if (renderer === 'shadcn') applyTheme(readThemePreference())
 

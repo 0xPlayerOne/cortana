@@ -51,7 +51,8 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root {
+:root,
+:root[data-cortana-renderer='shadcn'] {
   --palette-background: #0f1624;
   --palette-foreground: #f0f3fc;
   --palette-surface: #171f2f;
@@ -170,6 +171,179 @@
   }
 }
 
+.m7-shell-provider {
+  width: 100%;
+  height: 100svh;
+  background: var(--background);
+}
+
+.m7-production-shell.shell {
+  --m7-sidebar-column: var(--sidebar-width);
+  grid-template:
+    'rail title title title' 56px
+    'rail sources workspace context' minmax(0, 1fr)
+    'rail status status status' minmax(40px, auto) /
+    var(--m7-sidebar-column) var(--source-width, 270px) minmax(520px, 1fr)
+    var(--context-width, 350px);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.m7-production-shell.shell:has(> [data-slot='sidebar'][data-state='collapsed']) {
+  --m7-sidebar-column: var(--sidebar-width-icon);
+}
+
+.m7-production-shell > header {
+  grid-area: title;
+}
+
+.m7-production-shell > footer {
+  grid-area: status;
+  min-width: 0;
+}
+
+.m7-production-shell .m7-application-sidebar {
+  grid-area: rail;
+}
+
+.m7-production-shell [data-m7-activity-inbox] {
+  grid-column: 2 / -1;
+  grid-row: 2;
+}
+
+.m7-panel-boundary :is(.source-panel, .context-panel) {
+  position: static;
+  display: block;
+  width: 100%;
+  height: 100%;
+  grid-area: auto;
+  transform: none;
+  box-shadow: none;
+}
+
+.m7-panel-boundary :is(.mobile-close, .context-heading button[aria-label='Close agent context']) {
+  display: none !important;
+}
+
+.m7-production-shell .virtual-document-space button small {
+  color: var(--muted-foreground);
+}
+
+/* The legacy surface styles use --muted as a text color, while shadcn uses
+     it as a background role. Keep that compatibility alias scoped to the
+     not-yet-migrated content panes so semantic overlays retain their contract. */
+.m7-production-shell :is(.source-panel, .workspace, .context-panel, .settings-view, .utility-view) {
+  --muted: var(--muted-foreground);
+}
+
+.m7-skip-link {
+  position: fixed;
+  z-index: 100;
+  top: 0.5rem;
+  left: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  transform: translateY(-180%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 0.5rem 1.5rem var(--overlay);
+  transition: transform 120ms ease;
+}
+
+.m7-skip-link:focus,
+.m7-skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+@media (max-width: 1280px) {
+  .m7-production-shell.shell {
+    grid-template:
+      'rail title title' 56px
+      'rail sources workspace' minmax(0, 1fr)
+      'rail status status' minmax(40px, auto) /
+      var(--m7-sidebar-column) var(--source-width, 250px) minmax(300px, 1fr);
+  }
+}
+
+@media (max-width: 799px) {
+  .m7-production-shell.shell {
+    grid-template:
+      'title' 56px
+      'workspace' minmax(0, 1fr)
+      'status' minmax(40px, auto) /
+      minmax(0, 1fr);
+  }
+
+  .m7-production-shell [data-m7-activity-inbox] {
+    grid-column: 1;
+  }
+
+  .m7-production-shell .settings-view {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .m7-production-shell .settings-header {
+    padding: 18px;
+  }
+
+  .m7-production-shell .settings-header p,
+  .m7-production-shell .settings-paths {
+    display: none;
+  }
+
+  .m7-production-shell .settings-layout {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .m7-production-shell .settings-nav {
+    position: sticky;
+    z-index: 2;
+    top: 0;
+    display: flex;
+    padding: 7px 10px;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    background: var(--theme-background);
+  }
+
+  .m7-production-shell .settings-nav > button {
+    flex: 0 0 auto;
+  }
+
+  .m7-production-shell .settings-form {
+    overflow: visible;
+  }
+
+  .m7-production-shell .source-panel {
+    position: fixed;
+    z-index: 30;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    display: block;
+    width: min(310px, 90vw);
+    box-shadow: 12px 0 30px rgb(0 0 0 / 35%);
+    transform: translateX(-102%);
+    transition: transform 180ms ease;
+  }
+
+  .m7-production-shell .source-panel.mobile-open {
+    transform: translateX(0);
+  }
+
+  .m7-production-shell .pane-resizer {
+    display: none;
+  }
+
+  .m7-production-shell .mobile-close {
+    display: grid !important;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

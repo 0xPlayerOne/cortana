@@ -39,14 +39,8 @@ async function openPage(theme, width) {
   const query = renderer === 'shadcn' ? '?demo=1&renderer=shadcn' : '?demo=1'
   await page.goto(`${baseUrl}/${query}`, { waitUntil: 'domcontentloaded' })
   if (renderer === 'shadcn') {
-    await page.getByRole('heading', { name: 'Release evidence' }).waitFor()
-    await page.locator('[data-m7-header-overlays-ready]').waitFor({ state: 'attached' })
-    if (width > 768) {
-      await page.locator('[data-m7-workspace-overlays-ready]').waitFor({ state: 'attached' })
-    }
-    if (!new URL(page.url()).searchParams.has('prototypeState')) {
-      await page.locator('[data-m7-evidence-overlays-ready]').waitFor({ state: 'attached' })
-    }
+    await page.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
+    await page.getByRole('textbox', { name: 'Search your knowledge' }).waitFor()
   } else {
     await page.getByRole('main').waitFor()
   }
@@ -83,11 +77,10 @@ if (renderer === 'shadcn') {
     for (const width of widths) {
       const { context, page } = await openPage(theme, width)
       await screenshot(page, `shell-${theme}-${width}`)
-      await auditAccessibility(page, `${theme}/${width}`)
+      await auditAccessibility(page, `${theme}/${width} production shell`)
+
       if (theme === 'blue' && width === 320) {
         const navigationTrigger = page.getByRole('button', { name: 'Toggle navigation' })
-        const navigationElement = await navigationTrigger.elementHandle()
-        if (!navigationElement) throw new Error('Mobile navigation trigger was not rendered')
         await navigationTrigger.focus()
         const focusStyle = await navigationTrigger.evaluate((element) => {
           const style = getComputedStyle(element)
@@ -97,129 +90,177 @@ if (renderer === 'shadcn') {
           throw new Error('Mobile navigation trigger has no visible focus indicator')
         }
         await navigationTrigger.press('Enter')
-        await page.getByText('Settings', { exact: true }).last().waitFor()
-        await page.locator('[data-m7-workspace-overlays-ready]').waitFor({ state: 'attached' })
-        await page.waitForTimeout(250)
-        await auditAccessibility(page, 'mobile navigation overlay')
+        await page.locator('[data-mobile="true"]').waitFor()
+        await page.getByRole('button', { name: 'Settings', exact: true }).waitFor()
+        await page.waitForTimeout(300)
+        await auditAccessibility(page, 'mobile production navigation')
         await screenshot(page, 'mobile-navigation-blue-320')
-        await page.keyboard.press('Escape')
-        await page.locator('[data-slot="sheet-content"]').waitFor({ state: 'detached' })
-        await page.waitForFunction(() =>
-          document.activeElement?.matches('[data-sidebar="trigger"]')
+        await page.getByRole('button', { name: 'Search', exact: true }).click()
+        await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute('aria-label') === 'Search your knowledge'
         )
+        await navigationTrigger.click()
+        await page.locator('[data-mobile="true"]').waitFor()
+        await page.getByRole('button', { name: 'Inbox', exact: true }).click()
+        await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
+        await page.getByRole('heading', { name: 'Inbox' }).waitFor()
       }
-      if (theme === 'blue' && width === 1440) {
-        await page.getByRole('tab', { name: 'Answer' }).click()
-        await page
-          .getByText('Synthesized answers will compose the same evidence cards and citations.')
-          .waitFor()
-        await page.getByRole('button', { name: 'Review context boundary' }).click()
-        await page.getByRole('dialog').waitFor()
-        await page.waitForTimeout(150)
-        await auditAccessibility(page, 'context boundary dialog')
-        await screenshot(page, 'dialog-blue-1440')
-        await page.keyboard.press('Escape')
-        await page.getByRole('dialog').waitFor({ state: 'detached' })
 
-        await page.getByRole('button', { name: 'Open command palette' }).click()
-        await page.getByRole('dialog', { name: 'Command palette' }).waitFor()
-        await page.waitForTimeout(150)
-        await auditAccessibility(page, 'command palette')
+      if (theme === 'blue' && width === 768) {
+        await page.getByRole('button', { name: 'Actions' }).click()
+        await page.getByRole('menuitem', { name: 'Open sources' }).click()
+        await page.getByRole('dialog', { name: 'Sources and documents' }).waitFor()
+        await page.locator('aside.source-panel.mobile-open').waitFor()
+        await screenshot(page, 'source-panel-blue-768')
+        await page.keyboard.press('Escape')
+        await page.getByRole('dialog', { name: 'Sources and documents' }).waitFor({
+          state: 'detached',
+        })
+        await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Actions')
+      }
+
+      if (theme === 'blue' && width === 1024) {
+        await page.getByRole('button', { name: 'Actions' }).click()
+        await page.getByRole('menuitem', { name: 'Open agent context' }).click()
+        await page.getByRole('dialog', { name: 'Agent context' }).waitFor()
+        await page.waitForTimeout(300)
+        await auditAccessibility(page, 'tablet agent context boundary')
+        await screenshot(page, 'context-panel-blue-1024')
+        await page.keyboard.press('Escape')
+        await page.getByRole('dialog', { name: 'Agent context' }).waitFor({ state: 'detached' })
+        await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Actions')
+      }
+
+      if (theme === 'blue' && width === 1440) {
+        await page.keyboard.press('Control+p')
+        await page.getByRole('dialog', { name: 'Cortana command palette' }).waitFor()
+        await page.waitForTimeout(300)
+        await auditAccessibility(page, 'production command palette')
         await screenshot(page, 'command-blue-1440')
         await page.keyboard.press('Escape')
-        await page.getByRole('dialog', { name: 'Command palette' }).waitFor({ state: 'detached' })
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute('aria-label') === 'Search your knowledge'
+        )
 
-        await page.getByRole('button', { name: 'Filter evidence' }).click()
-        await page
-          .getByText('Narrow the visible evidence without expanding retrieval scope.')
-          .waitFor()
-        await page.waitForTimeout(150)
-        await auditAccessibility(page, 'filter popover')
-        await screenshot(page, 'filter-popover-blue-1440')
+        await page.getByRole('button', { name: 'Actions' }).click()
+        await page.getByRole('menuitem', { name: 'Command palette' }).click()
+        await page.getByRole('dialog', { name: 'Cortana command palette' }).waitFor()
         await page.keyboard.press('Escape')
+        await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Actions')
 
-        await page
-          .getByRole('button', { name: 'Switch workspace. Current workspace: Personal' })
-          .click()
-        await page.getByRole('menuitem', { name: 'Product' }).waitFor()
-        await page.waitForTimeout(150)
-        await auditAccessibility(page, 'workspace menu')
+        await page.getByRole('button', { name: 'Switch workspace' }).click()
+        await page.getByRole('menuitemradio', { name: 'Work' }).waitFor()
+        await page.waitForTimeout(200)
+        await auditAccessibility(page, 'production workspace switcher')
         await screenshot(page, 'workspace-menu-blue-1440')
         await page.keyboard.press('Escape')
 
-        await page.getByRole('tab', { name: 'Document' }).click()
-        await page.getByText('How do releases work?').click({ button: 'right' })
-        await page.getByRole('menuitem', { name: 'Copy citation' }).waitFor()
-        await page.waitForTimeout(150)
-        await auditAccessibility(page, 'evidence context menu')
-        await screenshot(page, 'context-menu-blue-1440')
+        await page.getByRole('button', { name: 'Inbox', exact: true }).click()
+        await page.locator('[data-m7-activity-inbox] h1').waitFor()
+        await screenshot(page, 'inbox-blue-1440')
+
+        await page.getByRole('button', { name: 'Settings', exact: true }).click()
+        await page.locator('.settings-view').waitFor()
+        await screenshot(page, 'settings-blue-1440')
+
+        await page.getByRole('button', { name: 'Toggle navigation' }).click()
+        const collapsedSidebar = page.locator('[data-slot="sidebar"][data-state="collapsed"]')
+        await collapsedSidebar.waitFor()
+        await page.waitForFunction(() => {
+          const sidebar = document
+            .querySelector('[data-slot="sidebar"][data-state="collapsed"]')
+            ?.querySelector('[data-slot="sidebar-container"]')
+          const header = document.querySelector('.m7-production-shell > header')
+          if (!sidebar || !header) return false
+          const sidebarBox = sidebar.getBoundingClientRect()
+          const headerBox = header.getBoundingClientRect()
+          return Math.abs(sidebarBox.right - headerBox.left) <= 1
+        })
+        const [sidebarBox, headerBox] = await Promise.all([
+          collapsedSidebar.locator('[data-slot="sidebar-container"]').boundingBox(),
+          page.locator('.m7-production-shell > header').boundingBox(),
+        ])
+        if (
+          !sidebarBox ||
+          !headerBox ||
+          Math.abs(sidebarBox.x + sidebarBox.width - headerBox.x) > 1
+        ) {
+          throw new Error('Collapsed desktop sidebar leaves an empty layout gutter')
+        }
       }
       await context.close()
     }
   }
 
-  for (const state of ['loading', 'empty', 'error']) {
-    const { context, page } = await openPage('blue', 1024)
-    await page.goto(`${baseUrl}/?demo=1&renderer=shadcn&prototypeState=${state}`, {
-      waitUntil: 'domcontentloaded',
-    })
-    await page.getByRole('heading', { name: 'Release evidence' }).waitFor()
-    await Promise.all([
-      page.locator('[data-m7-workspace-overlays-ready]').waitFor({ state: 'attached' }),
-      page.locator('[data-m7-header-overlays-ready]').waitFor({ state: 'attached' }),
-    ])
-    await auditAccessibility(page, `${state} retrieval state`)
-    await screenshot(page, `retrieval-${state}-blue-1024`)
-    await context.close()
-  }
-
-  // A 1440-physical-pixel window at 200% browser zoom exposes a 720 CSS-pixel
-  // layout viewport. Model that reflow and density together.
   const zoomContext = await browser.newContext({
     viewport: { width: 720, height: 500 },
     deviceScaleFactor: 2,
   })
   const zoomPage = await zoomContext.newPage()
   await zoomPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, { waitUntil: 'domcontentloaded' })
-  await zoomPage.getByRole('heading', { name: 'Release evidence' }).waitFor()
+  await zoomPage.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
   const horizontalOverflow = await zoomPage.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
   )
-  if (horizontalOverflow) throw new Error('The shadcn prototype overflows at the 200% zoom proxy')
+  if (horizontalOverflow) throw new Error('The production shadcn shell overflows at 200% zoom')
   await zoomContext.close()
 
+  const compactContext = await browser.newContext({ viewport: { width: 790, height: 800 } })
+  const compactPage = await compactContext.newPage()
+  await compactPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, {
+    waitUntil: 'domcontentloaded',
+  })
+  await compactPage.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
+  const compactLayout = await compactPage.evaluate(() => {
+    const source = document.querySelector('.source-panel')
+    const workspace = document.querySelector('#main-content')
+    if (!workspace) return null
+    return {
+      sourcePosition: source ? getComputedStyle(source).position : 'unmounted',
+      sourceRight: source ? source.getBoundingClientRect().right : -1,
+      workspaceWidth: workspace.getBoundingClientRect().width,
+    }
+  })
+  if (
+    !compactLayout ||
+    !['fixed', 'unmounted'].includes(compactLayout.sourcePosition) ||
+    compactLayout.sourceRight > 1 ||
+    compactLayout.workspaceWidth < 700
+  ) {
+    throw new Error('The 781–799px compact shell leaves the source pane in the workspace flow')
+  }
+  await compactContext.close()
+
   const motionContext = await browser.newContext({
-    viewport: { width: 1024, height: 800 },
+    viewport: { width: 768, height: 800 },
     reducedMotion: 'reduce',
   })
   const motionPage = await motionContext.newPage()
   await motionPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, {
     waitUntil: 'domcontentloaded',
   })
-  await motionPage.getByRole('heading', { name: 'Release evidence' }).waitFor()
-  await Promise.all([
-    motionPage.locator('[data-m7-workspace-overlays-ready]').waitFor({ state: 'attached' }),
-    motionPage.locator('[data-m7-header-overlays-ready]').waitFor({ state: 'attached' }),
-    motionPage.locator('[data-m7-evidence-overlays-ready]').waitFor({ state: 'attached' }),
-  ])
-  const reviewButton = motionPage.getByRole('button', { name: 'Review context boundary' })
-  const reviewElement = await reviewButton.elementHandle()
-  if (!reviewElement) throw new Error('Context boundary trigger was not rendered')
-  await reviewButton.focus()
-  await reviewButton.press('Enter')
-  const contextDialog = motionPage.getByRole('dialog')
-  await contextDialog.waitFor()
-  const animationDuration = await contextDialog.evaluate(
+  await motionPage.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
+  const navigationTrigger = motionPage.getByRole('button', { name: 'Toggle navigation' })
+  await navigationTrigger.focus()
+  await navigationTrigger.press('Enter')
+  const mobileNavigation = motionPage.locator('[data-mobile="true"]')
+  await mobileNavigation.waitFor()
+  const animationDuration = await mobileNavigation.evaluate(
     (element) => getComputedStyle(element).animationDuration
   )
   if (Number.parseFloat(animationDuration) > 0.00002) {
-    throw new Error(`Reduced-motion dialog animation remained ${animationDuration}`)
+    throw new Error(`Reduced-motion navigation animation remained ${animationDuration}`)
   }
   await motionPage.keyboard.press('Escape')
-  await contextDialog.waitFor({ state: 'detached' })
-  await motionPage.waitForFunction((element) => element === document.activeElement, reviewElement)
+  await mobileNavigation.waitFor({ state: 'detached' })
+  await motionPage.waitForFunction(() =>
+    document.activeElement?.matches('[data-sidebar="trigger"]')
+  )
   await motionContext.close()
-} else {
+}
+
+if (renderer === 'legacy') {
   const labels = {
     inbox: 'Inbox',
     conversations: 'Conversations',

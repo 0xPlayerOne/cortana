@@ -21,6 +21,11 @@ function uniqueAssetBytes(manifest, keys) {
   return [...files].reduce((total, file) => total + size(file), 0)
 }
 
+function uniqueCssBytes(manifest, keys) {
+  const files = new Set([...keys].flatMap((key) => manifest[key]?.css ?? []))
+  return [...files].reduce((total, file) => total + size(file), 0)
+}
+
 export function staticImportKeys(manifest, roots) {
   const visited = new Set()
   const pending = [...roots]
@@ -38,38 +43,32 @@ export function verifyWebBundleBudget() {
   const entries = Object.values(manifest)
   const renderer = entries.find((entry) => entry.isEntry)
   const legacy = entries.find((entry) => entry.name === 'LegacyRenderer')
-  const prototype = entries.find(
-    (entry) => entry.src?.endsWith('/M7ShadcnPrototype.tsx') || entry.name === 'M7ShadcnPrototype'
+  const shadcn = entries.find(
+    (entry) => entry.src?.endsWith('/ShadcnRenderer.tsx') || entry.name === 'ShadcnRenderer'
   )
 
-  if (!renderer || !legacy || !prototype) {
-    throw new Error('Vite manifest is missing the renderer, legacy, or lazy M7 prototype assets')
-  }
-
-  const legacyCss = legacy.css?.[0]
-  const prototypeCss = prototype.css?.[0]
-  if (!legacyCss || !prototypeCss) {
-    throw new Error('Vite manifest is missing the renderer CSS assets')
+  if (!renderer || !legacy || !shadcn) {
+    throw new Error('Vite manifest is missing the renderer, legacy, or production shadcn assets')
   }
 
   const rendererKey = Object.entries(manifest).find(([, entry]) => entry === renderer)?.[0]
   const legacyKey = Object.entries(manifest).find(([, entry]) => entry === legacy)?.[0]
-  const prototypeKey = Object.entries(manifest).find(([, entry]) => entry === prototype)?.[0]
+  const shadcnKey = Object.entries(manifest).find(([, entry]) => entry === shadcn)?.[0]
   const initialRendererKeys = staticImportKeys(manifest, [rendererKey])
   const initialLegacyKeys = staticImportKeys(manifest, [rendererKey, legacyKey])
-  const prototypeKeys = staticImportKeys(manifest, [prototypeKey])
-  const incrementalPrototypeKeys = [...prototypeKeys].filter((key) => !initialRendererKeys.has(key))
+  const shadcnKeys = staticImportKeys(manifest, [rendererKey, shadcnKey])
+  const incrementalShadcnKeys = [...shadcnKeys].filter((key) => !initialRendererKeys.has(key))
 
   const measurements = [
     ['legacy-default initial JavaScript', uniqueAssetBytes(manifest, initialLegacyKeys), 475_000],
-    ['legacy-default renderer CSS', size(legacyCss), 80_000],
-    ['lazy shadcn prototype entry', size(prototype.file), 220_000],
+    ['legacy-default renderer CSS', uniqueCssBytes(manifest, initialLegacyKeys), 80_000],
+    ['lazy production shadcn entry', size(shadcn.file), 50_000],
     [
-      'lazy shadcn incremental JavaScript graph',
-      uniqueAssetBytes(manifest, incrementalPrototypeKeys),
-      330_000,
+      'production shadcn incremental JavaScript graph',
+      uniqueAssetBytes(manifest, incrementalShadcnKeys),
+      650_000,
     ],
-    ['lazy shadcn prototype CSS', size(prototypeCss), 125_000],
+    ['production shadcn CSS graph', uniqueCssBytes(manifest, shadcnKeys), 210_000],
   ]
 
   for (const [label, bytes, budget] of measurements) {

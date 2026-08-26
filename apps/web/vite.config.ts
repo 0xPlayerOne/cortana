@@ -27,6 +27,20 @@ export default defineConfig({
         onlyExplicitManualChunks: true,
         manualChunks(id) {
           if (id.endsWith('/M7NavigationOverlays.tsx')) return 'm7-navigation-overlays'
+          if (
+            id.endsWith('/M7ApplicationShell.tsx') ||
+            id.endsWith('/M7ActivityInbox.tsx') ||
+            id.includes('/components/shadcn/') ||
+            id.endsWith('/hooks/use-mobile.ts') ||
+            id.endsWith('/lib/utils.ts') ||
+            id.includes('/node_modules/@base-ui/react/') ||
+            id.includes('/node_modules/cmdk/') ||
+            id.includes('/node_modules/class-variance-authority/') ||
+            id.includes('/node_modules/clsx/') ||
+            id.includes('/node_modules/tailwind-merge/')
+          ) {
+            return 'm7-production-shell'
+          }
         },
       },
     },

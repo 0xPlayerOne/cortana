@@ -3,6 +3,7 @@ import {
   type CSSProperties,
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -34,6 +35,7 @@ import {
   startDesktopSourceAuthorization,
 } from './api'
 import { ContextPanel } from './components/ContextPanel'
+import type { M7PanelBoundaryProps, M7ShellComponents } from './components/m7/M7ApplicationShell'
 import { type AppView, Navigation, TitleActions } from './components/Navigation'
 import { SettingsView } from './components/SettingsView'
 import { SourcePanel } from './components/SourcePanel'
@@ -43,6 +45,7 @@ import { Button } from './components/ui/Button'
 import { buildAgentContext, estimateTokens } from './context'
 import { embeddingLabel } from './operations'
 import { shortcutLabel } from './shortcuts'
+import type { RendererMode } from './rendererMode'
 import {
   readSourceSelectionPreference,
   readWorkspacePreference,
@@ -82,7 +85,30 @@ const INSTALLER_POLL_MS = 1_000
 const MAX_DOCUMENT_QUERY_BYTES = 256
 const textEncoder = new TextEncoder()
 
-export function App() {
+function LegacyShellProvider({ children }: { enabled: boolean; children: ReactNode }) {
+  return children
+}
+
+function LegacyPanelBoundary({ children }: M7PanelBoundaryProps) {
+  return children
+}
+
+export function App({
+  renderer = 'legacy',
+  shadcnShell,
+}: {
+  renderer?: RendererMode
+  shadcnShell?: M7ShellComponents
+}) {
+  const M7ApplicationHeader = shadcnShell?.ApplicationHeader
+  const M7ApplicationNavigation = shadcnShell?.ApplicationNavigation
+  const M7ActivityInbox = shadcnShell?.ActivityInbox
+  const M7CommandPalette = shadcnShell?.CommandPalette
+  const M7PanelBoundary = shadcnShell?.PanelBoundary
+  const M7ShellProvider = shadcnShell?.ShellProvider
+  const M7StatusBar = shadcnShell?.StatusBar
+  const ShellProvider = M7ShellProvider ?? LegacyShellProvider
+  const PanelBoundary = M7PanelBoundary ?? LegacyPanelBoundary
   const [query, setQuery] = useState('How do releases work?')
   const [activeQuery, setActiveQuery] = useState(query)
   const [status, setStatus] = useState<BrainStatus | null>(null)
@@ -143,6 +169,9 @@ export function App() {
   const [queryHistory, setQueryHistory] = useState<string[]>([])
   const [queryHistoryIndex, setQueryHistoryIndex] = useState(-1)
   const searchRef = useRef<HTMLInputElement>(null)
+  const commandPaletteOriginRef = useRef<HTMLElement>(null)
+  const sourcePanelOriginRef = useRef<HTMLElement>(null)
+  const contextPanelOriginRef = useRef<HTMLElement>(null)
   const sourceJobs = useSourceJobs()
   const sourceCancelInFlightRef = useRef(new Set<string>())
   const sourceJobsError = sourceJobError || sourceJobs.error
@@ -547,7 +576,16 @@ export function App() {
         searchRef.current?.select()
       } else if (modifier && key === 'p') {
         event.preventDefault()
-        setCommandPaletteOpen((open) => !open)
+        setCommandPaletteOpen((open) => {
+          if (!open) {
+            commandPaletteOriginRef.current =
+              document.activeElement instanceof HTMLElement &&
+              document.activeElement !== document.body
+                ? document.activeElement
+                : searchRef.current
+          }
+          return !open
+        })
       } else if (modifier && event.shiftKey && key === 'f') {
         event.preventDefault()
         setLeftOpen(true)
@@ -1333,6 +1371,35 @@ export function App() {
     window.setTimeout(() => document.getElementById('document-filter')?.focus(), 0)
   }
 
+  function panelOrigin(origin?: HTMLElement | null) {
+    return (
+      origin ??
+      (document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+        ? document.activeElement
+        : searchRef.current)
+    )
+  }
+
+  function openSourcePanel(origin?: HTMLElement | null) {
+    sourcePanelOriginRef.current = panelOrigin(origin)
+    setLeftOpen(true)
+    if (workspaceTab === 'graph') setWorkspaceTab('document')
+  }
+
+  function openContextPanel(origin?: HTMLElement | null) {
+    contextPanelOriginRef.current = panelOrigin(origin)
+    setRightOpen(true)
+  }
+
+  function openCommandPalette(origin?: HTMLElement | null) {
+    commandPaletteOriginRef.current =
+      origin ??
+      (document.activeElement instanceof HTMLElement && document.activeElement !== document.body
+        ? document.activeElement
+        : searchRef.current)
+    setCommandPaletteOpen(true)
+  }
+
   function cancelSourceJob(id: string) {
     if (sourceCancelInFlightRef.current.has(id)) return
     const current = sourceJobs.jobs.find((job) => job.id === id)
@@ -1473,500 +1540,708 @@ export function App() {
   const graphFullScreen = view === 'knowledge' && workspaceTab === 'graph'
 
   return (
-    <div
-      className={`shell ${graphFullScreen ? 'graph-fullscreen' : ''}`}
-      style={
-        {
-          '--source-width': graphFullScreen ? '0px' : `${sourceWidth}px`,
-          '--context-width': graphFullScreen ? '0px' : `${contextWidth}px`,
-        } as CSSProperties
-      }
-    >
-      <a className="skip-link" href="#main-content">
-        Skip to main content
-      </a>
-      <header className="titlebar">
-        <TitleActions
-          onOpenSources={() => {
-            setLeftOpen(true)
-            // The source panel is hidden while the graph is full-screen;
-            // leave the graph so the panel is reachable again.
-            if (workspaceTab === 'graph') setWorkspaceTab('document')
-          }}
-          canGoBack={queryHistoryIndex > 0}
-          canGoForward={queryHistoryIndex >= 0 && queryHistoryIndex < queryHistory.length - 1}
-          onHistoryBack={() => {
-            const nextIndex = queryHistoryIndex - 1
-            if (nextIndex < 0) return
-            const next = queryHistory[nextIndex]
-            setQueryHistoryIndex(nextIndex)
-            setQuery(next)
-            void runSearch(next, source, effectiveWorkspace, false)
-          }}
-          onHistoryForward={() => {
-            const nextIndex = queryHistoryIndex + 1
-            if (nextIndex >= queryHistory.length) return
-            const next = queryHistory[nextIndex]
-            setQueryHistoryIndex(nextIndex)
-            setQuery(next)
-            void runSearch(next, source, effectiveWorkspace, false)
-          }}
-        />
-        <form className="search-form" onSubmit={submit}>
-          <Search size={18} />
-          <input
-            ref={searchRef}
-            aria-label="Search your knowledge"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          {loading ? (
-            <LoaderCircle className="spin" size={16} />
-          ) : (
-            <kbd>{shortcutLabel('MOD K')}</kbd>
-          )}
-          <Button
-            type="button"
-            variant="ghost"
-            aria-label="Reflect on this objective"
-            title="Reflect on active memory and scoped evidence"
-            onClick={() => void runReflection()}
-            disabled={loading || !query.trim()}
-          >
-            <Sparkles size={15} />
-            Reflect
-          </Button>
-        </form>
-        <TitleActions
-          context
-          onOpenContext={() => setRightOpen(true)}
-          onOpenFilters={focusDocumentFilter}
-          onOpenHistory={() => navigate('conversations')}
-        />
-      </header>
-      <Navigation
-        view={view}
-        workspaceTab={workspaceTab}
-        resultAvailable={answer !== null || reflection !== null || evidence.length > 0}
-        onNavigate={navigate}
-        onSearch={focusSearch}
-        onOpenGraph={openGraph}
-        onOpenTimeline={openTimeline}
-      />
-      {view === 'settings' ? (
-        <SettingsView
-          desktopSettings={desktopSettings ?? undefined}
-          onLoaded={applyDesktopSettings}
-          initialSection={settingsSection}
-          onDirtyChange={setSettingsDirty}
-          onJob={sourceJobs.remember}
-          sourceJobs={sourceJobs.jobs}
-          installerJob={installerJob}
-          onInstallerJob={setInstallerJob}
-          readiness={desktopReadiness}
-          onReadiness={setDesktopReadiness}
-          readinessActivity={readinessActivity}
-          onReadinessScan={runReadinessScan}
-          desktopUpdate={desktopUpdate ?? undefined}
-          onDesktopUpdate={setDesktopUpdate}
-          services={desktopServices}
-          onServices={(nextServices) => {
-            setDesktopServices(nextServices)
-            if (nextServices.activity) setServiceActivity(nextServices.activity)
-          }}
-          servicesError={desktopServicesError}
-          onServicesError={setDesktopServicesError}
-          desktopInfo={desktopInfo}
-          onDesktopInfo={setDesktopInfo}
-          serviceActivity={serviceActivity}
-          onServiceActivity={setServiceActivity}
-          onSaved={(next) => {
-            applyDesktopSettings(next)
-            setSettingsDirty(false)
-            // A settings save can change the configured embedding/runtime
-            // services. Refresh the shell-owned snapshots immediately rather
-            // than waiting for the next 15-second health tick.
-            const servicesRequestId = ++desktopServicesRequestRef.current
-            void getDesktopServices()
-              .then((nextServices) => {
-                if (desktopServicesRequestRef.current !== servicesRequestId) return
-                setDesktopServices(nextServices)
-                if (nextServices.activity) setServiceActivity(nextServices.activity)
-                setDesktopServicesError('')
-              })
-              .catch((caught: unknown) => {
-                if (desktopServicesRequestRef.current !== servicesRequestId) return
-                setDesktopServicesError(
-                  caught instanceof Error ? caught.message : 'Service status is unavailable'
-                )
-              })
-            const infoRequestId = ++desktopInfoRequestRef.current
-            void getDesktopInfo()
-              .then((nextInfo) => {
-                if (desktopInfoRequestRef.current === infoRequestId) {
-                  setDesktopInfo(nextInfo)
-                }
-              })
-              .catch(() => {
-                // Keep the previous metadata snapshot when the refresh is
-                // unavailable; the Services panel can retry explicitly.
-              })
-            const statusRequestId = ++statusRequestRef.current
-            void getStatus()
-              .then((nextStatus) => {
-                if (statusRequestRef.current !== statusRequestId) return
-                setStatus(nextStatus)
-                setStatusError('')
-              })
-              .catch(() => {
-                if (statusRequestRef.current !== statusRequestId) return
-                setStatusError('Status unavailable after saving settings')
-              })
-            if (
-              !next.workspaces.some((item) => item.id === effectiveWorkspace) &&
-              next.workspaces.length > 0
-            ) {
-              chooseWorkspace(next.workspaces[0].id)
-            } else if (
-              source &&
-              !next.sources.some(
-                (item) =>
-                  (item.name === source || item.source === source) &&
-                  (!effectiveWorkspace || item.project === effectiveWorkspace)
-              )
-            ) {
-              abortSearchRequest()
-              abortContextRequest()
-              clearScopedResults()
-              scopeSources(effectiveWorkspace, '')
-              setSource('')
-              if (isDesktopApp) writeSourceSelectionPreference('')
+    <ShellProvider enabled={renderer === 'shadcn'}>
+      <div
+        className={`shell ${renderer === 'shadcn' ? 'm7-production-shell' : ''} ${graphFullScreen ? 'graph-fullscreen' : ''}`}
+        data-renderer={renderer}
+        data-m7-production-shell-ready={renderer === 'shadcn' ? '' : undefined}
+        style={
+          {
+            '--source-width': graphFullScreen ? '0px' : `${sourceWidth}px`,
+            '--context-width': graphFullScreen ? '0px' : `${contextWidth}px`,
+          } as CSSProperties
+        }
+      >
+        <a className={renderer === 'shadcn' ? 'm7-skip-link' : 'skip-link'} href="#main-content">
+          Skip to main content
+        </a>
+        {renderer === 'shadcn' && M7ApplicationHeader ? (
+          <M7ApplicationHeader
+            query={query}
+            loading={loading}
+            searchRef={searchRef}
+            canGoBack={queryHistoryIndex > 0}
+            canGoForward={queryHistoryIndex >= 0 && queryHistoryIndex < queryHistory.length - 1}
+            onQueryChange={setQuery}
+            onSubmit={submit}
+            onReflect={() => void runReflection()}
+            onHistoryBack={() => {
+              const nextIndex = queryHistoryIndex - 1
+              if (nextIndex < 0) return
+              const next = queryHistory[nextIndex]
+              setQueryHistoryIndex(nextIndex)
+              setQuery(next)
+              void runSearch(next, source, effectiveWorkspace, false)
+            }}
+            onHistoryForward={() => {
+              const nextIndex = queryHistoryIndex + 1
+              if (nextIndex >= queryHistory.length) return
+              const next = queryHistory[nextIndex]
+              setQueryHistoryIndex(nextIndex)
+              setQuery(next)
+              void runSearch(next, source, effectiveWorkspace, false)
+            }}
+            onOpenSources={openSourcePanel}
+            onOpenFilters={focusDocumentFilter}
+            onOpenHistory={() => navigate('conversations')}
+            onOpenContext={openContextPanel}
+            onOpenCommands={openCommandPalette}
+            workspaceName={
+              workspaces.find((item) => item.id === effectiveWorkspace)?.name ?? 'Workspace'
             }
-          }}
-        />
-      ) : view === 'knowledge' ? (
-        <>
-          {!graphFullScreen && (
-            <SourcePanel
-              open={leftOpen}
-              status={status}
-              workspace={effectiveWorkspace}
-              workspaces={workspaces}
-              documentQuery={documentQuery}
-              selected={source}
-              documents={documents}
-              selectedDocument={activeDocument?.id ?? ''}
-              documentsLoading={documentsLoading}
-              documentsError={documentsError}
-              hasMoreDocuments={Boolean(documentCursor)}
-              statusError={statusError}
-              onRetryStatus={retryStatus}
-              sourceJobError={sourceJobsError}
-              onRetrySourceJobs={sourceJobsRetry}
-              onSelect={chooseSource}
-              onSelectWorkspace={chooseWorkspace}
-              onDocumentQueryChange={setDocumentQuery}
+            location={
+              view === 'knowledge'
+                ? workspaceTab === 'graph'
+                  ? 'Graph'
+                  : workspaceTab === 'timeline'
+                    ? 'Timeline'
+                    : 'Knowledge'
+                : view === 'agent-tools'
+                  ? 'Agent tools'
+                  : view[0].toUpperCase() + view.slice(1)
+            }
+          />
+        ) : (
+          <header className="titlebar">
+            <TitleActions
+              onOpenSources={() => {
+                setLeftOpen(true)
+                // The source panel is hidden while the graph is full-screen;
+                // leave the graph so the panel is reachable again.
+                if (workspaceTab === 'graph') setWorkspaceTab('document')
+              }}
+              canGoBack={queryHistoryIndex > 0}
+              canGoForward={queryHistoryIndex >= 0 && queryHistoryIndex < queryHistory.length - 1}
+              onHistoryBack={() => {
+                const nextIndex = queryHistoryIndex - 1
+                if (nextIndex < 0) return
+                const next = queryHistory[nextIndex]
+                setQueryHistoryIndex(nextIndex)
+                setQuery(next)
+                void runSearch(next, source, effectiveWorkspace, false)
+              }}
+              onHistoryForward={() => {
+                const nextIndex = queryHistoryIndex + 1
+                if (nextIndex >= queryHistory.length) return
+                const next = queryHistory[nextIndex]
+                setQueryHistoryIndex(nextIndex)
+                setQuery(next)
+                void runSearch(next, source, effectiveWorkspace, false)
+              }}
+            />
+            <form className="search-form" onSubmit={submit}>
+              <Search size={18} />
+              <input
+                ref={searchRef}
+                aria-label="Search your knowledge"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              {loading ? (
+                <LoaderCircle className="spin" size={16} />
+              ) : (
+                <kbd>{shortcutLabel('MOD K')}</kbd>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                aria-label="Reflect on this objective"
+                title="Reflect on active memory and scoped evidence"
+                onClick={() => void runReflection()}
+                disabled={loading || !query.trim()}
+              >
+                <Sparkles size={15} />
+                Reflect
+              </Button>
+            </form>
+            <TitleActions
+              context
+              onOpenContext={() => setRightOpen(true)}
+              onOpenFilters={focusDocumentFilter}
+              onOpenHistory={() => navigate('conversations')}
+            />
+          </header>
+        )}
+        {renderer === 'shadcn' && M7ApplicationNavigation ? (
+          <M7ApplicationNavigation
+            navigation={{
+              view,
+              workspaceTab,
+              resultAvailable: answer !== null || reflection !== null || evidence.length > 0,
+              onNavigate: navigate,
+              onSearch: focusSearch,
+              onOpenGraph: openGraph,
+              onOpenTimeline: openTimeline,
+            }}
+            workspaces={workspaces}
+            workspace={effectiveWorkspace}
+            onWorkspaceChange={chooseWorkspace}
+          />
+        ) : (
+          <Navigation
+            view={view}
+            workspaceTab={workspaceTab}
+            resultAvailable={answer !== null || reflection !== null || evidence.length > 0}
+            onNavigate={navigate}
+            onSearch={focusSearch}
+            onOpenGraph={openGraph}
+            onOpenTimeline={openTimeline}
+          />
+        )}
+        {view === 'settings' ? (
+          <SettingsView
+            desktopSettings={desktopSettings ?? undefined}
+            onLoaded={applyDesktopSettings}
+            initialSection={settingsSection}
+            onDirtyChange={setSettingsDirty}
+            onJob={sourceJobs.remember}
+            sourceJobs={sourceJobs.jobs}
+            installerJob={installerJob}
+            onInstallerJob={setInstallerJob}
+            readiness={desktopReadiness}
+            onReadiness={setDesktopReadiness}
+            readinessActivity={readinessActivity}
+            onReadinessScan={runReadinessScan}
+            desktopUpdate={desktopUpdate ?? undefined}
+            onDesktopUpdate={setDesktopUpdate}
+            services={desktopServices}
+            onServices={(nextServices) => {
+              setDesktopServices(nextServices)
+              if (nextServices.activity) setServiceActivity(nextServices.activity)
+            }}
+            servicesError={desktopServicesError}
+            onServicesError={setDesktopServicesError}
+            desktopInfo={desktopInfo}
+            onDesktopInfo={setDesktopInfo}
+            serviceActivity={serviceActivity}
+            onServiceActivity={setServiceActivity}
+            onSaved={(next) => {
+              applyDesktopSettings(next)
+              setSettingsDirty(false)
+              // A settings save can change the configured embedding/runtime
+              // services. Refresh the shell-owned snapshots immediately rather
+              // than waiting for the next 15-second health tick.
+              const servicesRequestId = ++desktopServicesRequestRef.current
+              void getDesktopServices()
+                .then((nextServices) => {
+                  if (desktopServicesRequestRef.current !== servicesRequestId) return
+                  setDesktopServices(nextServices)
+                  if (nextServices.activity) setServiceActivity(nextServices.activity)
+                  setDesktopServicesError('')
+                })
+                .catch((caught: unknown) => {
+                  if (desktopServicesRequestRef.current !== servicesRequestId) return
+                  setDesktopServicesError(
+                    caught instanceof Error ? caught.message : 'Service status is unavailable'
+                  )
+                })
+              const infoRequestId = ++desktopInfoRequestRef.current
+              void getDesktopInfo()
+                .then((nextInfo) => {
+                  if (desktopInfoRequestRef.current === infoRequestId) {
+                    setDesktopInfo(nextInfo)
+                  }
+                })
+                .catch(() => {
+                  // Keep the previous metadata snapshot when the refresh is
+                  // unavailable; the Services panel can retry explicitly.
+                })
+              const statusRequestId = ++statusRequestRef.current
+              void getStatus()
+                .then((nextStatus) => {
+                  if (statusRequestRef.current !== statusRequestId) return
+                  setStatus(nextStatus)
+                  setStatusError('')
+                })
+                .catch(() => {
+                  if (statusRequestRef.current !== statusRequestId) return
+                  setStatusError('Status unavailable after saving settings')
+                })
+              if (
+                !next.workspaces.some((item) => item.id === effectiveWorkspace) &&
+                next.workspaces.length > 0
+              ) {
+                chooseWorkspace(next.workspaces[0].id)
+              } else if (
+                source &&
+                !next.sources.some(
+                  (item) =>
+                    (item.name === source || item.source === source) &&
+                    (!effectiveWorkspace || item.project === effectiveWorkspace)
+                )
+              ) {
+                abortSearchRequest()
+                abortContextRequest()
+                clearScopedResults()
+                scopeSources(effectiveWorkspace, '')
+                setSource('')
+                if (isDesktopApp) writeSourceSelectionPreference('')
+              }
+            }}
+          />
+        ) : view === 'knowledge' ? (
+          <>
+            {!graphFullScreen && (
+              <PanelBoundary
+                enabled={renderer === 'shadcn'}
+                side="left"
+                breakpoint={800}
+                open={leftOpen}
+                title="Sources and documents"
+                description="Choose the workspace, source, or document used by the knowledge view."
+                finalFocus={sourcePanelOriginRef}
+                onOpenChange={setLeftOpen}
+              >
+                <SourcePanel
+                  open={leftOpen}
+                  status={status}
+                  workspace={effectiveWorkspace}
+                  workspaces={workspaces}
+                  documentQuery={documentQuery}
+                  selected={source}
+                  documents={documents}
+                  selectedDocument={activeDocument?.id ?? ''}
+                  documentsLoading={documentsLoading}
+                  documentsError={documentsError}
+                  hasMoreDocuments={Boolean(documentCursor)}
+                  statusError={statusError}
+                  onRetryStatus={retryStatus}
+                  sourceJobError={sourceJobsError}
+                  onRetrySourceJobs={sourceJobsRetry}
+                  onSelect={chooseSource}
+                  onSelectWorkspace={chooseWorkspace}
+                  onDocumentQueryChange={setDocumentQuery}
+                  onSelectDocument={(id) => void chooseDocument(id)}
+                  onLoadMoreDocuments={() => void loadMoreDocuments()}
+                  onRetryDocuments={retryDocuments}
+                  onOpenSourcesSettings={() => {
+                    setSettingsSection('sources')
+                    setView('settings')
+                  }}
+                  onOpenSourceSetup={
+                    desktopSourceActionsReady
+                      ? (name, project) => void openSourceSetup(name, project)
+                      : undefined
+                  }
+                  onAuthorizeSource={
+                    desktopSourceActionsReady
+                      ? (name, project) => void authorizeSource(name, project)
+                      : undefined
+                  }
+                  onToggleSource={
+                    desktopSourceActionsReady
+                      ? (name, project, enabled) => void toggleSource(name, project, enabled)
+                      : undefined
+                  }
+                  sourceToggleBusy={sourceToggleBusy}
+                  sourceToggleDisabled={
+                    settingsDirty ||
+                    desktopSettings === null ||
+                    Boolean(desktopSettings?.needs_setup)
+                  }
+                  sourceToggleError={sourceToggleError}
+                  sourceToggleNotice={sourceToggleNotice}
+                  onClose={() => setLeftOpen(false)}
+                  onCancelSourceJob={cancelSourceJob}
+                  jobs={sourceJobs.jobs}
+                />
+              </PanelBoundary>
+            )}
+            {!graphFullScreen && (
+              <div
+                className="pane-resizer source-resizer"
+                role="separator"
+                aria-label="Resize sources panel"
+                aria-orientation="vertical"
+                aria-valuemin={220}
+                aria-valuemax={maximumPaneWidth('source')}
+                aria-valuenow={sourceWidth}
+                tabIndex={0}
+                onPointerDown={(event) => beginResize('source', event)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowLeft')
+                    setSourceWidth((width) => Math.max(220, width - 16))
+                  else if (event.key === 'ArrowRight')
+                    setSourceWidth((width) => Math.min(maximumPaneWidth('source'), width + 16))
+                  else return
+                  event.preventDefault()
+                }}
+              />
+            )}
+            <Workspace
+              query={activeQuery}
+              answer={answer}
+              reflection={reflection}
+              evidence={evidence}
+              selected={selected}
+              loading={loading}
+              error={error}
+              document={activeDocument}
+              documentLoading={documentLoading}
+              graph={graph}
+              graphLoading={graphLoading}
+              graphError={graphError}
+              graphAppendLoading={graphAppendLoading}
+              onLoadMoreGraph={loadMoreGraph}
+              onRetryGraph={retryGraph}
+              tab={workspaceTab}
+              onTabChange={setWorkspaceTab}
+              onSelect={setSelected}
               onSelectDocument={(id) => void chooseDocument(id)}
-              onLoadMoreDocuments={() => void loadMoreDocuments()}
-              onRetryDocuments={retryDocuments}
-              onOpenSourcesSettings={() => {
-                setSettingsSection('sources')
-                setView('settings')
-              }}
-              onOpenSourceSetup={
-                desktopSourceActionsReady
-                  ? (name, project) => void openSourceSetup(name, project)
-                  : undefined
-              }
-              onAuthorizeSource={
-                desktopSourceActionsReady
-                  ? (name, project) => void authorizeSource(name, project)
-                  : undefined
-              }
-              onToggleSource={
-                desktopSourceActionsReady
-                  ? (name, project, enabled) => void toggleSource(name, project, enabled)
-                  : undefined
-              }
-              sourceToggleBusy={sourceToggleBusy}
-              sourceToggleDisabled={
-                settingsDirty || desktopSettings === null || Boolean(desktopSettings?.needs_setup)
-              }
-              sourceToggleError={sourceToggleError}
-              sourceToggleNotice={sourceToggleNotice}
-              onClose={() => setLeftOpen(false)}
-              onCancelSourceJob={cancelSourceJob}
-              jobs={sourceJobs.jobs}
+              onFocusGraphNode={focusGraphNode}
+              onRetry={() => void runSearch(query)}
             />
-          )}
-          {!graphFullScreen && (
-            <div
-              className="pane-resizer source-resizer"
-              role="separator"
-              aria-label="Resize sources panel"
-              aria-orientation="vertical"
-              aria-valuemin={220}
-              aria-valuemax={maximumPaneWidth('source')}
-              aria-valuenow={sourceWidth}
-              tabIndex={0}
-              onPointerDown={(event) => beginResize('source', event)}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowLeft') setSourceWidth((width) => Math.max(220, width - 16))
-                else if (event.key === 'ArrowRight')
-                  setSourceWidth((width) => Math.min(maximumPaneWidth('source'), width + 16))
-                else return
-                event.preventDefault()
-              }}
-            />
-          )}
-          <Workspace
+            {!graphFullScreen && (
+              <PanelBoundary
+                enabled={renderer === 'shadcn'}
+                side="right"
+                breakpoint={1281}
+                open={rightOpen}
+                title="Agent context"
+                description="Inspect the bounded evidence and native memory shared with agent integrations."
+                finalFocus={contextPanelOriginRef}
+                onOpenChange={setRightOpen}
+              >
+                <ContextPanel
+                  open={rightOpen}
+                  query={activeQuery}
+                  evidence={evidence}
+                  answer={answer}
+                  selected={selected}
+                  status={status}
+                  context={agentContext}
+                  contextTokens={estimateTokens(agentContext)}
+                  serverContext={contextBundle}
+                  contextLoading={contextLoading}
+                  contextError={contextError}
+                  onRetrieveContext={() => void retrieveAgentContext()}
+                  onSelect={setSelected}
+                  onClose={() => setRightOpen(false)}
+                />
+              </PanelBoundary>
+            )}
+            {!graphFullScreen && (
+              <div
+                className="pane-resizer context-resizer"
+                role="separator"
+                aria-label="Resize context panel"
+                aria-orientation="vertical"
+                aria-valuemin={280}
+                aria-valuemax={maximumPaneWidth('context')}
+                aria-valuenow={contextWidth}
+                tabIndex={0}
+                onPointerDown={(event) => beginResize('context', event)}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowLeft')
+                    setContextWidth((width) => Math.min(maximumPaneWidth('context'), width + 16))
+                  else if (event.key === 'ArrowRight')
+                    setContextWidth((width) => Math.max(280, width - 16))
+                  else return
+                  event.preventDefault()
+                }}
+              />
+            )}
+          </>
+        ) : renderer === 'shadcn' && view === 'inbox' && M7ActivityInbox ? (
+          <M7ActivityInbox
+            status={status}
+            statusError={statusError}
+            sourceJobs={sourceJobs.jobs}
+            sourceJobError={sourceJobsError}
+            onRetrySourceJobs={sourceJobsRetry}
+            onOpenSettings={() => setView('settings')}
+            onRetryStatus={retryStatus}
+            onCancelSourceJob={cancelSourceJob}
+          />
+        ) : (
+          <UtilityView
+            kind={view}
+            status={status}
+            statusError={statusError}
+            onRetryStatus={retryStatus}
+            sourceJobs={sourceJobs.jobs}
             query={activeQuery}
             answer={answer}
-            reflection={reflection}
             evidence={evidence}
-            selected={selected}
             loading={loading}
             error={error}
-            document={activeDocument}
-            documentLoading={documentLoading}
-            graph={graph}
-            graphLoading={graphLoading}
-            graphError={graphError}
-            graphAppendLoading={graphAppendLoading}
-            onLoadMoreGraph={loadMoreGraph}
-            onRetryGraph={retryGraph}
-            tab={workspaceTab}
-            onTabChange={setWorkspaceTab}
-            onSelect={setSelected}
-            onSelectDocument={(id) => void chooseDocument(id)}
-            onFocusGraphNode={focusGraphNode}
-            onRetry={() => void runSearch(query)}
+            contextBundle={contextBundle}
+            contextLoading={contextLoading}
+            contextError={contextError}
+            contextTokens={estimateTokens(agentContext)}
+            desktopAvailable={isDesktopApp}
+            sourceJobError={sourceJobsError}
+            onRetrySourceJobs={sourceJobsRetry}
+            onSearchFocus={focusSearch}
+            onRetrieveContext={() => void retrieveAgentContext()}
+            onOpenSettings={() => setView('settings')}
+            onOpenProject={() => openDesktopProject()}
+            onCancelSourceJob={cancelSourceJob}
           />
-          {!graphFullScreen && (
-            <ContextPanel
-              open={rightOpen}
-              query={activeQuery}
-              evidence={evidence}
-              answer={answer}
-              selected={selected}
-              status={status}
-              context={agentContext}
-              contextTokens={estimateTokens(agentContext)}
-              serverContext={contextBundle}
-              contextLoading={contextLoading}
-              contextError={contextError}
-              onRetrieveContext={() => void retrieveAgentContext()}
-              onSelect={setSelected}
-              onClose={() => setRightOpen(false)}
-            />
-          )}
-          {!graphFullScreen && (
+        )}
+        {renderer === 'shadcn' && M7CommandPalette ? (
+          <M7CommandPalette
+            open={commandPaletteOpen}
+            finalFocus={commandPaletteOriginRef}
+            onOpenChange={setCommandPaletteOpen}
+            workspaces={workspaces}
+            onSearch={focusSearch}
+            onFilterDocuments={focusDocumentFilter}
+            onChooseWorkspace={(nextWorkspace) => {
+              chooseWorkspace(nextWorkspace)
+              setDocumentQuery('')
+            }}
+            onOpenSettings={() => setView('settings')}
+          />
+        ) : (
+          commandPaletteOpen && (
             <div
-              className="pane-resizer context-resizer"
-              role="separator"
-              aria-label="Resize context panel"
-              aria-orientation="vertical"
-              aria-valuemin={280}
-              aria-valuemax={maximumPaneWidth('context')}
-              aria-valuenow={contextWidth}
-              tabIndex={0}
-              onPointerDown={(event) => beginResize('context', event)}
-              onKeyDown={(event) => {
-                if (event.key === 'ArrowLeft')
-                  setContextWidth((width) => Math.min(maximumPaneWidth('context'), width + 16))
-                else if (event.key === 'ArrowRight')
-                  setContextWidth((width) => Math.max(280, width - 16))
-                else return
-                event.preventDefault()
+              className="command-palette-backdrop"
+              role="presentation"
+              onMouseDown={() => setCommandPaletteOpen(false)}
+            >
+              <div
+                className="command-palette"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Command palette"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
+                <strong>Commands</strong>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  autoFocus
+                  onClick={() => {
+                    setCommandPaletteOpen(false)
+                    focusSearch()
+                  }}
+                >
+                  Search the brain <kbd>{shortcutLabel('MOD K')}</kbd>
+                </Button>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    setCommandPaletteOpen(false)
+                    focusDocumentFilter()
+                  }}
+                >
+                  Filter documents <kbd>{shortcutLabel('MOD ⇧ F')}</kbd>
+                </Button>
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    setCommandPaletteOpen(false)
+                    chooseWorkspace(workspaces[0]?.id ?? '')
+                    setDocumentQuery('')
+                  }}
+                >
+                  Reset to primary workspace
+                </Button>
+                {workspaces.map((item) => (
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    key={item.id}
+                    onClick={() => {
+                      chooseWorkspace(item.id)
+                      setCommandPaletteOpen(false)
+                    }}
+                  >
+                    Switch to {item.name}
+                  </Button>
+                ))}
+                <Button
+                  variant="ghost"
+                  type="button"
+                  onClick={() => {
+                    setCommandPaletteOpen(false)
+                    setView('settings')
+                  }}
+                >
+                  Open settings
+                </Button>
+              </div>
+            </div>
+          )
+        )}
+        {renderer === 'shadcn' && M7StatusBar ? (
+          <M7StatusBar demo={isDemoMode}>
+            <span className={statusError ? 'text-destructive' : 'text-foreground'}>
+              Index {statusError ? 'offline' : status ? 'online' : 'checking'}
+            </span>
+            <span title={status?.embedding_fingerprint ?? undefined}>
+              Embedding: {embeddingLabel(status?.embedding_fingerprint)}
+            </span>
+            <span>Query: {status?.query.mode ?? '—'}</span>
+            <span>
+              <FileText className="mr-1 inline size-3" aria-hidden="true" />
+              Docs: {status ? status.documents.toLocaleString() : '—'}
+            </span>
+            <IngestionIndicator status={status} />
+            <ActiveSourceJobs
+              jobs={sourceJobs.jobs}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setView('inbox')
               }}
             />
-          )}
-        </>
-      ) : (
-        <UtilityView
-          kind={view}
-          status={status}
-          statusError={statusError}
-          onRetryStatus={retryStatus}
-          sourceJobs={sourceJobs.jobs}
-          query={activeQuery}
-          answer={answer}
-          evidence={evidence}
-          loading={loading}
-          error={error}
-          contextBundle={contextBundle}
-          contextLoading={contextLoading}
-          contextError={contextError}
-          contextTokens={estimateTokens(agentContext)}
-          desktopAvailable={isDesktopApp}
-          sourceJobError={sourceJobsError}
-          onRetrySourceJobs={sourceJobsRetry}
-          onSearchFocus={focusSearch}
-          onRetrieveContext={() => void retrieveAgentContext()}
-          onOpenSettings={() => setView('settings')}
-          onOpenProject={() => openDesktopProject()}
-          onCancelSourceJob={cancelSourceJob}
-        />
-      )}
-      {commandPaletteOpen && (
-        <div
-          className="command-palette-backdrop"
-          role="presentation"
-          onMouseDown={() => setCommandPaletteOpen(false)}
-        >
-          <div
-            className="command-palette"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Command palette"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <strong>Commands</strong>
-            <Button
-              variant="ghost"
-              type="button"
-              autoFocus
-              onClick={() => {
-                setCommandPaletteOpen(false)
-                focusSearch()
+            <SourceJobsErrorIndicator
+              error={sourceJobsError}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setView('inbox')
               }}
-            >
-              Search the brain <kbd>{shortcutLabel('MOD K')}</kbd>
-            </Button>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                setCommandPaletteOpen(false)
-                focusDocumentFilter()
+            />
+            <SourceJobAttentionIndicator
+              jobs={sourceJobs.jobs}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setView('inbox')
               }}
-            >
-              Filter documents <kbd>{shortcutLabel('MOD ⇧ F')}</kbd>
-            </Button>
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                setCommandPaletteOpen(false)
-                chooseWorkspace(workspaces[0]?.id ?? '')
-                setDocumentQuery('')
+            />
+            <InstallerIndicator
+              job={installerJob}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setSettingsSection('readiness')
+                setView('settings')
               }}
-            >
-              Reset to primary workspace
-            </Button>
-            {workspaces.map((item) => (
+            />
+            <ServiceActivityIndicator
+              activity={serviceActivity}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setSettingsSection('services')
+                setView('settings')
+              }}
+            />
+            <ReadinessActivityIndicator
+              activity={readinessActivity}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setSettingsSection('readiness')
+                setView('settings')
+              }}
+            />
+            <ServiceHealthIndicator
+              report={desktopServices}
+              error={desktopServicesError}
+              embeddingRequired={desktopSettings?.embedding.provider !== 'cloud'}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setSettingsSection('services')
+                setView('settings')
+              }}
+            />
+            {isDesktopApp ? (
               <Button
                 variant="ghost"
                 type="button"
-                key={item.id}
+                className="status-link"
                 onClick={() => {
-                  chooseWorkspace(item.id)
-                  setCommandPaletteOpen(false)
+                  if (!canLeaveSettings()) return
+                  setSettingsSection('updates')
+                  setView('settings')
                 }}
               >
-                Switch to {item.name}
+                Cortana {desktopInfo?.desktop_version || '—'} · Updates
+                {desktopUpdateStatusSuffix(desktopUpdate)}
               </Button>
-            ))}
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                setCommandPaletteOpen(false)
+            ) : null}
+          </M7StatusBar>
+        ) : (
+          <footer className="statusbar">
+            <span className={statusError ? 'health error' : 'health'}>
+              <i /> Index {statusError ? 'offline' : status ? 'online' : 'checking'}
+            </span>
+            <span title={status?.embedding_fingerprint ?? undefined}>
+              Embedding: {embeddingLabel(status?.embedding_fingerprint)}
+            </span>
+            <span>Query: {status?.query.mode ?? '—'}</span>
+            <span>
+              <FileText size={13} /> Docs: {status ? status.documents.toLocaleString() : '—'}
+            </span>
+            <IngestionIndicator status={status} />
+            <ActiveSourceJobs
+              jobs={sourceJobs.jobs}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setView('inbox')
+              }}
+            />
+            <SourceJobsErrorIndicator
+              error={sourceJobsError}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setView('inbox')
+              }}
+            />
+            <SourceJobAttentionIndicator
+              jobs={sourceJobs.jobs}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setView('inbox')
+              }}
+            />
+            <InstallerIndicator
+              job={installerJob}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setSettingsSection('readiness')
                 setView('settings')
               }}
-            >
-              Open settings
-            </Button>
-          </div>
-        </div>
-      )}
-      <footer className="statusbar">
-        <span className={statusError ? 'health error' : 'health'}>
-          <i /> Index {statusError ? 'offline' : status ? 'online' : 'checking'}
-        </span>
-        <span title={status?.embedding_fingerprint ?? undefined}>
-          Embedding: {embeddingLabel(status?.embedding_fingerprint)}
-        </span>
-        <span>Query: {status?.query.mode ?? '—'}</span>
-        <span>
-          <FileText size={13} /> Docs: {status ? status.documents.toLocaleString() : '—'}
-        </span>
-        <IngestionIndicator status={status} />
-        <ActiveSourceJobs
-          jobs={sourceJobs.jobs}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setView('inbox')
-          }}
-        />
-        <SourceJobsErrorIndicator
-          error={sourceJobsError}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setView('inbox')
-          }}
-        />
-        <SourceJobAttentionIndicator
-          jobs={sourceJobs.jobs}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setView('inbox')
-          }}
-        />
-        <InstallerIndicator
-          job={installerJob}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setSettingsSection('readiness')
-            setView('settings')
-          }}
-        />
-        <ServiceActivityIndicator
-          activity={serviceActivity}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setSettingsSection('services')
-            setView('settings')
-          }}
-        />
-        <ReadinessActivityIndicator
-          activity={readinessActivity}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setSettingsSection('readiness')
-            setView('settings')
-          }}
-        />
-        <ServiceHealthIndicator
-          report={desktopServices}
-          error={desktopServicesError}
-          embeddingRequired={desktopSettings?.embedding.provider !== 'cloud'}
-          onOpen={() => {
-            if (!canLeaveSettings()) return
-            setSettingsSection('services')
-            setView('settings')
-          }}
-        />
-        <span className="status-spacer" />
-        {isDemoMode && <span className="demo-badge">Demo data</span>}
-        {isDesktopApp && (
-          <Button
-            variant="ghost"
-            type="button"
-            className="status-link quick-tooltip quick-tooltip--above"
-            data-tooltip={`Open the Updates section (Cortana ${desktopInfo?.desktop_version || '—'})`}
-            onClick={() => {
-              if (!canLeaveSettings()) return
-              setSettingsSection('updates')
-              setView('settings')
-            }}
-          >
-            Cortana {desktopInfo?.desktop_version || '—'} · Updates
-            {desktopUpdateStatusSuffix(desktopUpdate)}
-          </Button>
+            />
+            <ServiceActivityIndicator
+              activity={serviceActivity}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setSettingsSection('services')
+                setView('settings')
+              }}
+            />
+            <ReadinessActivityIndicator
+              activity={readinessActivity}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setSettingsSection('readiness')
+                setView('settings')
+              }}
+            />
+            <ServiceHealthIndicator
+              report={desktopServices}
+              error={desktopServicesError}
+              embeddingRequired={desktopSettings?.embedding.provider !== 'cloud'}
+              onOpen={() => {
+                if (!canLeaveSettings()) return
+                setSettingsSection('services')
+                setView('settings')
+              }}
+            />
+            <span className="status-spacer" />
+            {isDemoMode && <span className="demo-badge">Demo data</span>}
+            {isDesktopApp && (
+              <Button
+                variant="ghost"
+                type="button"
+                className="status-link quick-tooltip quick-tooltip--above"
+                data-tooltip={`Open the Updates section (Cortana ${desktopInfo?.desktop_version || '—'})`}
+                onClick={() => {
+                  if (!canLeaveSettings()) return
+                  setSettingsSection('updates')
+                  setView('settings')
+                }}
+              >
+                Cortana {desktopInfo?.desktop_version || '—'} · Updates
+                {desktopUpdateStatusSuffix(desktopUpdate)}
+              </Button>
+            )}
+          </footer>
         )}
-      </footer>
-    </div>
+      </div>
+    </ShellProvider>
   )
 }
 
