@@ -137,7 +137,10 @@ fn required_scope_for_path(path: &str) -> &'static str {
         "/metrics" | "/v1/audit" | "/v1/auth/reload" => "admin",
         "/v1/status" => "status",
         "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget"
-        | "/v1/memory/export" | "/v1/memory/reflect" | "/v1/memory/candidates" => "memory",
+        | "/v1/memory/export"
+        | "/v1/memory/derived"
+        | "/v1/memory/reflect"
+        | "/v1/memory/candidates" => "memory",
         path if path.starts_with("/v1/memory/candidates/") => "memory",
         _ => "query",
     }
@@ -159,6 +162,7 @@ mod backend_tests {
     #[test]
     fn memory_routes_request_memory_scoped_desktop_credentials() {
         assert_eq!(required_scope_for_path("/v1/memory/reflect"), "memory");
+        assert_eq!(required_scope_for_path("/v1/memory/derived"), "memory");
         assert_eq!(
             required_scope_for_path("/v1/memory/candidates/id/consolidate"),
             "memory"

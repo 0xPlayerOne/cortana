@@ -13,7 +13,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::contracts::stable_json_digest;
-use crate::memory::MemoryRecord;
+use crate::{memory::MemoryRecord, store::Store};
 
 pub const DERIVED_MEMORY_CONTRACT_VERSION: &str = "cortana.memory-derived.v1";
 pub const DERIVATION_ENGINE_VERSION: &str = "native-derived-v1";
@@ -97,6 +97,53 @@ pub struct DerivedMemoryResponse {
     pub inputs_considered: usize,
     pub representations: Vec<DerivedRepresentation>,
     pub relations: Vec<MemoryRelation>,
+}
+
+/// Export an authorized memory page and derive it against a stable revision.
+/// Retry one concurrent lifecycle write, then fail closed instead of attaching
+/// a newer revision to older support records.
+pub fn derive_authorized_memory(
+    store: &Store,
+    project: Option<&str>,
+    limit: usize,
+    principal_acl: &[String],
+    owner: bool,
+) -> Result<DerivedMemoryResponse> {
+    let limit = limit.clamp(1, MAX_DERIVED_INPUTS);
+    derive_consistent(
+        limit,
+        || store.memory_revision(),
+        || {
+            if owner {
+                store.export_memories_with_axes_as_owner(project, None, None, None, None, limit)
+            } else {
+                store.export_memories_with_axes(
+                    project,
+                    None,
+                    None,
+                    None,
+                    None,
+                    limit,
+                    principal_acl,
+                )
+            }
+        },
+    )
+}
+
+fn derive_consistent(
+    limit: usize,
+    mut revision: impl FnMut() -> Result<u64>,
+    mut export: impl FnMut() -> Result<Vec<MemoryRecord>>,
+) -> Result<DerivedMemoryResponse> {
+    for _ in 0..2 {
+        let before = revision()?;
+        let memories = export()?;
+        if revision()? == before {
+            return derive_memory(&memories, before, limit);
+        }
+    }
+    anyhow::bail!("memory changed while derived inputs were being collected; retry")
 }
 
 /// Compute a bounded page of higher-order memory projections. Callers must
@@ -284,6 +331,18 @@ fn derive_relations(
     memory_revision: u64,
     output: &mut Vec<MemoryRelation>,
 ) {
+    let signatures = active
+        .iter()
+        .map(|memory| {
+            let words = normalized_words(&memory.content);
+            let tokens = words.iter().cloned().collect::<BTreeSet<_>>();
+            let negated = words
+                .iter()
+                .any(|word| matches!(word.as_str(), "no" | "not" | "never" | "cannot" | "dont"));
+            let causal = words.iter().any(|word| word == "because");
+            (memory.id.as_str(), (words, tokens, negated, causal))
+        })
+        .collect::<BTreeMap<_, _>>();
     let visible_by_id = visible
         .iter()
         .map(|memory| (memory.id.as_str(), *memory))
@@ -308,7 +367,7 @@ fn derive_relations(
             );
         }
 
-        let words = normalized_words(&memory.content);
+        let words = &signatures[memory.id.as_str()].0;
         if words.len() >= 3 {
             push_relation(
                 output,
@@ -349,11 +408,13 @@ fn derive_relations(
             if output.len() >= MAX_DERIVED_RELATIONS || left.project != right.project {
                 continue;
             }
-            let similarity = token_similarity(&left.content, &right.content);
+            let left_signature = &signatures[left.id.as_str()];
+            let right_signature = &signatures[right.id.as_str()];
+            let similarity = token_similarity(&left_signature.1, &right_signature.1);
             if similarity < 0.35 {
                 continue;
             }
-            let contradiction = has_negation(&left.content) != has_negation(&right.content);
+            let contradiction = left_signature.2 != right_signature.2;
             push_relation(
                 output,
                 if contradiction {
@@ -373,10 +434,7 @@ fn derive_relations(
                 vec![*left, *right],
                 memory_revision,
             );
-            if !contradiction
-                && (left.content.to_ascii_lowercase().contains("because")
-                    || right.content.to_ascii_lowercase().contains("because"))
-            {
+            if !contradiction && (left_signature.3 || right_signature.3) {
                 push_relation(
                     output,
                     RelationKind::Causal,
@@ -554,14 +612,12 @@ fn safe_excerpt(value: &str, max_bytes: usize) -> String {
     value[..end].to_string()
 }
 
-fn token_similarity(left: &str, right: &str) -> f32 {
-    let left = normalized_words(left).into_iter().collect::<BTreeSet<_>>();
-    let right = normalized_words(right).into_iter().collect::<BTreeSet<_>>();
+fn token_similarity(left: &BTreeSet<String>, right: &BTreeSet<String>) -> f32 {
     let total = left.len() + right.len();
     if total == 0 {
         0.0
     } else {
-        (2 * left.intersection(&right).count()) as f32 / total as f32
+        (2 * left.intersection(right).count()) as f32 / total as f32
     }
 }
 
@@ -730,6 +786,30 @@ mod tests {
                 .representations
                 .iter()
                 .all(|item| item.memory_revision == 4)
+        );
+    }
+
+    #[test]
+    fn concurrent_revision_change_retries_without_mislabeling_support() {
+        let memories = vec![memory("stable", "bounded support", "semantic", &["work"])];
+        let mut revisions = [7, 8, 8, 8].into_iter();
+        let mut exports = 0;
+        let response = derive_consistent(
+            10,
+            || Ok(revisions.next().expect("scripted revision")),
+            || {
+                exports += 1;
+                Ok(memories.clone())
+            },
+        )
+        .expect("retry stable snapshot");
+        assert_eq!(exports, 2);
+        assert_eq!(response.memory_revision, 8);
+        assert!(
+            response
+                .representations
+                .iter()
+                .all(|item| item.memory_revision == 8)
         );
     }
 }

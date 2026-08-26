@@ -119,10 +119,12 @@ support. Historical supersession relations may describe a visible tombstone, but
 cannot support an experience, observation, mental model, or belief.
 
 `GET /v1/memory/derived` and MCP `inspect_memory_representations` provide bounded inspection and
-export. `GET /v1/graph?...&include_derived=true` adds explicitly labeled derived nodes and support
-edges without loading the full corpus. `POST /v1/memory/reflect` accepts `include_derived: true` to
-return projections over the same authorized memory page; the reflection token budget may omit
-derived items before returning an oversized response.
+export. `GET /v1/graph?...&include_derived=true` requires both query and memory scopes and adds
+explicitly labeled derived nodes and support edges without loading the full corpus. Each projected
+graph node carries the same contract version, derivation version, memory revision, support IDs, and
+non-citation flag as the dedicated endpoint. `POST /v1/memory/reflect` accepts
+`include_derived: true` to return projections over the same authorized memory page; the reflection
+token budget may omit derived items before returning an oversized response.
 
 ## Lifecycle rules
 

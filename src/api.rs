@@ -29,7 +29,7 @@ use crate::{
     },
     config::{Config, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
-    derived::{DerivedMemoryResponse, MAX_DERIVED_INPUTS, derive_memory},
+    derived::{DerivedMemoryResponse, derive_authorized_memory},
     embed::Embedder,
     memory::MemoryInput,
     observation::ObservationCandidateInput,
@@ -519,6 +519,18 @@ struct GraphNode {
     project: String,
     source: Option<String>,
     document_id: Option<String>,
+    #[serde(flatten)]
+    derived: Option<GraphDerivedMetadata>,
+}
+
+#[derive(Debug, Serialize)]
+struct GraphDerivedMetadata {
+    contract_version: String,
+    derivation_version: String,
+    memory_revision: u64,
+    supporting_memory_ids: Vec<String>,
+    contradicting_memory_ids: Vec<String>,
+    citation_authority: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -962,6 +974,12 @@ async fn graph(
     Extension(principal): Extension<Principal>,
     AxumQuery(params): AxumQuery<DocumentListParams>,
 ) -> Result<Json<GraphResponse>, (StatusCode, String)> {
+    if params.include_derived && !principal.has_scope(MEMORY_SCOPE) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "memory scope required for derived graph projections".into(),
+        ));
+    }
     validate_document_scope("project", params.project.as_deref())?;
     validate_document_scope("source", params.source.as_deref())?;
     validate_document_query(params.query.as_deref())?;
@@ -1008,6 +1026,7 @@ async fn graph(
                         project: document.project.clone(),
                         source: None,
                         document_id: None,
+                        derived: None,
                     });
                 }
                 if sources.insert(source_id.clone()) {
@@ -1018,6 +1037,7 @@ async fn graph(
                         project: document.project.clone(),
                         source: Some(document.source.clone()),
                         document_id: None,
+                        derived: None,
                     });
                     edges.push(GraphEdge {
                         source: workspace_id,
@@ -1032,6 +1052,7 @@ async fn graph(
                     project: document.project.clone(),
                     source: Some(document.source.clone()),
                     document_id: Some(document.id.clone()),
+                    derived: None,
                 });
                 edges.push(GraphEdge {
                     source: source_id,
@@ -1050,6 +1071,8 @@ async fn graph(
                 let mut memory_nodes = BTreeSet::new();
                 for representation in derived.representations {
                     let derived_id = representation.id.clone();
+                    let supporting_memory_ids = representation.supporting_memory_ids.clone();
+                    let contradicting_memory_ids = representation.contradicting_memory_ids.clone();
                     nodes.push(GraphNode {
                         id: derived_id.clone(),
                         kind: match representation.kind {
@@ -1062,6 +1085,14 @@ async fn graph(
                         project: representation.project.clone(),
                         source: None,
                         document_id: None,
+                        derived: Some(GraphDerivedMetadata {
+                            contract_version: representation.contract_version,
+                            derivation_version: representation.provenance.engine_version,
+                            memory_revision: representation.memory_revision,
+                            supporting_memory_ids,
+                            contradicting_memory_ids,
+                            citation_authority: representation.citation_authority,
+                        }),
                     });
                     for memory_id in representation.supporting_memory_ids {
                         let node_id = format!("memory:{memory_id}");
@@ -1073,6 +1104,7 @@ async fn graph(
                                 project: representation.project.clone(),
                                 source: None,
                                 document_id: None,
+                                derived: None,
                             });
                         }
                         edges.push(GraphEdge {
@@ -1091,6 +1123,7 @@ async fn graph(
                                 project: representation.project.clone(),
                                 source: None,
                                 document_id: None,
+                                derived: None,
                             });
                         }
                         edges.push(GraphEdge {
@@ -1102,6 +1135,7 @@ async fn graph(
                 }
                 for relation in derived.relations {
                     let relation_id = relation.id.clone();
+                    let supporting_memory_ids = relation.supporting_memory_ids.clone();
                     nodes.push(GraphNode {
                         id: relation_id.clone(),
                         kind: "memory-relation",
@@ -1109,6 +1143,14 @@ async fn graph(
                         project: relation.project.clone(),
                         source: None,
                         document_id: None,
+                        derived: Some(GraphDerivedMetadata {
+                            contract_version: relation.contract_version,
+                            derivation_version: relation.provenance.engine_version,
+                            memory_revision: relation.memory_revision,
+                            supporting_memory_ids,
+                            contradicting_memory_ids: Vec::new(),
+                            citation_authority: relation.citation_authority,
+                        }),
                     });
                     for memory_id in relation.supporting_memory_ids {
                         let node_id = format!("memory:{memory_id}");
@@ -1120,6 +1162,7 @@ async fn graph(
                                 project: relation.project.clone(),
                                 source: None,
                                 document_id: None,
+                                derived: None,
                             });
                         }
                         edges.push(GraphEdge {
@@ -2551,23 +2594,13 @@ fn derive_authorized_memories(
     project: Option<&str>,
     limit: usize,
 ) -> Result<DerivedMemoryResponse> {
-    let limit = limit.clamp(1, MAX_DERIVED_INPUTS);
-    let memories = if principal.is_owner() {
-        state
-            .store
-            .export_memories_with_axes_as_owner(project, None, None, None, None, limit)?
-    } else {
-        state.store.export_memories_with_axes(
-            project,
-            None,
-            None,
-            None,
-            None,
-            limit,
-            &principal.visible_acl(),
-        )?
-    };
-    derive_memory(&memories, state.store.memory_revision()?, limit)
+    derive_authorized_memory(
+        &state.store,
+        project,
+        limit,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    )
 }
 
 async fn derived_memories(
@@ -3522,11 +3555,58 @@ mod tests {
         let graph_body = to_bytes(graph.into_body(), 128 * 1024)
             .await
             .expect("graph body");
-        assert!(
-            String::from_utf8(graph_body.to_vec())
-                .expect("graph UTF-8")
-                .contains("memory-observation")
+        let graph_json: serde_json::Value =
+            serde_json::from_slice(&graph_body).expect("graph JSON");
+        let observation = graph_json["nodes"]
+            .as_array()
+            .and_then(|nodes| {
+                nodes
+                    .iter()
+                    .find(|node| node["kind"] == "memory-observation")
+            })
+            .expect("derived observation node");
+        assert_eq!(
+            observation["contract_version"],
+            crate::derived::DERIVED_MEMORY_CONTRACT_VERSION
         );
+        assert_eq!(
+            observation["derivation_version"],
+            crate::derived::DERIVATION_ENGINE_VERSION
+        );
+        assert_eq!(observation["memory_revision"], revision);
+        assert_eq!(observation["citation_authority"], false);
+        assert!(
+            observation["supporting_memory_ids"]
+                .as_array()
+                .is_some_and(|ids| ids.iter().any(|id| id == &work.id))
+        );
+
+        let mut query_config = Config::default();
+        query_config
+            .environment
+            .insert("QUERY_TOKEN".into(), "query-secret".into());
+        query_config.auth.tokens = vec![AuthTokenConfig {
+            principal: "query-agent".into(),
+            token_env: "QUERY_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let query_only_app = router(
+            state
+                .clone()
+                .with_auth_policy(AuthPolicy::from_config(&query_config).expect("query policy")),
+        );
+        let denied_graph = query_only_app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?project=work&include_derived=true")
+                    .header(header::AUTHORIZATION, "Bearer query-secret")
+                    .body(Body::empty())
+                    .expect("query-only graph request"),
+            )
+            .await
+            .expect("query-only graph response");
+        assert_eq!(denied_graph.status(), StatusCode::FORBIDDEN);
 
         let reflection = app
             .oneshot(

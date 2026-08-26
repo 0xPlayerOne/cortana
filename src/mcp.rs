@@ -1435,29 +1435,13 @@ impl BrainServer {
             .limit
             .unwrap_or(64)
             .clamp(1, crate::derived::MAX_DERIVED_INPUTS);
-        let exported = if principal.is_owner() {
-            self.store.export_memories_with_axes_as_owner(
-                params.project.as_deref(),
-                None,
-                None,
-                None,
-                None,
-                limit,
-            )
-        } else {
-            self.store.export_memories_with_axes(
-                params.project.as_deref(),
-                None,
-                None,
-                None,
-                None,
-                limit,
-                &principal.visible_acl(),
-            )
-        };
-        let result = exported.and_then(|memories| {
-            crate::derived::derive_memory(&memories, self.store.memory_revision()?, limit)
-        });
+        let result = crate::derived::derive_authorized_memory(
+            &self.store,
+            params.project.as_deref(),
+            limit,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        );
         match result {
             Ok(response) => {
                 self.audit_principal(
