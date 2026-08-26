@@ -109,6 +109,7 @@ mock.module('./api', () => ({
 }))
 
 const { App } = await import('./App')
+const { ShadcnRenderer } = await import('./ShadcnRenderer')
 
 afterEach(async () => {
   await act(async () => {
@@ -133,6 +134,7 @@ afterEach(async () => {
   state.reflection = null
   state.reflectionCalls = []
   state.getDocument = null
+  window.innerWidth = 1024
 })
 
 async function flushAppBootstrap() {
@@ -141,6 +143,53 @@ async function flushAppBootstrap() {
     await Promise.resolve()
   })
 }
+
+test('the shadcn renderer composes the real application shell and state', async () => {
+  render(<ShadcnRenderer />)
+  await flushAppBootstrap()
+
+  const shell = document.querySelector('[data-m7-production-shell-ready]')
+  expect(shell).not.toBeNull()
+  expect(shell?.getAttribute('data-renderer')).toBe('shadcn')
+  expect(screen.getByRole('navigation', { name: 'Primary navigation' })).not.toBeNull()
+  expect(screen.getByRole('button', { name: 'Knowledge' }).getAttribute('aria-current')).toBe(
+    'page'
+  )
+  expect(screen.getByRole('textbox', { name: 'Search your knowledge' })).not.toBeNull()
+  expect(screen.getByRole('contentinfo', { name: 'Application status' }).textContent).toContain(
+    '9,834'
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Actions' }))
+  expect(await screen.findByRole('menuitem', { name: 'Open sources' })).not.toBeNull()
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)))
+  expect(screen.getByRole('heading', { name: 'Inbox' })).not.toBeNull()
+  expect(document.querySelector('[data-m7-activity-inbox]')).not.toBeNull()
+  expect(document.querySelector('[data-slot="card"], [data-slot="empty"]')).not.toBeNull()
+  expect(screen.getByRole('button', { name: 'Inbox' }).getAttribute('aria-current')).toBe('page')
+})
+
+test('mobile navigation dismisses after selecting the current destination', async () => {
+  window.innerWidth = 320
+  render(<ShadcnRenderer />)
+  await flushAppBootstrap()
+
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+  expect(window.innerWidth).toBe(320)
+  expect(screen.queryByRole('navigation', { name: 'Primary navigation' })).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle navigation' }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+  expect(document.querySelector('[data-mobile="true"]')).not.toBeNull()
+  expect(screen.getByRole('navigation', { name: 'Primary navigation' })).not.toBeNull()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
+  expect(document.querySelector('[data-mobile="true"]')).toBeNull()
+  expect(screen.getByRole('heading', { name: 'Inbox' })).not.toBeNull()
+})
 
 test('Reflect presents grounded reflection separately from ordinary search', async () => {
   window.localStorage.setItem('cortana.workspace-selection.v1', 'work')

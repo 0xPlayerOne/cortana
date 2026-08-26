@@ -52,7 +52,7 @@ jobs:
           --renderer legacy
           --base-url http://127.0.0.1:4173
           --output artifacts/m7-shadcn/before
-      - name: Capture shadcn prototype
+      - name: Capture production shadcn shell
         run: >-
           bun scripts/capture-m7-visuals.mjs
           --renderer shadcn

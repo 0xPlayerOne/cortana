@@ -35,6 +35,7 @@ type SidebarContextProps = {
   isMobile: boolean
   toggleSidebar: () => void
   mobileTriggerRef: React.RefObject<HTMLButtonElement | null>
+  mobileFinalFocusRef: React.RefObject<HTMLElement | null>
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -64,6 +65,7 @@ function SidebarProvider({
   const isMobile = useIsMobile()
   const [openMobile, setOpenMobile] = React.useState(false)
   const mobileTriggerRef = React.useRef<HTMLButtonElement>(null)
+  const mobileFinalFocusRef = React.useRef<HTMLElement>(null)
 
   // This is the internal state of the sidebar.
   // We use openProp and setOpenProp for control from outside the component.
@@ -86,7 +88,11 @@ function SidebarProvider({
 
   // Helper to toggle the sidebar.
   const toggleSidebar = React.useCallback(() => {
-    return isMobile ? setOpenMobile((open) => !open) : setOpen((open) => !open)
+    if (!isMobile) return setOpen((open) => !open)
+    return setOpenMobile((open) => {
+      if (!open) mobileFinalFocusRef.current = mobileTriggerRef.current
+      return !open
+    })
   }, [isMobile, setOpen, setOpenMobile])
 
   // Adds a keyboard shortcut to toggle the sidebar.
@@ -116,6 +122,7 @@ function SidebarProvider({
       setOpenMobile,
       toggleSidebar,
       mobileTriggerRef,
+      mobileFinalFocusRef,
     }),
     [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
   )
@@ -156,7 +163,7 @@ function Sidebar({
   variant?: 'sidebar' | 'floating' | 'inset'
   collapsible?: 'offcanvas' | 'icon' | 'none'
 }) {
-  const { isMobile, state, openMobile, setOpenMobile, mobileTriggerRef } = useSidebar()
+  const { isMobile, state, openMobile, setOpenMobile, mobileFinalFocusRef } = useSidebar()
 
   if (collapsible === 'none') {
     return (
@@ -177,7 +184,7 @@ function Sidebar({
     return (
       <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
         <SheetContent
-          finalFocus={mobileTriggerRef}
+          finalFocus={mobileFinalFocusRef}
           dir={dir}
           data-sidebar="sidebar"
           data-slot="sidebar"
@@ -194,7 +201,13 @@ function Sidebar({
             <SheetTitle>Sidebar</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          <div
+            className="flex h-full w-full flex-col"
+            role={props.role}
+            aria-label={props['aria-label']}
+          >
+            {children}
+          </div>
         </SheetContent>
       </Sheet>
     )
