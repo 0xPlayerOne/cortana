@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.1](https://github.com/0xPlayerOne/cortana/compare/v0.49.0...v0.49.1) (2026-08-26)
+
+
+### Maintenance
+
+* **toolchain:** update to Bun 1.4 ([#2189](https://github.com/0xPlayerOne/cortana/issues/2189)) ([22aede1](https://github.com/0xPlayerOne/cortana/commit/22aede1da259b3275045841ab44fb126a9467c5a))
+
 ## [0.49.0](https://github.com/0xPlayerOne/cortana/compare/v0.48.0...v0.49.0) (2026-08-26)
 
 
