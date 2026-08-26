@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.45.0](https://github.com/0xPlayerOne/cortana/compare/v0.44.0...v0.45.0) (2026-08-26)
+
+
+### Features
+
+* **memory:** add provenance-bearing derived representations ([#2178](https://github.com/0xPlayerOne/cortana/issues/2178)) ([e0d7183](https://github.com/0xPlayerOne/cortana/commit/e0d718378bff56d922d5727c838c85e92e41cb7a))
+
 ## [0.44.0](https://github.com/0xPlayerOne/cortana/compare/v0.43.0...v0.44.0) (2026-08-25)
 
 
