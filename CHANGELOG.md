@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.49.0](https://github.com/0xPlayerOne/cortana/compare/v0.48.0...v0.49.0) (2026-08-26)
+
+
+### Features
+
+* **desktop:** establish shared shadcn primitive contracts ([#2186](https://github.com/0xPlayerOne/cortana/issues/2186)) ([71833c9](https://github.com/0xPlayerOne/cortana/commit/71833c9c0341fd9f472d3b72a75cf2f2b0916406))
+
 ## [0.48.0](https://github.com/0xPlayerOne/cortana/compare/v0.47.0...v0.48.0) (2026-08-26)
 
 
