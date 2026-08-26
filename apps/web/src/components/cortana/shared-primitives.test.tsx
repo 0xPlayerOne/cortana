@@ -44,6 +44,13 @@ test('announces status and exposes a consistent busy button contract', () => {
   expect((button as HTMLButtonElement).disabled).toBe(true)
 })
 
+test('announces busy status semantics', () => {
+  render(<StatusBadge tone="busy">Indexing</StatusBadge>)
+  const status = screen.getByRole('status')
+  expect(status.getAttribute('aria-busy')).toBe('true')
+  expect(status.textContent).toContain('Indexing')
+})
+
 test('keeps error recovery keyboard-operable', async () => {
   const retry = mock(() => undefined)
   const user = userEvent.setup()
@@ -67,7 +74,11 @@ test('labels loading and empty feedback without browser-native chrome', () => {
   const { rerender } = render(
     <FeedbackState kind="loading" title="Loading evidence" description="Preparing results." />
   )
-  expect(screen.getByLabelText('Loading evidence').getAttribute('aria-busy')).toBe('true')
+  expect(
+    screen
+      .getByRole('status', { name: 'Loading evidence: Preparing results.' })
+      .getAttribute('aria-busy')
+  ).toBe('true')
 
   rerender(<FeedbackState kind="empty" title="No evidence" description="Try another query." />)
   expect(screen.getByText('No evidence')).toBeTruthy()

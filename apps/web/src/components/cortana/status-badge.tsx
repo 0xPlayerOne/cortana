@@ -33,7 +33,12 @@ export function StatusBadge({ tone, children }: { tone: StatusTone; children: Re
   const { icon: Icon, className } = statusContract[tone]
 
   return (
-    <Badge variant="outline" className={className} role="status">
+    <Badge
+      variant="outline"
+      className={className}
+      role="status"
+      aria-busy={tone === 'busy' ? true : undefined}
+    >
       <Icon data-icon="inline-start" className={cn(tone === 'busy' && 'animate-spin')} />
       {children}
     </Badge>
