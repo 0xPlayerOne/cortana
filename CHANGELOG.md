@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.50.0](https://github.com/0xPlayerOne/cortana/compare/v0.49.1...v0.50.0) (2026-08-26)
+
+
+### Features
+
+* **web:** add shadcn navigation overlays ([#2188](https://github.com/0xPlayerOne/cortana/issues/2188)) ([573ed82](https://github.com/0xPlayerOne/cortana/commit/573ed825cc190516b5238132b06d4049f99ccdc9))
+
 ## [0.49.1](https://github.com/0xPlayerOne/cortana/compare/v0.49.0...v0.49.1) (2026-08-26)
 
 
