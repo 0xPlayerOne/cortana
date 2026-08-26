@@ -66,6 +66,42 @@ if (renderer === 'shadcn') {
       await context.close()
     }
   }
+
+  const zoomContext = await browser.newContext({
+    viewport: { width: 720, height: 500 },
+    deviceScaleFactor: 2,
+  })
+  const zoomPage = await zoomContext.newPage()
+  await zoomPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, { waitUntil: 'networkidle' })
+  await zoomPage.getByRole('heading', { name: 'Release evidence' }).waitFor()
+  const horizontalOverflow = await zoomPage.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+  )
+  if (horizontalOverflow) throw new Error('The shadcn prototype overflows at the 200% zoom proxy')
+  await zoomContext.close()
+
+  const motionContext = await browser.newContext({
+    viewport: { width: 1024, height: 800 },
+    reducedMotion: 'reduce',
+  })
+  const motionPage = await motionContext.newPage()
+  await motionPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, { waitUntil: 'networkidle' })
+  const reviewButton = motionPage.getByRole('button', { name: 'Review context boundary' })
+  await reviewButton.focus()
+  await reviewButton.press('Enter')
+  const contextDialog = motionPage.getByRole('dialog')
+  await contextDialog.waitFor()
+  const animationDuration = await contextDialog.evaluate(
+    (element) => getComputedStyle(element).animationDuration
+  )
+  if (Number.parseFloat(animationDuration) > 0.00002) {
+    throw new Error(`Reduced-motion dialog animation remained ${animationDuration}`)
+  }
+  await motionPage.keyboard.press('Escape')
+  if (!(await reviewButton.evaluate((element) => element === document.activeElement))) {
+    throw new Error('Dialog focus did not return to its trigger')
+  }
+  await motionContext.close()
 } else {
   const labels = {
     inbox: 'Inbox',

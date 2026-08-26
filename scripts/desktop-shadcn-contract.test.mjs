@@ -44,4 +44,12 @@ describe('Desktop shadcn renderer contract', () => {
       paths: { '@/*': ['./src/*'] },
     })
   })
+
+  test('disables renderer motion when the operating system requests it', () => {
+    const css = readFileSync(resolve(root, 'apps/web/src/shadcn.css'), 'utf8')
+
+    expect(css).toContain('@media (prefers-reduced-motion: reduce)')
+    expect(css).toContain('animation-duration: 0.01ms !important')
+    expect(css).toContain('transition-duration: 0.01ms !important')
+  })
 })
