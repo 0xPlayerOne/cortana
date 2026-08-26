@@ -61,7 +61,7 @@ fields are added.
 
 | Interface                                       | Entry points                                                                                                                                                                                                                                                            |
 | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `export_memory`, `inspect_memory_representations`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                                   |
+| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `export_memory`, `reflect_memory`, `inspect_memory_representations`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                 |
 | HTTP (`cortana serve --address 127.0.0.1:7331`) | `POST /v1/context`, `POST /v1/memory[/{recall,forget,reflect}]`, `GET /v1/memory/{export,derived}`, `POST /v1/search`, `POST /v1/answer`, `GET /v1/documents[/{id}]`, `GET /v1/graph`, `GET /v1/status`, `GET /v1/audit`, `GET /healthz`, `GET /readyz`, `GET /metrics` |
 | CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                                                                                                             |
 
@@ -70,6 +70,16 @@ citation-ready, token-bounded Markdown bundle with numbered `[n]` citations, the
 relevant native `memories`, and `retrieved`/`included`/`omitted`/`memories_included`/
 `estimated_tokens`/`max_tokens` metrics. Memory writes and redactions remain explicit actions;
 ingestion never silently promotes source text into agent memory.
+
+`reflect_memory` and `inspect_memory_representations` are bounded, non-mutating inspection tools.
+Reflection claims retain supporting IDs, proposed candidates require approval, and derived views
+are neither canonical memory nor citation authority. Agents must not automatically promote their
+output. `cortana eval --memory` is the portable synthetic gate for these capabilities; automatic
+retention remains disabled until separate approved-private evidence and a reviewed activation
+change exist.
+Completed external private evidence can be verified with
+`cortana eval --memory-private-evidence /path/to/evidence.json`; the verifier reads bounded results
+and governance metadata only, never the private corpus.
 
 `POST /v1/answer` follows the same boundary: principals with the `memory` scope receive a bounded
 `memories` array and the synthesizer may use those entries as operational context, while evidence

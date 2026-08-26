@@ -78,6 +78,16 @@ The MCP server also exposes native `remember`, `recall`, `forget`, and `export_m
 use the same workspace ACLs and audit trail as document retrieval; `context` automatically includes
 relevant native memories without exposing retracted or out-of-scope records.
 
+Use `reflect_memory` only for bounded, non-mutating synthesis over already authorized memory and
+evidence. Its claims must retain their supporting IDs; provider failure falls back or fails closed,
+and proposed candidates always require explicit approval. Use `inspect_memory_representations` to
+inspect recomputed derived views, never as canonical memory, source evidence, or citation authority.
+Do not automatically propose, consolidate, supersede, or retain memory from either result. The
+portable release gate is `cortana eval --memory`; automatic retention remains disabled even when
+the synthetic gate passes, pending separate approved-private evidence and reviewed activation.
+Verify completed external evidence with `cortana eval --memory-private-evidence PATH`; never place
+the raw private corpus in the repository or treat the verifier report as runtime authorization.
+
 For an HTTP-only client, send:
 
 ```json

@@ -17,6 +17,7 @@ pub mod github_oauth;
 pub mod google_oauth;
 pub mod mcp;
 pub mod memory;
+pub mod memory_evaluation;
 pub mod migration;
 pub mod model;
 pub mod oauth_common;

@@ -1028,7 +1028,7 @@ impl BrainServer {
     }
 
     #[tool(
-        description = "Apply the versioned consolidation policy to one visible memory candidate. Automatic retention remains disabled unless enabled=true; explicit approval remains a separate flag."
+        description = "Apply the versioned consolidation policy to one visible memory candidate. enabled=true permits review processing, but automatic retention remains release-gated and cannot be enabled by MCP input; explicit approval remains separate."
     )]
     async fn consolidate_memory_candidate(
         &self,

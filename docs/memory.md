@@ -82,8 +82,10 @@ The native MCP tools are:
 
 Consolidation is a separate opt-in policy boundary. The default policy is disabled, and promotion
 must use the versioned `cortana.memory.consolidation.v1` rules. Safe, non-sensitive, in-scope,
-non-conflicting candidates may auto-retain only above configured confidence and importance
-thresholds; sensitive, contradictory, low-confidence, or cross-scope candidates remain review-only.
+non-conflicting candidates are eligible for auto-retention only above configured confidence and
+importance thresholds and after the non-deserializable runtime release gate is reviewed and
+enabled. HTTP, MCP, and CLI policy input cannot set that gate; until then, eligible candidates remain
+review-only. Sensitive, contradictory, low-confidence, or cross-scope candidates remain review-only.
 Working retention stays bounded and cannot silently become durable. Queue entries are priority
 ordered, deduplicated by candidate and policy version, retry bounded, pausable, cancellable, and
 dead-lettered after repeated failures. Promotion uses the same atomic remember invariants as an

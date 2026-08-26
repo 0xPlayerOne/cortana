@@ -1,0 +1,47 @@
+{
+  "contract_version": "cortana.memory-private-gate.v1",
+  "approved": false,
+  "raw_data_location": "external-encrypted-store",
+  "automatic_retention_activation_authorized": false,
+  "governance": {
+    "reviewer_ids": ["opaque-reviewer-id"],
+    "corpus_revision": "opaque-approved-corpus-revision",
+    "deletion_contact": "local-owner",
+    "secrets_allowed": false
+  },
+  "required_cases": [
+    { "id": "private-preference", "category": "preference", "result": "not-run" },
+    { "id": "private-decision", "category": "decision", "result": "not-run" },
+    { "id": "private-procedure", "category": "procedure", "result": "not-run" },
+    { "id": "private-repeated-experience", "category": "repeated-experience", "result": "not-run" },
+    { "id": "private-contradiction", "category": "contradiction", "result": "not-run" },
+    { "id": "private-stale-working-state", "category": "stale-working-state", "result": "not-run" },
+    { "id": "private-sensitive-data", "category": "sensitive-data", "result": "not-run" },
+    {
+      "id": "private-cross-workspace-distractor",
+      "category": "cross-workspace",
+      "result": "not-run"
+    }
+  ],
+  "required_metrics": {
+    "unauthorized_exposures": 0,
+    "unsupported_reflection_claims": 0,
+    "automatic_retentions": 0,
+    "candidate_precision": null,
+    "candidate_recall": null,
+    "classification_accuracy": null,
+    "duplicate_suppression": null,
+    "contradiction_detection": null,
+    "supersession_correctness": null,
+    "approval_load": null,
+    "retention_accuracy": null,
+    "recall_quality": null,
+    "reflection_grounding": null,
+    "derived_invalidation": null,
+    "latency_p95_ms": null,
+    "cpu_seconds": null,
+    "peak_rss_bytes": null,
+    "provider_requests": null,
+    "estimated_provider_cost_usd": null
+  }
+}
