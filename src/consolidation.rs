@@ -21,6 +21,7 @@ pub const DEFAULT_MAX_QUEUE: usize = 1_000;
 pub const DEFAULT_MAX_RETRIES: u8 = 3;
 pub const DEFAULT_MAX_WORKING_DAYS: i64 = 7;
 pub const DEFAULT_MAX_DURABLE_DAYS: i64 = 365;
+pub const DEFAULT_CANDIDATE_EXPIRY_DAYS: i64 = 7;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct RetentionCeilings {
@@ -48,6 +49,8 @@ pub struct ConsolidationPolicy {
     pub max_queue: usize,
     pub max_retries: u8,
     pub retry_backoff_seconds: u64,
+    #[serde(default = "default_candidate_expiry_days")]
+    pub candidate_expiry_days: i64,
     pub preferences: ConsolidationPreferences,
     pub ceilings: RetentionCeilings,
 }
@@ -77,6 +80,7 @@ impl Default for ConsolidationPolicy {
             max_queue: DEFAULT_MAX_QUEUE,
             max_retries: DEFAULT_MAX_RETRIES,
             retry_backoff_seconds: 30,
+            candidate_expiry_days: DEFAULT_CANDIDATE_EXPIRY_DAYS,
             preferences: ConsolidationPreferences::default(),
             ceilings: RetentionCeilings::default(),
         }
@@ -119,6 +123,10 @@ impl ConsolidationPolicy {
         anyhow::ensure!(
             self.ceilings.max_active > 0 && self.ceilings.max_active <= 1_000_000,
             "active retention capacity is outside its bound"
+        );
+        anyhow::ensure!(
+            (1..=DEFAULT_CANDIDATE_EXPIRY_DAYS).contains(&self.candidate_expiry_days),
+            "candidate expiry is outside its bound"
         );
         Ok(())
     }
@@ -205,6 +213,9 @@ pub fn evaluate(
     let expires_at = DateTime::parse_from_rfc3339(&candidate.expires_at)
         .ok()
         .map(|value| value.with_timezone(&Utc));
+    let created_at = DateTime::parse_from_rfc3339(&candidate.created_at)
+        .ok()
+        .map(|value| value.with_timezone(&Utc));
     let mut decision = ConsolidationDecision::Review;
     let mut reason_code = "review-required";
     let mut explanation = "candidate requires explicit review before canonical retention";
@@ -227,6 +238,12 @@ pub fn evaluate(
         decision = ConsolidationDecision::Reject;
         reason_code = "candidate-expired";
         explanation = "candidate expiry has elapsed";
+    } else if created_at
+        .is_some_and(|value| value + Duration::days(policy.candidate_expiry_days) <= now)
+    {
+        decision = ConsolidationDecision::Reject;
+        reason_code = "candidate-review-window-expired";
+        explanation = "candidate exceeded the configured review window";
     } else if candidate.sensitivity != CandidateSensitivity::Normal.as_str() {
         decision = ConsolidationDecision::Review;
         reason_code = "sensitive";
@@ -299,6 +316,10 @@ pub fn evaluate(
         queue_priority: priority,
         expires_at: expiry,
     })
+}
+
+const fn default_candidate_expiry_days() -> i64 {
+    DEFAULT_CANDIDATE_EXPIRY_DAYS
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]

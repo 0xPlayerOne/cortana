@@ -1,0 +1,701 @@
+import { Pause, Play, RefreshCw, Search, ShieldCheck } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+
+import {
+  actOnMemoryCandidate,
+  classifyMemoryCandidate,
+  listCanonicalMemories,
+  listDerivedMemories,
+  listMemoryCandidates,
+  setMemoryConsolidationPaused,
+  type MemoryCandidateAction,
+} from '../api'
+import type {
+  AgentMemory,
+  DerivedMemoryResponse,
+  MemoryCandidate,
+  MemoryCandidateClassification,
+  MemoryReviewPolicy,
+} from '../types'
+import { virtualRange } from '../virtualization'
+import { Button } from './ui/Button'
+
+type QueueView =
+  | 'all'
+  | 'pending'
+  | 'approved'
+  | 'auto-retained'
+  | 'rejected'
+  | 'expired'
+  | 'failed'
+  | 'dead-letter'
+
+export type MemoryReviewClient = {
+  listCandidates: (project?: string) => Promise<MemoryCandidate[]>
+  classifyCandidate: (id: string) => Promise<MemoryCandidateClassification>
+  listDerived: (project?: string) => Promise<DerivedMemoryResponse>
+  listCanonical: (project?: string) => Promise<AgentMemory[]>
+  act: (
+    id: string,
+    action: MemoryCandidateAction,
+    policy: MemoryReviewPolicy,
+    edit?: { title: string; content: string }
+  ) => Promise<void>
+  setConsolidationPaused: (paused: boolean) => Promise<void>
+}
+
+function MemoryPolicy({
+  policy,
+  onChange,
+}: {
+  policy: MemoryReviewPolicy
+  onChange: (policy: MemoryReviewPolicy) => void
+}) {
+  const patch = (next: Partial<MemoryReviewPolicy>) => onChange({ ...policy, ...next })
+  return (
+    <div className="memory-policy" aria-label="Memory retention policy">
+      <label>
+        Working ceiling (days)
+        <input
+          type="number"
+          min={1}
+          max={7}
+          value={policy.maxWorkingDays}
+          onChange={(event) => patch({ maxWorkingDays: Number(event.target.value) })}
+        />
+      </label>
+      <label>
+        Durable ceiling (days)
+        <input
+          type="number"
+          min={1}
+          max={3650}
+          value={policy.maxDurableDays}
+          onChange={(event) => patch({ maxDurableDays: Number(event.target.value) })}
+        />
+      </label>
+      <label>
+        Candidate expiry (days)
+        <input
+          type="number"
+          min={1}
+          max={7}
+          value={policy.candidateExpiryDays}
+          onChange={(event) => patch({ candidateExpiryDays: Number(event.target.value) })}
+        />
+      </label>
+      <label>
+        Consolidation schedule
+        <select
+          value={policy.schedule}
+          onChange={(event) =>
+            patch({ schedule: event.target.value as MemoryReviewPolicy['schedule'] })
+          }
+        >
+          <option value="manual">Manual</option>
+          <option value="hourly">Hourly</option>
+          <option value="daily">Daily</option>
+        </select>
+      </label>
+      <label className="memory-policy-toggle">
+        <input
+          type="checkbox"
+          checked={policy.autoCommit}
+          onChange={(event) => patch({ autoCommit: event.target.checked })}
+        />
+        Allow policy-approved auto-commit
+      </label>
+    </div>
+  )
+}
+
+type CandidateRange = ReturnType<typeof virtualRange>
+
+function CandidateQueue({
+  filtered,
+  range,
+  selectedId,
+  selectedIds,
+  loading,
+  busy,
+  onScroll,
+  onSelect,
+  onCheck,
+  onBulk,
+}: {
+  filtered: MemoryCandidate[]
+  range: CandidateRange
+  selectedId: string
+  selectedIds: Set<string>
+  loading: boolean
+  busy: boolean
+  onScroll: (top: number) => void
+  onSelect: (id: string) => void
+  onCheck: (ids: Set<string>) => void
+  onBulk: (action: MemoryCandidateAction, ids: string[]) => void
+}) {
+  return (
+    <div>
+      <div
+        className="memory-candidate-list"
+        role="list"
+        aria-label="Memory candidate queue"
+        aria-busy={loading}
+        onScroll={(event) => onScroll(event.currentTarget.scrollTop)}
+      >
+        <div style={{ height: range.totalHeight }}>
+          <div style={{ transform: `translateY(${range.offsetTop}px)` }}>
+            {filtered.slice(range.start, range.end).map((candidate) => (
+              <div
+                key={candidate.id}
+                role="listitem"
+                className={`memory-candidate-row ${selectedId === candidate.id ? 'selected' : ''}`}
+              >
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${candidate.title}`}
+                  checked={selectedIds.has(candidate.id)}
+                  onChange={(event) => {
+                    const next = new Set(selectedIds)
+                    if (event.target.checked && next.size < MAX_BULK_ACTIONS) next.add(candidate.id)
+                    else next.delete(candidate.id)
+                    onCheck(next)
+                  }}
+                />
+                <button
+                  type="button"
+                  aria-current={selectedId === candidate.id}
+                  aria-label={`${candidate.title}, ${queueStatus(candidate)}`}
+                  onClick={() => onSelect(candidate.id)}
+                >
+                  <strong>{candidate.title}</strong>
+                  <span>{candidate.content}</span>
+                </button>
+                <span className={`memory-status status-${queueStatus(candidate)}`}>
+                  {queueStatus(candidate)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {!loading && filtered.length === 0 && (
+          <p className="empty-state">No candidates match this view.</p>
+        )}
+      </div>
+      {selectedIds.size > 0 && (
+        <div className="memory-bulk-actions" aria-label="Bulk-safe candidate actions">
+          <span>
+            {selectedIds.size}/{MAX_BULK_ACTIONS} selected
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => onBulk('reject', [...selectedIds])}
+          >
+            Reject selected
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => onBulk('redact', [...selectedIds])}
+          >
+            Redact selected
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const defaultClient: MemoryReviewClient = {
+  listCandidates: listMemoryCandidates,
+  classifyCandidate: classifyMemoryCandidate,
+  listDerived: listDerivedMemories,
+  listCanonical: listCanonicalMemories,
+  act: actOnMemoryCandidate,
+  setConsolidationPaused: setMemoryConsolidationPaused,
+}
+
+const QUEUE_VIEWS: QueueView[] = [
+  'all',
+  'pending',
+  'approved',
+  'auto-retained',
+  'rejected',
+  'expired',
+  'failed',
+  'dead-letter',
+]
+const ROW_HEIGHT = 72
+const MAX_BULK_ACTIONS = 25
+
+const DEFAULT_POLICY: MemoryReviewPolicy = {
+  autoCommit: false,
+  maxWorkingDays: 7,
+  maxDurableDays: 365,
+  maxActive: 10_000,
+  candidateExpiryDays: 7,
+  schedule: 'manual',
+}
+
+export function MemoryReview({
+  project,
+  maxActive = DEFAULT_POLICY.maxActive,
+  client = defaultClient,
+}: {
+  project?: string
+  maxActive?: number
+  client?: MemoryReviewClient
+}) {
+  const [candidates, setCandidates] = useState<MemoryCandidate[]>([])
+  const [canonical, setCanonical] = useState<AgentMemory[]>([])
+  const [derived, setDerived] = useState<DerivedMemoryResponse | null>(null)
+  const [classification, setClassification] = useState<MemoryCandidateClassification | null>(null)
+  const [selectedId, setSelectedId] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [view, setView] = useState<QueueView>('all')
+  const [query, setQuery] = useState('')
+  const [scrollTop, setScrollTop] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [paused, setPaused] = useState(false)
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [policy, setPolicy] = useState({ ...DEFAULT_POLICY, maxActive })
+  const [editing, setEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editContent, setEditContent] = useState('')
+
+  async function refresh() {
+    setLoading(true)
+    setError('')
+    try {
+      const [nextCandidates, nextCanonical, nextDerived] = await Promise.all([
+        client.listCandidates(project),
+        client.listCanonical(project),
+        client.listDerived(project),
+      ])
+      setCandidates(nextCandidates.slice(0, 100))
+      setCanonical(nextCanonical.slice(0, 100))
+      setDerived(nextDerived)
+      setSelectedId((current) =>
+        nextCandidates.some((candidate) => candidate.id === current)
+          ? current
+          : (nextCandidates[0]?.id ?? '')
+      )
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Memory review failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void refresh()
+  }, [project])
+
+  useEffect(() => {
+    setPolicy((current) => ({ ...current, maxActive }))
+  }, [maxActive])
+
+  useEffect(() => {
+    const selected = candidates.find((candidate) => candidate.id === selectedId)
+    if (!selected) {
+      setClassification(null)
+      return
+    }
+    setEditTitle(selected.title)
+    setEditContent(selected.content)
+    setClassification(null)
+    client
+      .classifyCandidate(selected.id)
+      .then(setClassification)
+      .catch(() => setClassification(null))
+  }, [candidates, client, selectedId])
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return candidates.filter((candidate) => {
+      const status = queueStatus(candidate)
+      return (
+        (view === 'all' || status === view) &&
+        (!needle ||
+          `${candidate.title} ${candidate.content} ${candidate.project} ${candidate.source}`
+            .toLowerCase()
+            .includes(needle))
+      )
+    })
+  }, [candidates, query, view])
+  const range = virtualRange(filtered.length, scrollTop, 360, ROW_HEIGHT)
+  const selected = candidates.find((candidate) => candidate.id === selectedId)
+
+  async function runAction(
+    action: MemoryCandidateAction,
+    ids = selected ? [selected.id] : [],
+    edit?: { title: string; content: string }
+  ) {
+    const boundedIds = ids.slice(0, MAX_BULK_ACTIONS)
+    if (!boundedIds.length) return
+    const canonicalWrite = ['approve', 'edit-approve', 'working', 'supersede', 'retry'].includes(
+      action
+    )
+    if (
+      canonicalWrite &&
+      !window.confirm(
+        `Confirm ${action.replace('-', ' ')} for ${boundedIds.length} candidate${boundedIds.length === 1 ? '' : 's'}? Canonical memory may change only if backend policy approves.`
+      )
+    ) {
+      return
+    }
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try {
+      for (const id of boundedIds) await client.act(id, action, policy, edit)
+      setNotice(`${action.replace('-', ' ')} completed for ${boundedIds.length} candidate(s).`)
+      setEditing(false)
+      setSelectedIds(new Set())
+      await refresh()
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : `Memory candidate ${action} failed`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function togglePause() {
+    setBusy(true)
+    setError('')
+    try {
+      await client.setConsolidationPaused(!paused)
+      setPaused(!paused)
+      setNotice(`Consolidation ${paused ? 'resumed' : 'paused'}.`)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Consolidation control failed')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <section className="memory-review" aria-labelledby="memory-review-title">
+      <header className="memory-review-header">
+        <div>
+          <span className="eyebrow">Review before retention</span>
+          <h3 id="memory-review-title">Memory control center</h3>
+          <p>Inspect candidates, canonical recall, and derived reasoning as separate layers.</p>
+        </div>
+        <div className="memory-review-header-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => void togglePause()}
+          >
+            {paused ? <Play size={14} /> : <Pause size={14} />}
+            {paused ? 'Resume consolidation' : 'Pause consolidation'}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void refresh()}
+          >
+            <RefreshCw size={14} /> Refresh
+          </Button>
+        </div>
+      </header>
+
+      <MemoryPolicy policy={policy} onChange={setPolicy} />
+      <div className="memory-review-filters">
+        <label className="memory-review-search">
+          <Search size={14} aria-hidden="true" />
+          <span className="sr-only">Search memory candidates</span>
+          <input
+            type="search"
+            aria-label="Search memory candidates"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search candidate content, project, or source"
+          />
+        </label>
+        <div className="memory-status-tabs" role="group" aria-label="Candidate status views">
+          {QUEUE_VIEWS.map((status) => (
+            <Button
+              key={status}
+              type="button"
+              variant={view === status ? 'primary' : 'ghost'}
+              aria-pressed={view === status}
+              onClick={() => setView(status)}
+            >
+              {status.replace('-', ' ')}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {(error || notice) && (
+        <div
+          role={error ? 'alert' : 'status'}
+          className={`memory-review-message ${error ? 'error' : ''}`}
+        >
+          {error || notice}
+        </div>
+      )}
+
+      <div className="memory-review-layout">
+        <CandidateQueue
+          filtered={filtered}
+          range={range}
+          selectedId={selectedId}
+          selectedIds={selectedIds}
+          loading={loading}
+          busy={busy}
+          onScroll={setScrollTop}
+          onSelect={setSelectedId}
+          onCheck={setSelectedIds}
+          onBulk={(action, ids) => void runAction(action, ids)}
+        />
+        <CandidateDetail
+          selected={selected}
+          classification={classification}
+          busy={busy}
+          editing={editing}
+          editTitle={editTitle}
+          editContent={editContent}
+          onEditing={setEditing}
+          onTitle={setEditTitle}
+          onContent={setEditContent}
+          onAction={(action, edit) => void runAction(action, undefined, edit)}
+        />
+      </div>
+
+      <MemoryLayers canonical={canonical} derived={derived} />
+    </section>
+  )
+}
+
+function CandidateDetail({
+  selected,
+  classification,
+  busy,
+  editing,
+  editTitle,
+  editContent,
+  onEditing,
+  onTitle,
+  onContent,
+  onAction,
+}: {
+  selected?: MemoryCandidate
+  classification: MemoryCandidateClassification | null
+  busy: boolean
+  editing: boolean
+  editTitle: string
+  editContent: string
+  onEditing: (editing: boolean) => void
+  onTitle: (title: string) => void
+  onContent: (content: string) => void
+  onAction: (action: MemoryCandidateAction, edit?: { title: string; content: string }) => void
+}) {
+  if (!selected) return <article className="memory-candidate-detail">Select a candidate.</article>
+  return (
+    <article className="memory-candidate-detail" aria-live="polite">
+      <span className="eyebrow">Candidate · not canonical</span>
+      <h4>{selected.title}</h4>
+      {editing ? (
+        <div className="memory-edit-fields">
+          <label>
+            Proposed title
+            <input value={editTitle} onChange={(event) => onTitle(event.target.value)} />
+          </label>
+          <label>
+            Proposed content
+            <textarea value={editContent} onChange={(event) => onContent(event.target.value)} />
+          </label>
+        </div>
+      ) : (
+        <p>{selected.content}</p>
+      )}
+      <CandidateMetadata selected={selected} classification={classification} />
+      <CandidateActions
+        busy={busy}
+        editing={editing}
+        editTitle={editTitle}
+        editContent={editContent}
+        onEditing={onEditing}
+        onAction={onAction}
+      />
+    </article>
+  )
+}
+
+function CandidateMetadata({
+  selected,
+  classification,
+}: {
+  selected: MemoryCandidate
+  classification: MemoryCandidateClassification | null
+}) {
+  return (
+    <>
+      <div className="memory-metadata">
+        <div>
+          <span>Content type</span>
+          <strong>{selected.content_type}</strong>
+        </div>
+        <div>
+          <span>Retention</span>
+          <strong>{selected.retention_tier}</strong>
+        </div>
+        <div>
+          <span>Scope</span>
+          <strong>{selected.scope}</strong>
+        </div>
+        <div>
+          <span>Confidence</span>
+          <strong>{Math.round(selected.confidence * 100)}%</strong>
+        </div>
+        <div>
+          <span>Sensitivity</span>
+          <strong>{selected.sensitivity}</strong>
+        </div>
+        <div>
+          <span>Expires</span>
+          <strong>{selected.expires_at}</strong>
+        </div>
+        <div>
+          <span>Classification</span>
+          <strong>{classification?.classification ?? 'Inspecting…'}</strong>
+        </div>
+        <div>
+          <span>Policy version</span>
+          <strong>{selected.consolidation?.policy_version ?? 'Not evaluated'}</strong>
+        </div>
+      </div>
+      {classification && <p className="memory-explanation">{classification.explanation}</p>}
+      <details>
+        <summary>Provenance and support</summary>
+        <pre>{JSON.stringify(selected.provenance, null, 2)}</pre>
+        <p>Supporting memories: {classification?.supporting_memory_ids.join(', ') || 'None'}</p>
+      </details>
+    </>
+  )
+}
+
+function CandidateActions({
+  busy,
+  editing,
+  editTitle,
+  editContent,
+  onEditing,
+  onAction,
+}: {
+  busy: boolean
+  editing: boolean
+  editTitle: string
+  editContent: string
+  onEditing: (editing: boolean) => void
+  onAction: (action: MemoryCandidateAction, edit?: { title: string; content: string }) => void
+}) {
+  return (
+    <div className="memory-candidate-actions">
+      <Button type="button" disabled={busy} onClick={() => onAction('approve')}>
+        <ShieldCheck size={14} /> Approve canonical memory
+      </Button>
+      {editing ? (
+        <Button
+          type="button"
+          disabled={busy || !editTitle.trim() || !editContent.trim()}
+          onClick={() => onAction('edit-approve', { title: editTitle, content: editContent })}
+        >
+          Confirm edit and approve
+        </Button>
+      ) : (
+        <Button type="button" variant="secondary" onClick={() => onEditing(true)}>
+          Edit and approve
+        </Button>
+      )}
+      <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction('working')}>
+        Keep working
+      </Button>
+      <Button
+        type="button"
+        variant="secondary"
+        disabled={busy}
+        onClick={() => onAction('supersede')}
+      >
+        Supersede
+      </Button>
+      <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction('retry')}>
+        Retry
+      </Button>
+      <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction('reject')}>
+        Reject
+      </Button>
+      <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction('redact')}>
+        Redact
+      </Button>
+    </div>
+  )
+}
+
+function MemoryLayers({
+  canonical,
+  derived,
+}: {
+  canonical: AgentMemory[]
+  derived: DerivedMemoryResponse | null
+}) {
+  return (
+    <div className="memory-layer-grid">
+      <section aria-labelledby="canonical-memory-title">
+        <span className="eyebrow">Recall</span>
+        <h4 id="canonical-memory-title">Canonical memory</h4>
+        <p>Durable records eligible for recall and evidence-backed answers.</p>
+        <ul>
+          {canonical.slice(0, 20).map((memory) => (
+            <li key={memory.id}>
+              <strong>{memory.title}</strong>
+              <span>{memory.content}</span>
+              <span>
+                {memory.status ?? 'active'}
+                {memory.supersedes_id ? ` · supersedes ${memory.supersedes_id}` : ''}
+                {memory.source ? ` · from ${memory.source}` : ''}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+      <section aria-labelledby="derived-memory-title">
+        <span className="eyebrow">Reflect</span>
+        <h4 id="derived-memory-title">Derived · not canonical</h4>
+        <p>Recomputed interpretations are never source evidence or citation authority.</p>
+        <ul>
+          {derived?.representations.slice(0, 20).map((item) => (
+            <li key={item.id}>
+              <strong>
+                {item.kind}: {item.statement}
+              </strong>
+              <span>Supports: {item.supporting_memory_ids.join(', ') || 'None'}</span>
+              <span>Opposes: {item.contradicting_memory_ids.join(', ') || 'None'}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  )
+}
+
+function queueStatus(candidate: MemoryCandidate): QueueView {
+  const job = candidate.consolidation
+  if (job?.status === 'dead-letter') return 'dead-letter'
+  if (job?.status === 'retry' || job?.last_error) return 'failed'
+  if (candidate.status === 'expired') return 'expired'
+  if (candidate.status === 'accepted' && job?.decision === 'auto-retain') return 'auto-retained'
+  if (candidate.status === 'accepted') return 'approved'
+  if (['cancelled', 'rejected', 'redacted'].includes(candidate.status)) return 'rejected'
+  return 'pending'
+}

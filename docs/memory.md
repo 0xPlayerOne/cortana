@@ -120,12 +120,25 @@ implemented.
 Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candidates`,
 `GET /v1/memory/candidates/export`,
 `POST /v1/memory/candidates/{id}/cancel`, `POST /v1/memory/candidates/{id}/redact`, and
-`POST /v1/memory/candidates/{id}/classify`, and `POST /v1/memory/candidates/{id}/consolidate`.
+`POST /v1/memory/candidates/{id}/classify`, `POST /v1/memory/candidates/{id}/edit`, and
+`POST /v1/memory/candidates/{id}/consolidate`. Owner-local operators can persistently pause or
+resume queued work through `POST /v1/memory/consolidation/pause|resume`; non-owner memory
+principals cannot operate this control plane. Candidate list responses include the latest bounded
+consolidation status, decision, classification, policy identity, attempts, canonical memory id, and
+failure metadata when a job exists.
 The CLI equivalent is
 `cortana memory candidate propose|list|export|cancel|redact|classify|consolidate`. Candidate submissions require
 an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,
 provenance to 4 KiB, and expiry to seven days. The bounded path rejects sensitive/restricted
 proposals and never advances the canonical memory revision.
+
+Cortana Desktop exposes this lifecycle in Settings under Native agentic memory. Pending, approved,
+auto-retained, rejected, expired, failed, and dead-letter views are searchable and virtualized. Any
+action that may write canonical memory requires explicit confirmation and is still revalidated by
+the backend. Edit-and-approve first validates and atomically updates a pending candidate, cancelling
+stale queued work before the versioned policy is evaluated again. Recallable canonical memories and
+derived reflection projections are rendered in separate, labelled layers; derived data is never
+presented as evidence or canonical memory.
 
 ## Operating boundaries
 

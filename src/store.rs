@@ -98,6 +98,25 @@ pub struct StoreStats {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct ConsolidationJobReview {
+    pub status: String,
+    pub decision: String,
+    pub classification: String,
+    pub policy_version: String,
+    pub attempts: i64,
+    pub memory_id: Option<String>,
+    pub last_error: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MemoryCandidateReview {
+    #[serde(flatten)]
+    pub candidate: ObservationCandidate,
+    pub consolidation: Option<ConsolidationJobReview>,
+}
+
+#[derive(Clone, Debug, Serialize)]
 pub struct PublicAclSummary {
     pub project: String,
     pub documents: usize,
@@ -1893,6 +1912,59 @@ impl Store {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn list_memory_candidate_reviews(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Vec<MemoryCandidateReview>> {
+        let candidates = self.list_memory_candidates(
+            project,
+            observation_kind,
+            scope,
+            limit,
+            principal_id,
+            principal_acl,
+            owner,
+        )?;
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        candidates
+            .into_iter()
+            .map(|candidate| {
+                let consolidation = connection
+                    .query_row(
+                        "SELECT status,decision,classification,policy_version,attempts,memory_id,last_error,updated_at
+                         FROM memory_consolidation_jobs
+                         WHERE candidate_id=?1
+                         ORDER BY updated_at DESC,id DESC LIMIT 1",
+                        [&candidate.id],
+                        |row| {
+                            Ok(ConsolidationJobReview {
+                                status: row.get(0)?,
+                                decision: row.get(1)?,
+                                classification: row.get(2)?,
+                                policy_version: row.get(3)?,
+                                attempts: row.get(4)?,
+                                memory_id: row.get(5)?,
+                                last_error: row.get(6)?,
+                                updated_at: row.get(7)?,
+                            })
+                        },
+                    )
+                    .optional()?;
+                Ok(MemoryCandidateReview {
+                    candidate,
+                    consolidation,
+                })
+            })
+            .collect()
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn export_memory_candidates(
         &self,
         project: Option<&str>,
@@ -2774,6 +2846,76 @@ impl Store {
             owner,
             true,
         )
+    }
+
+    pub fn edit_memory_candidate_scoped(
+        &self,
+        id: &str,
+        title: &str,
+        content: &str,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Option<ObservationCandidate>> {
+        self.expire_memory_candidates()?;
+        let candidate = match self.memory_candidate(id)? {
+            Some(candidate) => candidate,
+            None => return Ok(None),
+        };
+        anyhow::ensure!(
+            owner || acl_allows(&candidate.acl, principal_acl),
+            "candidate ACL denied"
+        );
+        let candidate_scope = memory::MemoryScope::parse(&candidate.scope)?;
+        anyhow::ensure!(
+            candidate_scope != memory::MemoryScope::Principal
+                || candidate.created_by == principal_id
+                || owner,
+            "candidate ACL denied"
+        );
+        anyhow::ensure!(
+            candidate_scope != memory::MemoryScope::OwnerGlobal || owner,
+            "owner-global candidate scope requires owner authorization"
+        );
+        observation::validate_input(&ObservationCandidateInput {
+            observation_kind: candidate.observation_kind.clone(),
+            content_type: candidate.content_type.clone(),
+            retention_tier: candidate.retention_tier.clone(),
+            scope: candidate.scope.clone(),
+            project: candidate.project.clone(),
+            title: title.into(),
+            content: content.into(),
+            source: candidate.source.clone(),
+            source_id: candidate.source_id.clone(),
+            dedupe_key: candidate.dedupe_key.clone(),
+            confidence: candidate.confidence,
+            importance: candidate.importance,
+            sensitivity: candidate.sensitivity.clone(),
+            acl: candidate.acl.clone(),
+            provenance: candidate.provenance.clone(),
+            expires_at: candidate.expires_at.clone(),
+        })?;
+        let now = memory::now();
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let changed = transaction.execute(
+            "UPDATE memory_candidates SET title=?2,content=?3,updated_at=?4
+             WHERE id=?1 AND status='pending'",
+            params![id, title, content, now],
+        )?;
+        if changed == 0 {
+            transaction.rollback()?;
+            return Ok(None);
+        }
+        transaction.execute(
+            "UPDATE memory_consolidation_jobs
+             SET status='cancelled',last_error='candidate-edited',updated_at=?2
+             WHERE candidate_id=?1 AND status IN ('queued','running','retry','paused')",
+            params![id, now],
+        )?;
+        transaction.commit()?;
+        drop(connection);
+        self.memory_candidate(id)
     }
 
     fn update_memory_candidate_status(
@@ -7684,6 +7826,90 @@ mod tests {
                 .expect("candidate list")
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn candidate_review_surfaces_job_state_and_edits_cancel_stale_work() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate");
+        let now = memory::now();
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "INSERT INTO memory_consolidation_jobs(
+                   id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                   last_error,memory_id,created_at,updated_at)
+                 VALUES('review-job',?1,'policy-1','novel','review','paused',5,1,NULL,NULL,?2,?2)",
+                params![candidate.id, now],
+            )
+            .expect("review job");
+        let reviews = store
+            .list_memory_candidate_reviews(
+                Some("work"),
+                None,
+                None,
+                10,
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("reviews");
+        assert_eq!(reviews.len(), 1);
+        assert_eq!(
+            reviews[0]
+                .consolidation
+                .as_ref()
+                .expect("job metadata")
+                .status,
+            "paused"
+        );
+        let edited = store
+            .edit_memory_candidate_scoped(
+                &candidate.id,
+                "Reviewed title",
+                "Reviewed bounded proposal",
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("edit")
+            .expect("pending candidate");
+        assert_eq!(edited.title, "Reviewed title");
+        assert_eq!(
+            store
+                .connection
+                .lock()
+                .expect("store lock")
+                .query_row(
+                    "SELECT status FROM memory_consolidation_jobs WHERE id='review-job'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("job status"),
+            "cancelled"
+        );
+        assert!(
+            store
+                .edit_memory_candidate_scoped(
+                    &candidate.id,
+                    "Denied",
+                    "Denied edit",
+                    "agent-b",
+                    &["other".into()],
+                    false,
+                )
+                .is_err()
         );
     }
 

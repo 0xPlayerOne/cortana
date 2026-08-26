@@ -23,6 +23,7 @@ import { WorkspaceLogo } from '../workspaceLogos'
 import { readWorkspaceLogoFile, writeWorkspaceLogo } from '../workspaceLogoStore'
 import { SourceIcon } from './sourceIcons'
 import { sourceDisplayName } from './sourceIconData'
+import { MemoryReview } from './MemoryReview'
 import { Button } from './ui/Button'
 
 import {
@@ -1810,6 +1811,7 @@ function NativeMemorySection({
           />
         </Field>
       </div>
+      <MemoryReview maxActive={settings.memory.max_active} />
     </SettingsSection>
   )
 }

@@ -1676,6 +1676,8 @@ test('settings navigation opens workspace and services first and exposes native 
   await waitFor(() =>
     expect(screen.getByRole('heading', { name: 'Native agentic memory' })).toBeTruthy()
   )
+  expect(screen.getByRole('heading', { name: 'Memory control center' })).toBeTruthy()
+  expect(screen.getByRole('list', { name: 'Memory candidate queue' })).toBeTruthy()
 })
 
 test('settings theme control updates and persists', async () => {

@@ -29,9 +29,17 @@ semantic fields, authorization behavior, limits, revisions, and degradation stat
 | Memory reflection        | `POST /v1/memory/reflect`                          | `reflect_memory`                                                                 | `memory reflect`                       | bounded, grounded, non-mutating reasoning |
 | Derived memory           | `GET /v1/memory/derived`                           | `inspect_memory_representations`                                                 | —                                      | versioned, non-canonical projections      |
 | Candidate consolidation  | `POST /v1/memory/candidates/{id}/consolidate`      | `consolidate_memory_candidate`                                                   | `memory candidate consolidate`         | versioned policy decision and outcome     |
+| Candidate review edit    | `POST /v1/memory/candidates/{id}/edit`             | —                                                                                | —                                      | validated pending candidate only          |
+| Consolidation control    | `POST /v1/memory/consolidation/pause\|resume`      | —                                                                                | —                                      | owner-local persistent queue control      |
 | Status                   | `GET /v1/status`                                   | `brain_status`                                                                   | `status --json`                        | bounded health/store/source metadata      |
 | Audit                    | `GET /v1/audit`                                    | `audit`                                                                          | `audit export`                         | metadata-only audit records               |
 
 MCP schemas and generated Desktop TypeScript fixtures must be derived from these fields without
 importing private Rust/store internals. Provider-backed answers remain opt-in and must preserve the
 same evidence, memory, revision, and degradation semantics.
+
+Desktop commands for candidate lists, classification/actions, consolidation control, canonical
+export, and derived inspection are fixed-path projections of these HTTP operations. They select a
+memory-scoped owner credential, validate candidate ids and bounded query inputs, and do not accept
+arbitrary backend paths. UI confirmation supplements these controls; it never replaces HTTP ACL,
+lifecycle, idempotency, or versioned-policy enforcement.
