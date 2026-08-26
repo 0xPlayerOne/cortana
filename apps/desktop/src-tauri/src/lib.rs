@@ -140,7 +140,10 @@ fn required_scope_for_path(path: &str) -> &'static str {
         | "/v1/memory/export"
         | "/v1/memory/derived"
         | "/v1/memory/reflect"
-        | "/v1/memory/candidates" => "memory",
+        | "/v1/memory/candidates"
+        | "/v1/memory/consolidation/pause"
+        | "/v1/memory/consolidation/resume"
+        | "/v1/memory/consolidation/status" => "memory",
         path if path.starts_with("/v1/memory/candidates/") => "memory",
         _ => "query",
     }
@@ -148,7 +151,10 @@ fn required_scope_for_path(path: &str) -> &'static str {
 
 #[cfg(test)]
 mod backend_tests {
-    use super::{STATUS_WARMUP_MESSAGE, required_scope_for_path};
+    use super::{
+        MemoryListRequest, STATUS_WARMUP_MESSAGE, required_scope_for_path,
+        validate_memory_candidate_id, validate_memory_list_request,
+    };
 
     #[test]
     fn warmup_message_is_stable_and_bounded() {
@@ -164,10 +170,42 @@ mod backend_tests {
         assert_eq!(required_scope_for_path("/v1/memory/reflect"), "memory");
         assert_eq!(required_scope_for_path("/v1/memory/derived"), "memory");
         assert_eq!(
+            required_scope_for_path("/v1/memory/consolidation/pause"),
+            "memory"
+        );
+        assert_eq!(
+            required_scope_for_path("/v1/memory/consolidation/status"),
+            "memory"
+        );
+        assert_eq!(
             required_scope_for_path("/v1/memory/candidates/id/consolidate"),
             "memory"
         );
         assert_eq!(required_scope_for_path("/v1/search"), "query");
+    }
+
+    #[test]
+    fn memory_review_inputs_are_bounded_before_loopback_requests() {
+        validate_memory_list_request(&MemoryListRequest {
+            project: Some("work".into()),
+            limit: 100,
+            query: None,
+            status: None,
+        })
+        .expect("bounded list");
+        assert!(
+            validate_memory_list_request(&MemoryListRequest {
+                project: Some("work".into()),
+                limit: 1001,
+                query: None,
+                status: None,
+            })
+            .is_err()
+        );
+        validate_memory_candidate_id("8bfe64fb-e8c9-4d49-84ae-144434c432ee")
+            .expect("uuid candidate id");
+        assert!(validate_memory_candidate_id("../audit").is_err());
+        assert!(validate_memory_candidate_id("candidate/id").is_err());
     }
 }
 
@@ -217,6 +255,15 @@ struct DocumentListRequest {
     query: Option<String>,
     cursor: Option<String>,
     limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryListRequest {
+    project: Option<String>,
+    limit: usize,
+    query: Option<String>,
+    status: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -277,6 +324,127 @@ async fn brain_reflect(backend: State<'_, BackendClient>, request: Value) -> Res
     backend
         .request(Method::POST, "/v1/memory/reflect", Some(request))
         .await
+}
+
+async fn brain_memory_list(
+    backend: State<'_, BackendClient>,
+    path: &str,
+    request: MemoryListRequest,
+) -> Result<Value, String> {
+    validate_memory_list_request(&request)?;
+    let mut url = Url::parse(BACKEND_ORIGIN)
+        .map_err(|error| format!("invalid fixed Cortana runtime URL: {error}"))?;
+    url.set_path(path);
+    {
+        let mut query = url.query_pairs_mut();
+        query.append_pair("limit", &request.limit.to_string());
+        if let Some(project) = request.project {
+            query.append_pair("project", &project);
+        }
+        if let Some(search) = request.query {
+            query.append_pair("query", &search);
+        }
+        if let Some(status) = request.status {
+            query.append_pair("status", &status);
+        }
+    }
+    backend.request_url(Method::GET, url, None).await
+}
+
+#[tauri::command]
+async fn brain_memory_candidates(
+    backend: State<'_, BackendClient>,
+    request: MemoryListRequest,
+) -> Result<Value, String> {
+    brain_memory_list(backend, "/v1/memory/candidates", request).await
+}
+
+#[tauri::command]
+async fn brain_memory_derived(
+    backend: State<'_, BackendClient>,
+    request: MemoryListRequest,
+) -> Result<Value, String> {
+    brain_memory_list(backend, "/v1/memory/derived", request).await
+}
+
+#[tauri::command]
+async fn brain_memory_export(
+    backend: State<'_, BackendClient>,
+    request: MemoryListRequest,
+) -> Result<Value, String> {
+    brain_memory_list(backend, "/v1/memory/export", request).await
+}
+
+#[tauri::command]
+async fn brain_memory_candidate_action(
+    backend: State<'_, BackendClient>,
+    id: String,
+    action: String,
+    request: Option<Value>,
+) -> Result<Value, String> {
+    validate_memory_candidate_id(&id)?;
+    let base = format!("/v1/memory/candidates/{id}");
+    match action.as_str() {
+        "classify" => backend.request(Method::POST, &format!("{base}/classify"), None).await,
+        "reject" => backend.request(Method::POST, &format!("{base}/cancel"), None).await,
+        "redact" => backend.request(Method::POST, &format!("{base}/redact"), None).await,
+        "approve" | "working" | "supersede" | "retry" | "edit-approve" => {
+            let mut request = request.ok_or_else(|| "candidate action request required".to_string())?;
+            let object = request
+                .as_object_mut()
+                .ok_or_else(|| "candidate action request must be an object".to_string())?;
+            if action == "edit-approve" {
+                let edit = object
+                    .remove("edit")
+                    .filter(|value| !value.is_null())
+                    .ok_or_else(|| "edit-approve requires an edit".to_string())?;
+                backend
+                    .request(Method::POST, &format!("{base}/edit"), Some(edit))
+                    .await?;
+            } else {
+                object.remove("edit");
+            }
+            if action == "working" {
+                backend
+                    .request(Method::POST, &format!("{base}/working"), None)
+                    .await?;
+            }
+            if action == "retry" {
+                backend
+                    .request(Method::POST, &format!("{base}/retry"), None)
+                    .await?;
+            }
+            let policy = object
+                .remove("policy")
+                .ok_or_else(|| "candidate action policy required".to_string())?;
+            backend
+                .request(
+                    Method::POST,
+                    &format!("{base}/consolidate"),
+                    Some(serde_json::json!({
+                        "policy": policy,
+                        "explicit_approval": true,
+                        "action": if action == "supersede" { Some("supersede") } else { None }
+                    })),
+                )
+                .await
+        }
+        _ => Err("unsupported memory candidate action".into()),
+    }
+}
+
+#[tauri::command]
+async fn brain_memory_consolidation_control(
+    backend: State<'_, BackendClient>,
+    action: String,
+) -> Result<Value, String> {
+    let path = match action.as_str() {
+        "pause" => "/v1/memory/consolidation/pause",
+        "resume" => "/v1/memory/consolidation/resume",
+        "status" => "/v1/memory/consolidation/status",
+        _ => return Err("unsupported memory consolidation control".into()),
+    };
+    backend.request(if action == "status" { Method::GET } else { Method::POST }, path, None).await
 }
 
 #[tauri::command]
@@ -993,6 +1161,53 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
     Ok(())
 }
 
+fn validate_memory_list_request(request: &MemoryListRequest) -> Result<(), String> {
+    if !(1..=1000).contains(&request.limit) {
+        return Err("memory list limit must be between 1 and 1000".into());
+    }
+    if request.query.as_ref().is_some_and(|value| {
+        value.len() > 256 || value.chars().any(char::is_control)
+    }) {
+        return Err("memory candidate query exceeds its safe bound".into());
+    }
+    if request.status.as_ref().is_some_and(|value| {
+        !matches!(
+            value.as_str(),
+            "pending"
+                | "approved"
+                | "auto-retained"
+                | "rejected"
+                | "expired"
+                | "failed"
+                | "dead-letter"
+        )
+    }) {
+        return Err("invalid memory candidate status".into());
+    }
+    if request.project.as_ref().is_some_and(|value| {
+        value.is_empty()
+            || value.len() > MAX_SCOPE_LENGTH
+            || value.chars().any(|character| character.is_control())
+    }) {
+        return Err(format!(
+            "project must contain 1 to {MAX_SCOPE_LENGTH} bytes"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_memory_candidate_id(id: &str) -> Result<(), String> {
+    if id.is_empty()
+        || id.len() > MAX_DOCUMENT_ID_LENGTH
+        || !id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    {
+        return Err("invalid memory candidate id".into());
+    }
+    Ok(())
+}
+
 fn validate_document_id(id: &str) -> Result<(), String> {
     if id.is_empty()
         || id.len() > MAX_DOCUMENT_ID_LENGTH
@@ -1201,6 +1416,11 @@ pub fn run() {
             brain_answer,
             brain_context,
             brain_reflect,
+            brain_memory_candidates,
+            brain_memory_candidate_action,
+            brain_memory_consolidation_control,
+            brain_memory_derived,
+            brain_memory_export,
             brain_documents,
             brain_document,
             brain_graph,
@@ -1411,7 +1631,12 @@ mod tests {
                 desktop_source_validation_start,
                 desktop_source_validation_status,
                 desktop_update_check,
-                desktop_update_status
+                desktop_update_status,
+                brain_memory_candidates,
+                brain_memory_candidate_action,
+                brain_memory_consolidation_control,
+                brain_memory_derived,
+                brain_memory_export
             ])
             .build(context)
             .expect("build mock desktop app")

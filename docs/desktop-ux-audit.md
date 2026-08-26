@@ -139,6 +139,17 @@ Verify:
 - tombstone and redaction behavior;
 - no automatic source-to-memory copying;
 - candidate, consolidation, contradiction, and reflection UX only when the corresponding backend policy is explicitly enabled.
+- searchable, virtualized candidate queues for pending, approved, auto-retained, rejected, expired,
+  failed, and dead-letter states, with bulk actions capped at 25 records;
+- explicit confirmation for canonical promotion, including edit-and-approve, keep-working,
+  supersede, and retry actions;
+- owner-only persisted pause/resume controls plus bounded retention ceilings, candidate review
+  expiry, and active-memory capacity; recurring processing and automatic retention remain disabled
+  until an operational scheduler and release gate ship;
+- visible provenance, support, classification, policy identity, confidence, sensitivity, expiry,
+  attempts, and failure state sufficient to explain why a record exists or was superseded;
+- keyboard-operable native controls, announced errors/status changes, responsive layouts, and
+  usable large-queue behavior at 200% zoom.
 
 Derived observations or reflection output must not be displayed as canonical memory or source evidence.
 

@@ -36,6 +36,12 @@ import type {
   ProviderModelKind,
   ProviderModelList,
   ReflectResponse,
+  AgentMemory,
+  DerivedMemoryResponse,
+  MemoryCandidate,
+  MemoryCandidateActionResult,
+  MemoryCandidateClassification,
+  MemoryReviewPolicy,
 } from './types'
 
 export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
@@ -436,6 +442,193 @@ export async function getReflection(
   })
   if (!response.ok) throw new Error(`Reflection failed (${response.status})`)
   return (await response.json()) as ReflectResponse
+}
+
+export async function listMemoryCandidates(
+  project?: string,
+  queryValue?: string,
+  status?: string
+): Promise<MemoryCandidate[]> {
+  type CandidatePage = { candidates: MemoryCandidate[]; truncated: boolean }
+  const request = {
+    project: project || null,
+    limit: 1000,
+    query: queryValue || null,
+    status: status || null,
+  }
+  if (isTauri()) {
+    const page = await invokeDesktop<CandidatePage>('brain_memory_candidates', { request })
+    if (page.truncated) {
+      throw new Error('Memory candidate review was truncated; narrow the search or status filter')
+    }
+    return page.candidates
+  }
+  const query = new URLSearchParams({ limit: '1000' })
+  if (project) query.set('project', project)
+  if (queryValue) query.set('query', queryValue)
+  if (status) query.set('status', status)
+  const response = await authorizedFetch(`/v1/memory/candidates?${query}`, {})
+  if (!response.ok) throw new Error(`Memory candidate review failed (${response.status})`)
+  const page = (await response.json()) as CandidatePage
+  if (page.truncated) {
+    throw new Error('Memory candidate review was truncated; narrow the search or status filter')
+  }
+  return page.candidates
+}
+
+export async function classifyMemoryCandidate(id: string): Promise<MemoryCandidateClassification> {
+  if (isTauri()) {
+    return invokeDesktop<MemoryCandidateClassification>('brain_memory_candidate_action', {
+      id,
+      action: 'classify',
+      request: null,
+    })
+  }
+  const response = await authorizedFetch(
+    `/v1/memory/candidates/${encodeURIComponent(id)}/classify`,
+    { method: 'POST' }
+  )
+  if (!response.ok) throw new Error(`Memory candidate classification failed (${response.status})`)
+  return (await response.json()) as MemoryCandidateClassification
+}
+
+export type MemoryCandidateAction =
+  'approve' | 'edit-approve' | 'working' | 'supersede' | 'reject' | 'redact' | 'retry'
+
+export async function actOnMemoryCandidate(
+  id: string,
+  action: MemoryCandidateAction,
+  policy: MemoryReviewPolicy,
+  edit?: { title: string; content: string }
+): Promise<MemoryCandidateActionResult> {
+  const request = { policy: consolidationPolicy(policy), edit: edit || null }
+  if (isTauri()) {
+    return invokeDesktop<MemoryCandidateActionResult>('brain_memory_candidate_action', {
+      id,
+      action,
+      request,
+    })
+  }
+  if (action === 'edit-approve') {
+    const edited = await authorizedFetch(`/v1/memory/candidates/${encodeURIComponent(id)}/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(edit),
+    })
+    if (!edited.ok) throw new Error(`Memory candidate edit failed (${edited.status})`)
+  }
+  if (action === 'working') {
+    const working = await authorizedFetch(
+      `/v1/memory/candidates/${encodeURIComponent(id)}/working`,
+      {
+        method: 'POST',
+      }
+    )
+    if (!working.ok) throw new Error(`Memory candidate working failed (${working.status})`)
+  }
+  if (action === 'retry') {
+    const retry = await authorizedFetch(`/v1/memory/candidates/${encodeURIComponent(id)}/retry`, {
+      method: 'POST',
+    })
+    if (!retry.ok) throw new Error(`Memory candidate retry failed (${retry.status})`)
+  }
+  const suffix = action === 'reject' ? 'cancel' : action === 'redact' ? 'redact' : 'consolidate'
+  const response = await authorizedFetch(
+    `/v1/memory/candidates/${encodeURIComponent(id)}/${suffix}`,
+    suffix === 'consolidate'
+      ? {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            policy: request.policy,
+            explicit_approval: true,
+            action: action === 'supersede' ? 'supersede' : null,
+          }),
+        }
+      : { method: 'POST' }
+  )
+  if (!response.ok) throw new Error(`Memory candidate ${action} failed (${response.status})`)
+  return (await response.json()) as MemoryCandidateActionResult
+}
+
+export async function setMemoryConsolidationPaused(paused: boolean): Promise<void> {
+  if (isTauri()) {
+    await invokeDesktop('brain_memory_consolidation_control', {
+      action: paused ? 'pause' : 'resume',
+    })
+    return
+  }
+  const response = await authorizedFetch(
+    `/v1/memory/consolidation/${paused ? 'pause' : 'resume'}`,
+    { method: 'POST' }
+  )
+  if (!response.ok) throw new Error(`Memory consolidation control failed (${response.status})`)
+}
+
+export async function getMemoryConsolidationState(): Promise<{
+  paused: boolean
+  canControl: boolean
+}> {
+  if (isTauri()) {
+    const response = await invokeDesktop<{ paused: boolean; can_control: boolean }>(
+      'brain_memory_consolidation_control',
+      {
+        action: 'status',
+      }
+    )
+    return { paused: response.paused, canControl: response.can_control }
+  }
+  const response = await authorizedFetch('/v1/memory/consolidation/status', {})
+  if (!response.ok) throw new Error(`Memory consolidation status failed (${response.status})`)
+  const state = (await response.json()) as { paused: boolean; can_control: boolean }
+  return { paused: state.paused, canControl: state.can_control }
+}
+
+export async function listDerivedMemories(project?: string): Promise<DerivedMemoryResponse> {
+  const request = { project: project || null, limit: 64 }
+  if (isTauri()) {
+    return invokeDesktop<DerivedMemoryResponse>('brain_memory_derived', { request })
+  }
+  const query = new URLSearchParams({ limit: '64' })
+  if (project) query.set('project', project)
+  const response = await authorizedFetch(`/v1/memory/derived?${query}`, {})
+  if (!response.ok) throw new Error(`Derived memory review failed (${response.status})`)
+  return (await response.json()) as DerivedMemoryResponse
+}
+
+export async function listCanonicalMemories(project?: string): Promise<AgentMemory[]> {
+  const request = { project: project || null, limit: 100 }
+  if (isTauri()) {
+    return invokeDesktop<AgentMemory[]>('brain_memory_export', { request })
+  }
+  const query = new URLSearchParams({ limit: '100' })
+  if (project) query.set('project', project)
+  const response = await authorizedFetch(`/v1/memory/export?${query}`, {})
+  if (!response.ok) throw new Error(`Canonical memory review failed (${response.status})`)
+  return (await response.json()) as AgentMemory[]
+}
+
+function consolidationPolicy(policy: MemoryReviewPolicy) {
+  return {
+    version: 'cortana.memory.consolidation.v1',
+    enabled: true,
+    auto_retain_min_confidence: 0.9,
+    auto_retain_min_importance: 0.65,
+    max_queue: 1000,
+    max_retries: 3,
+    retry_backoff_seconds:
+      policy.schedule === 'daily' ? 86_400 : policy.schedule === 'hourly' ? 3_600 : 0,
+    candidate_expiry_days: policy.candidateExpiryDays,
+    preferences: {
+      allow_auto_retain: policy.autoCommit,
+      allow_working_retention: true,
+    },
+    ceilings: {
+      max_working_days: policy.maxWorkingDays,
+      max_durable_days: policy.maxDurableDays,
+      max_active: policy.maxActive,
+    },
+  }
 }
 
 export async function getDocuments(

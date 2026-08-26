@@ -8,7 +8,10 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use rusqlite::types::Type;
-use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params, params_from_iter};
+use rusqlite::{
+    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, params,
+    params_from_iter,
+};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -96,6 +99,36 @@ pub struct StoreStats {
     pub sources: Vec<SourceStats>,
     pub sync_runs: Vec<SourceSyncStats>,
 }
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ConsolidationJobReview {
+    pub status: String,
+    pub decision: String,
+    pub classification: String,
+    pub policy_version: String,
+    pub attempts: i64,
+    pub memory_id: Option<String>,
+    pub last_error: Option<String>,
+    pub updated_at: String,
+    pub reason_code: Option<String>,
+    pub explanation: Option<String>,
+    pub supporting_memory_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct MemoryCandidateReview {
+    #[serde(flatten)]
+    pub candidate: ObservationCandidate,
+    pub consolidation: Option<ConsolidationJobReview>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct BoundedMemoryCandidates<T> {
+    pub candidates: Vec<T>,
+    pub truncated: bool,
+}
+
+const CANDIDATE_PAGE_RESPONSE_OVERHEAD_BYTES: usize = 64;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct PublicAclSummary {
@@ -327,9 +360,18 @@ impl Store {
                attempts INTEGER NOT NULL DEFAULT 0,
                last_error TEXT,
                memory_id TEXT,
+               reason_code TEXT,
+               explanation TEXT,
+               supporting_memory_ids_json TEXT,
                created_at TEXT NOT NULL,
                updated_at TEXT NOT NULL,
                UNIQUE(candidate_id,policy_version));
+             CREATE TABLE IF NOT EXISTS memory_consolidation_control(
+               singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+               paused INTEGER NOT NULL DEFAULT 0 CHECK(paused IN (0,1)),
+               updated_at TEXT NOT NULL);
+             INSERT OR IGNORE INTO memory_consolidation_control(singleton,paused,updated_at)
+               VALUES(1,0,'1970-01-01T00:00:00Z');
              CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
                memory_id UNINDEXED, title, content, tokenize='unicode61');
              CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
@@ -389,6 +431,24 @@ impl Store {
         migrate_memory_axes(&mut connection)?;
         migrate_memory_dedupe_scope(&mut connection)?;
         migrate_memory_candidates(&mut connection)?;
+        ensure_column(
+            &connection,
+            "memory_consolidation_jobs",
+            "reason_code",
+            "TEXT",
+        )?;
+        ensure_column(
+            &connection,
+            "memory_consolidation_jobs",
+            "explanation",
+            "TEXT",
+        )?;
+        ensure_column(
+            &connection,
+            "memory_consolidation_jobs",
+            "supporting_memory_ids_json",
+            "TEXT",
+        )?;
         connection.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_memories_scope
                ON memories(project,kind,status,updated_at DESC);
@@ -1880,7 +1940,7 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
     ) -> Result<Vec<ObservationCandidate>> {
-        self.query_memory_candidates(
+        let page = self.query_memory_candidates(
             project,
             observation_kind,
             scope,
@@ -1889,7 +1949,177 @@ impl Store {
             principal_acl,
             owner,
             observation::MAX_CANDIDATE_LIST_LIMIT,
-        )
+        )?;
+        anyhow::ensure!(
+            !page.truncated,
+            "memory candidate list was truncated; narrow the project or scope filter"
+        );
+        Ok(page.candidates)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn list_memory_candidate_reviews(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+        query: Option<&str>,
+        status: Option<&str>,
+    ) -> Result<BoundedMemoryCandidates<MemoryCandidateReview>> {
+        self.expire_memory_candidates()?;
+        let requested_limit = limit.clamp(1, observation::MAX_CANDIDATE_REVIEW_LIMIT);
+        let normalized_query = query.map(str::trim).filter(|value| !value.is_empty());
+        if let Some(value) = normalized_query {
+            anyhow::ensure!(value.len() <= 256, "candidate search exceeds 256 bytes");
+            anyhow::ensure!(
+                !value.chars().any(char::is_control),
+                "candidate search contains control characters"
+            );
+        }
+        if let Some(value) = status {
+            anyhow::ensure!(
+                matches!(
+                    value,
+                    "pending"
+                        | "approved"
+                        | "auto-retained"
+                        | "rejected"
+                        | "expired"
+                        | "failed"
+                        | "dead-letter"
+                ),
+                "unsupported candidate review status"
+            );
+        }
+        let normalized_kind = observation_kind
+            .map(observation::ObservationKind::parse)
+            .transpose()?
+            .map(|kind| kind.as_str().to_string());
+        let normalized_scope = scope
+            .map(memory::MemoryScope::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        if normalized_scope.as_deref() == Some("owner-global") && !owner {
+            bail!("owner-global candidate scope requires owner authorization");
+        }
+        let search_pattern = normalized_query.map(|value| {
+            let escaped = value
+                .to_ascii_lowercase()
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("%{escaped}%")
+        });
+        let acl_json = serde_json::to_string(principal_acl)?;
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT c.id,c.observation_kind,c.content_type,c.retention_tier,c.scope,c.created_by,c.project,c.title,c.content,
+                    c.source,c.source_id,c.dedupe_key,c.confidence,c.importance,c.sensitivity,c.status,c.acl_json,
+                    c.provenance_json,c.expires_at,c.rejection_reason,c.created_at,c.updated_at,
+                    j.status,j.decision,j.classification,j.policy_version,j.attempts,j.memory_id,j.last_error,j.updated_at,
+                    j.reason_code,j.explanation,j.supporting_memory_ids_json
+             FROM memory_candidates c
+             LEFT JOIN memory_consolidation_jobs j ON j.id=(
+               SELECT latest.id FROM memory_consolidation_jobs latest
+               WHERE latest.candidate_id=c.id ORDER BY latest.updated_at DESC,latest.id DESC LIMIT 1)
+             WHERE (?1 IS NULL OR c.project=?1)
+               AND (?2 IS NULL OR c.observation_kind=?2)
+               AND (?3 IS NULL OR c.scope=?3)
+               AND (?4 OR c.scope<>'owner-global')
+               AND (c.scope<>'principal' OR c.created_by=?5)
+               AND (json_array_length(c.acl_json)=0 OR EXISTS(
+                 SELECT 1 FROM json_each(?6) principal_acl
+                 WHERE principal_acl.value='*' OR EXISTS(
+                   SELECT 1 FROM json_each(c.acl_json) candidate_acl
+                   WHERE candidate_acl.value=principal_acl.value)))
+               AND (?7 IS NULL OR lower(c.title) LIKE ?7 ESCAPE '\\'
+                    OR lower(c.content) LIKE ?7 ESCAPE '\\'
+                    OR lower(c.project) LIKE ?7 ESCAPE '\\'
+                    OR lower(c.source) LIKE ?7 ESCAPE '\\')
+               AND (?8 IS NULL OR ?8=(CASE
+                    WHEN c.status='expired' THEN 'expired'
+                    WHEN c.status='accepted' AND j.decision='auto-retain' THEN 'auto-retained'
+                    WHEN c.status='accepted' THEN 'approved'
+                    WHEN c.status IN ('cancelled','rejected','redacted') THEN 'rejected'
+                    WHEN j.status='dead-letter' THEN 'dead-letter'
+                    WHEN j.status='retry' THEN 'failed'
+                    ELSE 'pending' END))
+             ORDER BY c.created_at DESC,c.id DESC LIMIT ?9",
+        )?;
+        let rows = statement.query_map(
+            params![
+                project,
+                normalized_kind.as_deref(),
+                normalized_scope.as_deref(),
+                owner,
+                principal_id,
+                acl_json,
+                search_pattern.as_deref(),
+                status,
+                i64::try_from(requested_limit.saturating_add(1)).unwrap_or(i64::MAX),
+            ],
+            |row| {
+                let candidate = observation_candidate_from_row(row)?;
+                let consolidation = row
+                    .get::<_, Option<String>>(22)?
+                    .map(|job_status| {
+                        Ok::<ConsolidationJobReview, rusqlite::Error>(ConsolidationJobReview {
+                            status: job_status,
+                            decision: row.get(23)?,
+                            classification: row.get(24)?,
+                            policy_version: row.get(25)?,
+                            attempts: row.get(26)?,
+                            memory_id: row.get(27)?,
+                            last_error: row.get(28)?,
+                            updated_at: row.get(29)?,
+                            reason_code: row.get(30)?,
+                            explanation: row.get(31)?,
+                            supporting_memory_ids: row
+                                .get::<_, Option<String>>(32)?
+                                .map(|value| serde_json::from_str(&value))
+                                .transpose()
+                                .map_err(|error| {
+                                    rusqlite::Error::FromSqlConversionFailure(
+                                        32,
+                                        Type::Text,
+                                        Box::new(error),
+                                    )
+                                })?
+                                .unwrap_or_default(),
+                        })
+                    })
+                    .transpose()?;
+                Ok(MemoryCandidateReview {
+                    candidate,
+                    consolidation,
+                })
+            },
+        )?;
+        let mut reviews = Vec::new();
+        let mut response_bytes = CANDIDATE_PAGE_RESPONSE_OVERHEAD_BYTES;
+        let mut truncated = false;
+        for row in rows {
+            let review = row?;
+            if reviews.len() == requested_limit {
+                truncated = true;
+                break;
+            }
+            let bytes = serde_json::to_vec(&review)?.len().saturating_add(1);
+            if response_bytes.saturating_add(bytes) > observation::MAX_CANDIDATE_RESPONSE_BYTES {
+                truncated = true;
+                break;
+            }
+            response_bytes = response_bytes.saturating_add(bytes);
+            reviews.push(review);
+        }
+        Ok(BoundedMemoryCandidates {
+            candidates: reviews,
+            truncated,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1903,6 +2133,33 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
     ) -> Result<Vec<ObservationCandidate>> {
+        let page = self.export_memory_candidates_page(
+            project,
+            observation_kind,
+            scope,
+            limit,
+            principal_id,
+            principal_acl,
+            owner,
+        )?;
+        anyhow::ensure!(
+            !page.truncated,
+            "memory candidate export was truncated; narrow the project or scope filter"
+        );
+        Ok(page.candidates)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_memory_candidates_page(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<BoundedMemoryCandidates<ObservationCandidate>> {
         self.query_memory_candidates(
             project,
             observation_kind,
@@ -1926,8 +2183,9 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
         max_limit: usize,
-    ) -> Result<Vec<ObservationCandidate>> {
+    ) -> Result<BoundedMemoryCandidates<ObservationCandidate>> {
         self.expire_memory_candidates()?;
+        let requested_limit = limit.clamp(1, max_limit);
         let normalized_kind = observation_kind
             .map(observation::ObservationKind::parse)
             .transpose()?
@@ -1966,24 +2224,33 @@ impl Store {
                 owner,
                 principal_id,
                 acl_json,
-                i64::try_from(limit.clamp(1, max_limit)).unwrap_or(i64::MAX),
+                i64::try_from(requested_limit.saturating_add(1)).unwrap_or(i64::MAX),
             ],
             observation_candidate_from_row,
         )?;
         let mut result = Vec::new();
-        let mut response_bytes = 2usize;
+        let mut response_bytes = CANDIDATE_PAGE_RESPONSE_OVERHEAD_BYTES;
+        let mut truncated = false;
         for row in rows {
             let candidate = row?;
+            if result.len() == requested_limit {
+                truncated = true;
+                break;
+            }
             let candidate_bytes = serde_json::to_vec(&candidate)?.len().saturating_add(1);
             if response_bytes.saturating_add(candidate_bytes)
                 > observation::MAX_CANDIDATE_RESPONSE_BYTES
             {
+                truncated = true;
                 break;
             }
             response_bytes = response_bytes.saturating_add(candidate_bytes);
             result.push(candidate);
         }
-        Ok(result)
+        Ok(BoundedMemoryCandidates {
+            candidates: result,
+            truncated,
+        })
     }
 
     pub fn memory_candidate(&self, id: &str) -> Result<Option<ObservationCandidate>> {
@@ -2074,6 +2341,47 @@ impl Store {
         owner: bool,
         explicit_approval: bool,
     ) -> Result<ConsolidationOutcome> {
+        self.consolidate_memory_candidate_with_action(
+            id,
+            policy,
+            principal_id,
+            principal_acl,
+            owner,
+            explicit_approval,
+            false,
+        )
+    }
+
+    pub fn supersede_memory_candidate(
+        &self,
+        id: &str,
+        policy: &ConsolidationPolicy,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<ConsolidationOutcome> {
+        self.consolidate_memory_candidate_with_action(
+            id,
+            policy,
+            principal_id,
+            principal_acl,
+            owner,
+            true,
+            true,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn consolidate_memory_candidate_with_action(
+        &self,
+        id: &str,
+        policy: &ConsolidationPolicy,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+        explicit_approval: bool,
+        explicit_supersession: bool,
+    ) -> Result<ConsolidationOutcome> {
         policy.validate()?;
         self.expire_memory_candidates()?;
         let candidate = self
@@ -2102,6 +2410,7 @@ impl Store {
             policy,
             &PolicyContext {
                 explicit_approval,
+                explicit_supersession,
                 same_scope: candidate_scope != memory::MemoryScope::Principal
                     || candidate.created_by == principal_id,
                 reviewer: None,
@@ -2112,9 +2421,17 @@ impl Store {
             .max_active
             .min(self.memory_max_active.load(AtomicOrdering::Acquire));
         let now = memory::now();
+        let supporting_memory_ids_json =
+            serde_json::to_string(&classification.supporting_memory_ids)?;
         let policy_identity = policy.identity()?;
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
+        let paused: bool = transaction.query_row(
+            "SELECT paused FROM memory_consolidation_control WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(!paused, "memory consolidation is paused");
         let active_count: i64 = transaction.query_row(
             "SELECT COUNT(*) FROM memories
              WHERE status='active'
@@ -2269,8 +2586,8 @@ impl Store {
             transaction.execute(
                 "INSERT INTO memory_consolidation_jobs(
                    id,candidate_id,policy_version,classification,decision,status,priority,attempts,
-                   last_error,memory_id,created_at,updated_at)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,0,?8,NULL,?9,?9)",
+                   last_error,memory_id,reason_code,explanation,supporting_memory_ids_json,created_at,updated_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,0,?8,NULL,?9,?10,?11,?12,?12)",
                 params![
                     uuid::Uuid::new_v4().to_string(),
                     id,
@@ -2280,6 +2597,9 @@ impl Store {
                     reconciled_status,
                     i64::from(report.queue_priority),
                     format!("candidate-terminal:{}", candidate.status),
+                    report.reason_code,
+                    report.explanation,
+                    supporting_memory_ids_json,
                     now,
                 ],
             )?;
@@ -2369,9 +2689,11 @@ impl Store {
             {
                 transaction.execute(
                     "UPDATE memory_consolidation_jobs
-                     SET status='queued',classification=?2,decision=?3,last_error=NULL,updated_at=?4
+                     SET status='queued',classification=?2,decision=?3,last_error=NULL,updated_at=?4,
+                         reason_code=?5,explanation=?6,supporting_memory_ids_json=?7
                      WHERE id=?1",
-                    params![job_id, report.classification, report.decision.as_str(), now],
+                    params![job_id, report.classification, report.decision.as_str(), now,
+                        report.reason_code, report.explanation, supporting_memory_ids_json],
                 )?;
                 job_id
             } else {
@@ -2399,8 +2721,8 @@ impl Store {
             transaction.execute(
                 "INSERT INTO memory_consolidation_jobs(
                    id,candidate_id,policy_version,classification,decision,status,priority,attempts,
-                   last_error,memory_id,created_at,updated_at)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,0,NULL,NULL,?8,?8)",
+                   last_error,memory_id,reason_code,explanation,supporting_memory_ids_json,created_at,updated_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,0,NULL,NULL,?8,?9,?10,?11,?11)",
                 params![
                     job_id,
                     id,
@@ -2419,6 +2741,9 @@ impl Store {
                         "paused"
                     },
                     i64::from(report.queue_priority),
+                    report.reason_code,
+                    report.explanation,
+                    supporting_memory_ids_json,
                     now,
                 ],
             )?;
@@ -2428,9 +2753,18 @@ impl Store {
         if report.decision == ConsolidationDecision::Review {
             transaction.execute(
                 "UPDATE memory_consolidation_jobs
-                 SET status='paused',classification=?2,decision=?3,updated_at=?4
+                 SET status='paused',classification=?2,decision=?3,updated_at=?4,
+                     reason_code=?5,explanation=?6,supporting_memory_ids_json=?7
                  WHERE id=?1 AND status IN ('queued','retry','running','paused')",
-                params![job_id, report.classification, report.decision.as_str(), now],
+                params![
+                    job_id,
+                    report.classification,
+                    report.decision.as_str(),
+                    now,
+                    report.reason_code,
+                    report.explanation,
+                    supporting_memory_ids_json
+                ],
             )?;
             transaction.commit()?;
             drop(connection);
@@ -2679,11 +3013,17 @@ impl Store {
     /// Pause queued consolidation jobs without affecting explicit memory or
     /// source retrieval. The state is persisted so a restart remains safe.
     pub fn pause_memory_consolidation(&self) -> Result<usize> {
-        let connection = self.connection.lock().expect("store lock poisoned");
-        let changed = connection.execute(
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "UPDATE memory_consolidation_control SET paused=1,updated_at=?1 WHERE singleton=1",
+            [memory::now()],
+        )?;
+        let changed = transaction.execute(
             "UPDATE memory_consolidation_jobs SET status='paused',updated_at=?1 WHERE status IN ('queued','retry','running')",
             [memory::now()],
         )?;
+        transaction.commit()?;
         drop(connection);
         self.record_audit(
             "system",
@@ -2698,14 +3038,31 @@ impl Store {
         Ok(changed)
     }
 
+    pub fn memory_consolidation_paused(&self) -> Result<bool> {
+        let connection = self.read_connection.lock().expect("store lock poisoned");
+        connection
+            .query_row(
+                "SELECT paused FROM memory_consolidation_control WHERE singleton=1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(Into::into)
+    }
+
     /// Resume explicitly paused consolidation jobs. They return to the
     /// persistent queue and remain subject to their original policy version.
     pub fn resume_memory_consolidation(&self) -> Result<usize> {
-        let connection = self.connection.lock().expect("store lock poisoned");
-        let changed = connection.execute(
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        transaction.execute(
+            "UPDATE memory_consolidation_control SET paused=0,updated_at=?1 WHERE singleton=1",
+            [memory::now()],
+        )?;
+        let changed = transaction.execute(
             "UPDATE memory_consolidation_jobs SET status='queued',updated_at=?1 WHERE status='paused'",
             [memory::now()],
         )?;
+        transaction.commit()?;
         drop(connection);
         self.record_audit(
             "system",
@@ -2774,6 +3131,184 @@ impl Store {
             owner,
             true,
         )
+    }
+
+    pub fn edit_memory_candidate_scoped(
+        &self,
+        id: &str,
+        title: &str,
+        content: &str,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Option<ObservationCandidate>> {
+        self.expire_memory_candidates()?;
+        let candidate = match self.memory_candidate(id)? {
+            Some(candidate) => candidate,
+            None => return Ok(None),
+        };
+        anyhow::ensure!(
+            owner || acl_allows(&candidate.acl, principal_acl),
+            "candidate ACL denied"
+        );
+        let candidate_scope = memory::MemoryScope::parse(&candidate.scope)?;
+        anyhow::ensure!(
+            candidate_scope != memory::MemoryScope::Principal
+                || candidate.created_by == principal_id
+                || owner,
+            "candidate ACL denied"
+        );
+        anyhow::ensure!(
+            candidate_scope != memory::MemoryScope::OwnerGlobal || owner,
+            "owner-global candidate scope requires owner authorization"
+        );
+        observation::validate_input(&ObservationCandidateInput {
+            observation_kind: candidate.observation_kind.clone(),
+            content_type: candidate.content_type.clone(),
+            retention_tier: candidate.retention_tier.clone(),
+            scope: candidate.scope.clone(),
+            project: candidate.project.clone(),
+            title: title.into(),
+            content: content.into(),
+            source: candidate.source.clone(),
+            source_id: candidate.source_id.clone(),
+            dedupe_key: candidate.dedupe_key.clone(),
+            confidence: candidate.confidence,
+            importance: candidate.importance,
+            sensitivity: candidate.sensitivity.clone(),
+            acl: candidate.acl.clone(),
+            provenance: candidate.provenance.clone(),
+            expires_at: candidate.expires_at.clone(),
+        })?;
+        let now = memory::now();
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let changed = transaction.execute(
+            "UPDATE memory_candidates SET title=?2,content=?3,updated_at=?4
+             WHERE id=?1 AND status='pending'",
+            params![id, title, content, now],
+        )?;
+        if changed == 0 {
+            transaction.rollback()?;
+            return Ok(None);
+        }
+        transaction.execute(
+            "UPDATE memory_consolidation_jobs
+             SET status='cancelled',last_error='candidate-edited',updated_at=?2
+             WHERE candidate_id=?1 AND status IN ('queued','running','retry','paused')",
+            params![id, now],
+        )?;
+        transaction.commit()?;
+        drop(connection);
+        self.memory_candidate(id)
+    }
+
+    pub fn set_memory_candidate_working_scoped(
+        &self,
+        id: &str,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<Option<ObservationCandidate>> {
+        self.expire_memory_candidates()?;
+        let candidate = match self.memory_candidate(id)? {
+            Some(candidate) => candidate,
+            None => return Ok(None),
+        };
+        anyhow::ensure!(
+            owner || acl_allows(&candidate.acl, principal_acl),
+            "candidate ACL denied"
+        );
+        let scope = memory::MemoryScope::parse(&candidate.scope)?;
+        anyhow::ensure!(
+            scope != memory::MemoryScope::Principal
+                || candidate.created_by == principal_id
+                || owner,
+            "candidate ACL denied"
+        );
+        anyhow::ensure!(
+            scope != memory::MemoryScope::OwnerGlobal || owner,
+            "owner-global candidate scope requires owner authorization"
+        );
+        let now = memory::now();
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        let changed = transaction.execute(
+            "UPDATE memory_candidates SET retention_tier='working',updated_at=?2 WHERE id=?1 AND status='pending'",
+            params![id, now],
+        )?;
+        if changed == 0 {
+            transaction.rollback()?;
+            return Ok(None);
+        }
+        transaction.execute(
+            "UPDATE memory_consolidation_jobs SET status='cancelled',last_error='candidate-retention-changed',updated_at=?2 WHERE candidate_id=?1 AND status IN ('queued','running','retry','paused')",
+            params![id, now],
+        )?;
+        transaction.commit()?;
+        drop(connection);
+        self.memory_candidate(id)
+    }
+
+    pub fn retry_memory_candidate_scoped(
+        &self,
+        id: &str,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<bool> {
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let paused: bool = transaction.query_row(
+            "SELECT paused FROM memory_consolidation_control WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(!paused, "memory consolidation is paused");
+        let candidate = transaction
+            .query_row(
+                "SELECT id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
+                        source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
+                        provenance_json,expires_at,rejection_reason,created_at,updated_at
+                 FROM memory_candidates WHERE id=?1",
+                [id],
+                observation_candidate_from_row,
+            )
+            .optional()?
+            .ok_or_else(|| anyhow::anyhow!("memory candidate not found"))?;
+        anyhow::ensure!(
+            candidate.status == "pending",
+            "candidate is no longer pending"
+        );
+        let expires_at = DateTime::parse_from_rfc3339(&candidate.expires_at)
+            .context("candidate expiry is invalid")?
+            .with_timezone(&Utc);
+        anyhow::ensure!(expires_at > Utc::now(), "candidate is expired");
+        anyhow::ensure!(
+            owner || acl_allows(&candidate.acl, principal_acl),
+            "candidate ACL denied"
+        );
+        let scope = memory::MemoryScope::parse(&candidate.scope)?;
+        anyhow::ensure!(
+            scope != memory::MemoryScope::Principal
+                || candidate.created_by == principal_id
+                || owner,
+            "candidate ACL denied"
+        );
+        anyhow::ensure!(
+            scope != memory::MemoryScope::OwnerGlobal || owner,
+            "owner-global candidate scope requires owner authorization"
+        );
+        let changed = transaction.execute(
+            "UPDATE memory_consolidation_jobs
+             SET status='queued',attempts=0,last_error=NULL,updated_at=?2
+             WHERE id=(SELECT id FROM memory_consolidation_jobs
+                       WHERE candidate_id=?1 AND status IN ('dead-letter','retry')
+                       ORDER BY updated_at DESC,id DESC LIMIT 1)",
+            params![id, memory::now()],
+        )? == 1;
+        transaction.commit()?;
+        Ok(changed)
     }
 
     fn update_memory_candidate_status(
@@ -7684,6 +8219,516 @@ mod tests {
                 .expect("candidate list")
                 .len(),
             1
+        );
+    }
+
+    #[test]
+    fn candidate_review_surfaces_job_state_and_edits_cancel_stale_work() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate");
+        let now = memory::now();
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "INSERT INTO memory_consolidation_jobs(
+                   id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                   last_error,memory_id,created_at,updated_at)
+                 VALUES('review-job',?1,'policy-1','novel','review','paused',5,1,NULL,NULL,?2,?2)",
+                params![candidate.id, now],
+            )
+            .expect("review job");
+        let reviews = store
+            .list_memory_candidate_reviews(
+                Some("work"),
+                None,
+                None,
+                10,
+                "agent-a",
+                &["work".into()],
+                false,
+                None,
+                None,
+            )
+            .expect("reviews");
+        assert_eq!(reviews.candidates.len(), 1);
+        assert_eq!(
+            reviews.candidates[0]
+                .consolidation
+                .as_ref()
+                .expect("job metadata")
+                .status,
+            "paused"
+        );
+        let edited = store
+            .edit_memory_candidate_scoped(
+                &candidate.id,
+                "Reviewed title",
+                "Reviewed bounded proposal",
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("edit")
+            .expect("pending candidate");
+        assert_eq!(edited.title, "Reviewed title");
+        assert_eq!(
+            store
+                .connection
+                .lock()
+                .expect("store lock")
+                .query_row(
+                    "SELECT status FROM memory_consolidation_jobs WHERE id='review-job'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("job status"),
+            "cancelled"
+        );
+        assert!(
+            store
+                .edit_memory_candidate_scoped(
+                    &candidate.id,
+                    "Denied",
+                    "Denied edit",
+                    "agent-b",
+                    &["other".into()],
+                    false,
+                )
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn candidate_review_reports_row_limit_truncation() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        for index in 0..2 {
+            let mut input = candidate_input("work", None);
+            input.source_id = format!("bounded-page-{index}");
+            store
+                .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+                .expect("candidate");
+        }
+        let page = store
+            .list_memory_candidate_reviews(
+                Some("work"),
+                None,
+                None,
+                1,
+                "agent-a",
+                &["work".into()],
+                false,
+                None,
+                None,
+            )
+            .expect("bounded page");
+        assert_eq!(page.candidates.len(), 1);
+        assert!(page.truncated);
+        let list_error = store
+            .list_memory_candidates(
+                Some("work"),
+                None,
+                None,
+                1,
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect_err("list must not hide truncation");
+        assert!(list_error.to_string().contains("was truncated"));
+        let export_error = store
+            .export_memory_candidates(
+                Some("work"),
+                None,
+                None,
+                1,
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect_err("export must not hide truncation");
+        assert!(export_error.to_string().contains("was truncated"));
+    }
+
+    #[test]
+    fn candidate_review_search_reaches_beyond_the_legacy_page() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut oldest_input = candidate_input("work", None);
+        oldest_input.title = "Needle from oldest page".into();
+        oldest_input.source_id = "evidence-oldest".into();
+        let oldest = store
+            .propose_memory_candidate(&oldest_input, "agent-oldest", &["work".into()], false)
+            .expect("oldest candidate");
+        assert!(
+            store
+                .cancel_memory_candidate_scoped(
+                    &oldest.id,
+                    "agent-oldest",
+                    &["work".into()],
+                    false,
+                )
+                .expect("terminal candidate")
+        );
+        let now = memory::now();
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "INSERT INTO memory_consolidation_jobs(
+                   id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                   last_error,memory_id,created_at,updated_at)
+                 VALUES('cancelled-job',?1,'policy','new','reject','cancelled',5,1,'cancelled',NULL,?2,?2)",
+                params![oldest.id, now],
+            )
+            .expect("cancelled job");
+
+        let mut expired_input = candidate_input("work", None);
+        expired_input.title = "Expired needle from oldest page".into();
+        expired_input.source_id = "evidence-expired".into();
+        let expired = store
+            .propose_memory_candidate(&expired_input, "agent-expired", &["work".into()], false)
+            .expect("expiring candidate");
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "UPDATE memory_candidates SET expires_at='2000-01-01T00:00:00Z' WHERE id=?1",
+                [&expired.id],
+            )
+            .expect("expire candidate");
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "INSERT INTO memory_consolidation_jobs(
+                   id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                   last_error,memory_id,created_at,updated_at)
+                 VALUES('expiring-job',?1,'policy','new','approve','queued',5,1,NULL,NULL,?2,?2)",
+                params![expired.id, now],
+            )
+            .expect("expiring job");
+        for index in 0..1_000 {
+            let mut input = candidate_input("work", None);
+            input.title = format!("Candidate {index}");
+            input.source_id = format!("evidence-{index}");
+            store
+                .propose_memory_candidate(
+                    &input,
+                    &format!("agent-{index}"),
+                    &["work".into()],
+                    false,
+                )
+                .expect("candidate");
+        }
+        let reviews = store
+            .list_memory_candidate_reviews(
+                Some("work"),
+                None,
+                None,
+                1000,
+                "viewer",
+                &["work".into()],
+                false,
+                Some("oldest page"),
+                Some("rejected"),
+            )
+            .expect("search reviews");
+        assert_eq!(reviews.candidates.len(), 1);
+        assert!(!reviews.truncated);
+        assert_eq!(
+            reviews.candidates[0].candidate.title,
+            "Needle from oldest page"
+        );
+        let expired_reviews = store
+            .list_memory_candidate_reviews(
+                Some("work"),
+                None,
+                None,
+                10,
+                "agent-expired",
+                &["work".into()],
+                false,
+                Some("expired needle"),
+                Some("expired"),
+            )
+            .expect("expired search reviews");
+        assert_eq!(expired_reviews.candidates.len(), 1);
+        assert_eq!(expired_reviews.candidates[0].candidate.id, expired.id);
+        assert_eq!(
+            expired_reviews.candidates[0]
+                .consolidation
+                .as_ref()
+                .map(|job| job.status.as_str()),
+            Some("dead-letter")
+        );
+    }
+
+    #[test]
+    fn working_transition_is_explicit_and_pause_blocks_new_jobs_across_reopen() {
+        let directory = tempdir().expect("temporary directory");
+        let path = directory.path().join("store.sqlite3");
+        let store = Store::open(&path).expect("open store");
+        let mut input = candidate_input("work", None);
+        input.retention_tier = "durable".into();
+        let candidate = store
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+            .expect("candidate");
+        let working = store
+            .set_memory_candidate_working_scoped(&candidate.id, "agent-a", &["work".into()], false)
+            .expect("working transition")
+            .expect("pending candidate");
+        assert_eq!(working.retention_tier, "working");
+        assert_eq!(store.pause_memory_consolidation().expect("pause"), 0);
+        assert!(store.memory_consolidation_paused().expect("paused"));
+        drop(store);
+
+        let reopened = Store::open(&path).expect("reopen store");
+        assert!(
+            reopened
+                .memory_consolidation_paused()
+                .expect("persisted pause")
+        );
+        let error = reopened
+            .consolidate_memory_candidate(
+                &candidate.id,
+                &crate::consolidation::ConsolidationPolicy::default(),
+                "agent-a",
+                &["work".into()],
+                false,
+                true,
+            )
+            .expect_err("pause blocks a new job");
+        assert!(error.to_string().contains("consolidation is paused"));
+        reopened.resume_memory_consolidation().expect("resume");
+        assert!(!reopened.memory_consolidation_paused().expect("resumed"));
+    }
+
+    #[test]
+    fn explicit_retry_requeues_pending_dead_letter_and_transient_retry_jobs() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        for (index, initial_status) in ["dead-letter", "retry"].into_iter().enumerate() {
+            let mut input = candidate_input("work", None);
+            input.source_id = format!("retry-evidence-{index}");
+            let candidate = store
+                .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+                .expect("candidate");
+            let job_id = format!("retry-job-{index}");
+            store
+                .connection
+                .lock()
+                .expect("store lock")
+                .execute(
+                    "INSERT INTO memory_consolidation_jobs(
+                       id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                       last_error,memory_id,created_at,updated_at)
+                     VALUES(?1,?2,'policy','new','approve',?3,5,3,'transient',NULL,?4,?4)",
+                    params![job_id, candidate.id, initial_status, memory::now()],
+                )
+                .expect("retryable job");
+            assert!(
+                store
+                    .retry_memory_candidate_scoped(
+                        &candidate.id,
+                        "agent-a",
+                        &["work".into()],
+                        false,
+                    )
+                    .expect("retry")
+            );
+            let (status, attempts, error): (String, i64, Option<String>) = store
+                .connection
+                .lock()
+                .expect("store lock")
+                .query_row(
+                    "SELECT status,attempts,last_error FROM memory_consolidation_jobs WHERE id=?1",
+                    [&job_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .expect("retried job");
+            assert_eq!(status, "queued");
+            assert_eq!(attempts, 0);
+            assert!(error.is_none());
+        }
+
+        let mut paused_input = candidate_input("work", None);
+        paused_input.source_id = "retry-evidence-paused".into();
+        let paused_candidate = store
+            .propose_memory_candidate(&paused_input, "agent-a", &["work".into()], false)
+            .expect("paused candidate");
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "UPDATE memory_candidates SET expires_at='2000-01-01T00:00:00Z' WHERE id=?1",
+                [&paused_candidate.id],
+            )
+            .expect("expire without running maintenance");
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "INSERT INTO memory_consolidation_jobs(
+                   id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                   last_error,memory_id,created_at,updated_at)
+                 VALUES('paused-retry-job',?1,'policy','new','approve','dead-letter',5,3,'transient',NULL,?2,?2)",
+                params![paused_candidate.id, memory::now()],
+            )
+            .expect("paused retry job");
+        store.pause_memory_consolidation().expect("pause");
+        let error = store
+            .retry_memory_candidate_scoped(&paused_candidate.id, "agent-a", &["work".into()], false)
+            .expect_err("paused retry must fail before mutation");
+        assert!(error.to_string().contains("consolidation is paused"));
+        let status: String = store
+            .connection
+            .lock()
+            .expect("store lock")
+            .query_row(
+                "SELECT status FROM memory_consolidation_jobs WHERE id='paused-retry-job'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("paused job status");
+        assert_eq!(status, "dead-letter");
+        let candidate_status: String = store
+            .connection
+            .lock()
+            .expect("store lock")
+            .query_row(
+                "SELECT status FROM memory_candidates WHERE id=?1",
+                [&paused_candidate.id],
+                |row| row.get(0),
+            )
+            .expect("candidate status");
+        assert_eq!(candidate_status, "pending");
+    }
+
+    #[test]
+    fn concurrent_pause_and_retry_never_leave_queued_work_while_paused() {
+        for iteration in 0..16 {
+            let directory = tempdir().expect("temporary directory");
+            let path = directory.path().join("store.sqlite3");
+            let setup = Store::open(&path).expect("open store");
+            let mut input = candidate_input("work", None);
+            input.source_id = format!("concurrent-retry-{iteration}");
+            let candidate = setup
+                .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+                .expect("candidate");
+            setup
+                .connection
+                .lock()
+                .expect("store lock")
+                .execute(
+                    "INSERT INTO memory_consolidation_jobs(
+                       id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                       last_error,memory_id,created_at,updated_at)
+                     VALUES('concurrent-job',?1,'policy','new','approve','dead-letter',5,3,'transient',NULL,?2,?2)",
+                    params![candidate.id, memory::now()],
+                )
+                .expect("retryable job");
+            let pause_store = Store::open(&path).expect("pause store");
+            let retry_store = Store::open(&path).expect("retry store");
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+            let pause_barrier = barrier.clone();
+            let pause = std::thread::spawn(move || {
+                pause_barrier.wait();
+                pause_store.pause_memory_consolidation()
+            });
+            let retry_barrier = barrier.clone();
+            let retry_candidate = candidate.id.clone();
+            let retry = std::thread::spawn(move || {
+                retry_barrier.wait();
+                retry_store.retry_memory_candidate_scoped(
+                    &retry_candidate,
+                    "agent-a",
+                    &["work".into()],
+                    false,
+                )
+            });
+            barrier.wait();
+            pause.join().expect("pause thread").expect("pause");
+            let _ = retry.join().expect("retry thread");
+
+            assert!(setup.memory_consolidation_paused().expect("paused"));
+            let status: String = setup
+                .connection
+                .lock()
+                .expect("store lock")
+                .query_row(
+                    "SELECT status FROM memory_consolidation_jobs WHERE id='concurrent-job'",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("job status");
+            assert_ne!(status, "queued");
+        }
+    }
+
+    #[test]
+    fn explicit_supersession_replaces_the_classified_canonical_memory() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let previous = store
+            .remember_scoped(
+                &crate::memory::MemoryInput {
+                    kind: "preference".into(),
+                    project: "work".into(),
+                    title: "Deploy on Friday".into(),
+                    content: "Deploy on Friday".into(),
+                    source: "user".into(),
+                    source_id: "preference-old".into(),
+                    dedupe_key: None,
+                    confidence: 0.9,
+                    importance: 0.8,
+                    acl: vec!["work".into()],
+                    provenance: serde_json::json!({"test": true}),
+                    supersedes_id: None,
+                    valid_until: None,
+                },
+                &["work".into()],
+                false,
+            )
+            .expect("previous memory");
+        let mut input = candidate_input("work", None);
+        input.content_type = "preference".into();
+        input.retention_tier = "durable".into();
+        input.title = "Changed: deploy on Monday instead".into();
+        input.content = "Changed: deploy on Monday instead".into();
+        let candidate = store
+            .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+            .expect("candidate");
+        let policy = crate::consolidation::ConsolidationPolicy {
+            enabled: true,
+            ..Default::default()
+        };
+        let outcome = store
+            .supersede_memory_candidate(&candidate.id, &policy, "agent-a", &["work".into()], false)
+            .expect("supersession");
+        assert_eq!(outcome.status, "accepted");
+        let replacement = store
+            .memory(&outcome.memory_id.expect("replacement id"))
+            .expect("replacement lookup")
+            .expect("replacement memory");
+        assert_eq!(
+            replacement.supersedes_id.as_deref(),
+            Some(previous.id.as_str())
         );
     }
 

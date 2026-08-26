@@ -433,6 +433,8 @@ struct MemoryCandidateListParams {
     scope: Option<String>,
     #[serde(default = "default_memory_candidate_limit")]
     limit: usize,
+    query: Option<String>,
+    status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -441,6 +443,15 @@ struct MemoryConsolidationRequest {
     policy: crate::consolidation::ConsolidationPolicy,
     #[serde(default)]
     explicit_approval: bool,
+    #[serde(default)]
+    action: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MemoryCandidateEditRequest {
+    title: String,
+    content: String,
 }
 
 fn default_memory_candidate_limit() -> usize {
@@ -681,6 +692,30 @@ pub fn router(state: AppState) -> Router {
             "/v1/memory/candidates/{id}/consolidate",
             post(consolidate_memory_candidate),
         )
+        .route(
+            "/v1/memory/candidates/{id}/edit",
+            post(edit_memory_candidate),
+        )
+        .route(
+            "/v1/memory/candidates/{id}/working",
+            post(mark_memory_candidate_working),
+        )
+        .route(
+            "/v1/memory/candidates/{id}/retry",
+            post(retry_memory_candidate),
+        )
+        .route(
+            "/v1/memory/consolidation/pause",
+            post(pause_memory_consolidation),
+        )
+        .route(
+            "/v1/memory/consolidation/resume",
+            post(resume_memory_consolidation),
+        )
+        .route(
+            "/v1/memory/consolidation/status",
+            get(memory_consolidation_status),
+        )
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
         .route("/v1/auth/reload", post(reload_auth))
@@ -739,7 +774,10 @@ async fn authorize(
         | "/v1/memory/export"
         | "/v1/memory/derived"
         | "/v1/memory/reflect"
-        | "/v1/memory/candidates" => MEMORY_SCOPE,
+        | "/v1/memory/candidates"
+        | "/v1/memory/consolidation/pause"
+        | "/v1/memory/consolidation/resume"
+        | "/v1/memory/consolidation/status" => MEMORY_SCOPE,
         path if path.starts_with("/v1/memory/candidates/") => MEMORY_SCOPE,
         "/v1/status" | "/readyz" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
@@ -2072,9 +2110,12 @@ async fn list_memory_candidates(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
     AxumQuery(params): AxumQuery<MemoryCandidateListParams>,
-) -> Result<Json<Vec<crate::observation::ObservationCandidate>>, (StatusCode, String)> {
+) -> Result<
+    Json<crate::store::BoundedMemoryCandidates<crate::store::MemoryCandidateReview>>,
+    (StatusCode, String),
+> {
     let started = Instant::now();
-    match state.store.list_memory_candidates(
+    match state.store.list_memory_candidate_reviews(
         params.project.as_deref(),
         params.observation_kind.as_deref(),
         params.scope.as_deref(),
@@ -2082,8 +2123,10 @@ async fn list_memory_candidates(
         &principal.name,
         &principal.visible_acl(),
         principal.is_owner(),
+        params.query.as_deref(),
+        params.status.as_deref(),
     ) {
-        Ok(candidates) => {
+        Ok(page) => {
             record_audit(
                 &state,
                 &principal,
@@ -2091,10 +2134,10 @@ async fn list_memory_candidates(
                 params.project.as_deref(),
                 None,
                 "succeeded",
-                Some(candidates.len()),
+                Some(page.candidates.len()),
                 started,
             );
-            Ok(Json(candidates))
+            Ok(Json(page))
         }
         Err(error) => {
             record_audit(
@@ -2116,9 +2159,12 @@ async fn export_memory_candidates(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
     AxumQuery(params): AxumQuery<MemoryCandidateListParams>,
-) -> Result<Json<Vec<crate::observation::ObservationCandidate>>, (StatusCode, String)> {
+) -> Result<
+    Json<crate::store::BoundedMemoryCandidates<crate::observation::ObservationCandidate>>,
+    (StatusCode, String),
+> {
     let started = Instant::now();
-    match state.store.export_memory_candidates(
+    match state.store.export_memory_candidates_page(
         params.project.as_deref(),
         params.observation_kind.as_deref(),
         params.scope.as_deref(),
@@ -2127,7 +2173,7 @@ async fn export_memory_candidates(
         &principal.visible_acl(),
         principal.is_owner(),
     ) {
-        Ok(candidates) => {
+        Ok(page) => {
             record_audit(
                 &state,
                 &principal,
@@ -2135,10 +2181,10 @@ async fn export_memory_candidates(
                 params.project.as_deref(),
                 None,
                 "succeeded",
-                Some(candidates.len()),
+                Some(page.candidates.len()),
                 started,
             );
-            Ok(Json(candidates))
+            Ok(Json(page))
         }
         Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
     }
@@ -2230,6 +2276,236 @@ async fn redact_memory_candidate(
     update_memory_candidate(&state, &principal, &id, true).await
 }
 
+async fn edit_memory_candidate(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+    Json(request): Json<MemoryCandidateEditRequest>,
+) -> Result<Json<crate::observation::ObservationCandidate>, (StatusCode, String)> {
+    let started = Instant::now();
+    match state.store.edit_memory_candidate_scoped(
+        &id,
+        &request.title,
+        &request.content,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(Some(candidate)) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.edit",
+                Some(&candidate.project),
+                Some(&candidate.source),
+                "succeeded",
+                Some(1),
+                started,
+            );
+            Ok(Json(candidate))
+        }
+        Ok(None) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.edit",
+                None,
+                None,
+                "not_found",
+                Some(0),
+                started,
+            );
+            Err((StatusCode::NOT_FOUND, "pending candidate not found".into()))
+        }
+        Err(error)
+            if crate::memory::is_authorization_error(&error)
+                || error.to_string() == "candidate ACL denied" =>
+        {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.edit",
+                None,
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            Err((StatusCode::FORBIDDEN, "candidate ACL denied".into()))
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.edit",
+                None,
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string()))
+        }
+    }
+}
+
+async fn mark_memory_candidate_working(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<crate::observation::ObservationCandidate>, (StatusCode, String)> {
+    let started = Instant::now();
+    match state.store.set_memory_candidate_working_scoped(
+        &id,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(Some(candidate)) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.working",
+                Some(&candidate.project),
+                Some(&candidate.source),
+                "succeeded",
+                Some(1),
+                started,
+            );
+            Ok(Json(candidate))
+        }
+        Ok(None) => Err((StatusCode::NOT_FOUND, "pending candidate not found".into())),
+        Err(error)
+            if crate::memory::is_authorization_error(&error)
+                || error.to_string() == "candidate ACL denied" =>
+        {
+            Err((StatusCode::FORBIDDEN, "candidate ACL denied".into()))
+        }
+        Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
+    }
+}
+
+async fn retry_memory_candidate(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let started = Instant::now();
+    match state.store.retry_memory_candidate_scoped(
+        &id,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(true) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.retry",
+                None,
+                None,
+                "queued",
+                Some(1),
+                started,
+            );
+            Ok(Json(
+                serde_json::json!({ "id": id, "status": "queued", "updated": true }),
+            ))
+        }
+        Ok(false) => Err((
+            StatusCode::CONFLICT,
+            "candidate has no dead-letter job to retry".into(),
+        )),
+        Err(error)
+            if crate::memory::is_authorization_error(&error)
+                || error.to_string() == "candidate ACL denied" =>
+        {
+            Err((StatusCode::FORBIDDEN, "candidate ACL denied".into()))
+        }
+        Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
+    }
+}
+
+async fn pause_memory_consolidation(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    update_memory_consolidation_control(&state, &principal, true)
+}
+
+async fn memory_consolidation_status(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let paused = state
+        .store
+        .memory_consolidation_paused()
+        .map_err(internal_error)?;
+    Ok(Json(serde_json::json!({
+        "paused": paused,
+        "can_control": principal.is_owner()
+    })))
+}
+
+async fn resume_memory_consolidation(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    update_memory_consolidation_control(&state, &principal, false)
+}
+
+fn update_memory_consolidation_control(
+    state: &AppState,
+    principal: &Principal,
+    pause: bool,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let started = Instant::now();
+    if !principal.is_owner() {
+        record_audit(
+            state,
+            principal,
+            if pause {
+                "memory.consolidation.pause"
+            } else {
+                "memory.consolidation.resume"
+            },
+            None,
+            None,
+            "forbidden",
+            None,
+            started,
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            "consolidation control requires owner authorization".into(),
+        ));
+    }
+    let changed = if pause {
+        state.store.pause_memory_consolidation()
+    } else {
+        state.store.resume_memory_consolidation()
+    }
+    .map_err(internal_error)?;
+    record_audit(
+        state,
+        principal,
+        if pause {
+            "memory.consolidation.pause"
+        } else {
+            "memory.consolidation.resume"
+        },
+        None,
+        None,
+        "succeeded",
+        Some(changed),
+        started,
+    );
+    Ok(Json(serde_json::json!({
+        "status": if pause { "paused" } else { "resumed" },
+        "changed": changed
+    })))
+}
+
 async fn classify_memory_candidate(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -2310,14 +2586,36 @@ async fn consolidate_memory_candidate(
     if !principal.has_scope(MEMORY_SCOPE) {
         return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
     }
-    match state.store.consolidate_memory_candidate(
-        &id,
-        &request.policy,
-        &principal.name,
-        &principal.visible_acl(),
-        principal.is_owner(),
-        request.explicit_approval,
-    ) {
+    let result = if request.action.as_deref() == Some("supersede") {
+        if !request.explicit_approval {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "explicit approval is required for supersession".into(),
+            ));
+        }
+        state.store.supersede_memory_candidate(
+            &id,
+            &request.policy,
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        )
+    } else if request.action.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "unsupported consolidation action".into(),
+        ));
+    } else {
+        state.store.consolidate_memory_candidate(
+            &id,
+            &request.policy,
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+            request.explicit_approval,
+        )
+    };
+    match result {
         Ok(outcome) => {
             record_audit(
                 &state,
@@ -3455,6 +3753,118 @@ mod tests {
             serde_json::from_slice(&body).expect("reflection JSON response");
         assert_eq!(parsed["objective"], "Review launch risk");
         assert_eq!(parsed["metrics"]["canonical_memory_mutated"], false);
+    }
+
+    #[tokio::test]
+    async fn memory_scoped_principal_can_read_control_state_but_cannot_bypass_supersession_approval()
+     {
+        let (_directory, state) = test_state();
+        for index in 0..2 {
+            state
+                .store
+                .propose_memory_candidate(
+                    &ObservationCandidateInput {
+                        observation_kind: "evidence-backed".into(),
+                        content_type: "semantic".into(),
+                        retention_tier: "working".into(),
+                        scope: "workspace".into(),
+                        project: "work".into(),
+                        title: format!("Candidate {index}"),
+                        content: "Bounded review candidate".into(),
+                        source: "api-test".into(),
+                        source_id: format!("candidate-{index}"),
+                        dedupe_key: None,
+                        confidence: 0.8,
+                        importance: 0.5,
+                        sensitivity: "normal".into(),
+                        acl: vec!["work".into()],
+                        provenance: serde_json::json!({"test": true}),
+                        expires_at: (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339(),
+                    },
+                    "memory-agent",
+                    &["work".into()],
+                    false,
+                )
+                .expect("candidate");
+        }
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("MEMORY_TOKEN".into(), "memory-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "memory-agent".into(),
+            token_env: "MEMORY_TOKEN".into(),
+            scopes: vec![MEMORY_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let app =
+            router(state.with_auth_policy(AuthPolicy::from_config(&config).expect("auth policy")));
+
+        let status = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/memory/consolidation/status")
+                    .header(header::AUTHORIZATION, "Bearer memory-secret")
+                    .body(Body::empty())
+                    .expect("status request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(status.status(), StatusCode::OK);
+        let status_body = to_bytes(status.into_body(), 8 * 1024)
+            .await
+            .expect("status body");
+        let status_json: serde_json::Value =
+            serde_json::from_slice(&status_body).expect("status JSON");
+        assert_eq!(status_json["paused"], false);
+        assert_eq!(status_json["can_control"], false);
+
+        for path in [
+            "/v1/memory/candidates?project=work&limit=1",
+            "/v1/memory/candidates/export?project=work&limit=1",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(path)
+                        .header(header::AUTHORIZATION, "Bearer memory-secret")
+                        .body(Body::empty())
+                        .expect("candidate page request"),
+                )
+                .await
+                .expect("candidate page response");
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = to_bytes(response.into_body(), 64 * 1024)
+                .await
+                .expect("candidate page body");
+            let page: serde_json::Value =
+                serde_json::from_slice(&body).expect("candidate page JSON");
+            assert_eq!(page["candidates"].as_array().map(Vec::len), Some(1));
+            assert_eq!(page["truncated"], true);
+        }
+
+        let supersede = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/memory/candidates/missing/consolidate")
+                    .header(header::AUTHORIZATION, "Bearer memory-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "policy": crate::consolidation::ConsolidationPolicy::default(),
+                            "action": "supersede",
+                            "explicit_approval": false
+                        })
+                        .to_string(),
+                    ))
+                    .expect("supersede request"),
+            )
+            .await
+            .expect("supersede response");
+        assert_eq!(supersede.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

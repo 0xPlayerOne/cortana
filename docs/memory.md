@@ -120,12 +120,38 @@ implemented.
 Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candidates`,
 `GET /v1/memory/candidates/export`,
 `POST /v1/memory/candidates/{id}/cancel`, `POST /v1/memory/candidates/{id}/redact`, and
-`POST /v1/memory/candidates/{id}/classify`, and `POST /v1/memory/candidates/{id}/consolidate`.
+`POST /v1/memory/candidates/{id}/classify`, `POST /v1/memory/candidates/{id}/edit`, and
+`POST /v1/memory/candidates/{id}/working`, `POST /v1/memory/candidates/{id}/retry`, and
+`POST /v1/memory/candidates/{id}/consolidate`.
+The working endpoint changes a pending proposal's retention tier before consolidation; it does not
+silently reinterpret a durable proposal. Retry explicitly requeues the latest dead-lettered job
+before attempting consolidation again. Owner-local operators can persistently pause or resume
+all current and future queued work through `POST /v1/memory/consolidation/pause|resume`, and inspect
+that durable gate through `GET /v1/memory/consolidation/status`; memory-scoped principals can read
+the state, while only the owner can change it. Candidate list responses include the latest bounded
+consolidation status, decision, classification, policy identity, attempts, canonical memory id, and
+stored reason, explanation, supporting-memory ids, and failure metadata when a job exists. The review client may request up to the project-wide 1,000
+candidate bound and applies validated `query` and `status` filters across that whole bound, rather
+than only the newest page. Candidate review and export responses use
+`{ "candidates": [...], "truncated": boolean }`; clients must narrow their filters or paginate at a
+higher layer instead of presenting a truncated response as complete. CLI and MCP list/export
+operations fail explicitly with narrowing guidance when the same row or byte bound is reached.
 The CLI equivalent is
 `cortana memory candidate propose|list|export|cancel|redact|classify|consolidate`. Candidate submissions require
 an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,
 provenance to 4 KiB, and expiry to seven days. The bounded path rejects sensitive/restricted
 proposals and never advances the canonical memory revision.
+
+Cortana Desktop exposes this lifecycle in Settings under Native agentic memory. Pending, approved,
+auto-retained, rejected, expired, failed, and dead-letter views are searchable and virtualized. Any
+action that may write canonical memory requires explicit confirmation and is still revalidated by
+the backend. Supersession requires an explicit, confirmed action, can replace only the canonical
+memory selected by same-axis classification, and reports whether a canonical write actually
+occurred. Automatic retention and recurring processing remain disabled; the Desktop does
+not present schedule controls until an operational scheduler exists. Edit-and-approve first validates and atomically updates a pending candidate, cancelling
+stale queued work before the versioned policy is evaluated again. Recallable canonical memories and
+derived reflection projections are rendered in separate, labelled layers; derived data is never
+presented as evidence or canonical memory.
 
 ## Operating boundaries
 

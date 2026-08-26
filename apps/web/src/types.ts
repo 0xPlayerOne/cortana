@@ -725,7 +725,103 @@ export type AgentMemory = {
   importance: number
   relevance_score?: number
   source?: string
+  source_id?: string
+  status?: string
+  provenance?: Record<string, unknown>
+  supersedes_id?: string | null
   observed_at?: string
   valid_until?: string | null
   updated_at: string
+}
+
+export type MemoryCandidate = {
+  id: string
+  observation_kind: string
+  content_type: string
+  retention_tier: string
+  scope: string
+  project: string
+  title: string
+  content: string
+  source: string
+  source_id: string
+  dedupe_key?: string | null
+  confidence: number
+  importance: number
+  sensitivity: string
+  status: string
+  acl: string[]
+  provenance: Record<string, unknown>
+  expires_at: string
+  rejection_reason?: string | null
+  created_at: string
+  updated_at: string
+  consolidation?: {
+    status: string
+    decision: string
+    classification: string
+    policy_version: string
+    attempts: number
+    memory_id?: string | null
+    last_error?: string | null
+    updated_at: string
+    reason_code?: string | null
+    explanation?: string | null
+    supporting_memory_ids: string[]
+  } | null
+}
+
+export type MemoryCandidateActionResult = {
+  status: string
+  updated?: boolean
+  memory_id?: string | null
+  decision?: {
+    decision: string
+    classification: string
+    reason_code: string
+    explanation: string
+  }
+}
+
+export type MemoryCandidateClassification = {
+  candidate_id: string
+  classification: string
+  confidence: number
+  supporting_memory_ids: string[]
+  explanation: string
+}
+
+export type DerivedMemoryResponse = {
+  contract_version: string
+  derivation_version: string
+  memory_revision: number
+  canonical_memory_mutated: false
+  recomputed: true
+  representations: Array<{
+    id: string
+    kind: string
+    statement: string
+    confidence: number
+    supporting_memory_ids: string[]
+    contradicting_memory_ids: string[]
+    citation_authority: false
+  }>
+  relations: Array<{
+    id: string
+    kind: string
+    subject: string
+    predicate: string
+    object: string
+    supporting_memory_ids: string[]
+    citation_authority: false
+  }>
+}
+
+export type MemoryReviewPolicy = {
+  autoCommit: boolean
+  maxWorkingDays: number
+  maxDurableDays: number
+  maxActive: number
+  candidateExpiryDays: number
+  schedule: 'manual' | 'hourly' | 'daily'
 }
