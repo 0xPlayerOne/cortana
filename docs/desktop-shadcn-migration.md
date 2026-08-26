@@ -95,7 +95,7 @@ diagnostic comparison points, not packaged performance claims.
 The pre-migration production build transformed 1,699 modules in 1.55 seconds. Its renderer entry
 was 453,729 bytes (133.57 kB gzip), and legacy CSS was 72,299 bytes (13.67 kB gzip). The flag-disabled
 foundation build keeps the shadcn prototype in separate lazy chunks: the complete legacy-default
-initial graph is 455.07 kB, while the prototype is 206.01 kB (66.57 kB gzip) plus the complete
+initial graph is 455.07 kB, while the prototype is 206.05 kB (66.58 kB gzip) plus the complete
 shared primitive CSS contract at 121.35 kB (18.83 kB gzip). Issue #2167 must compare the final
 single renderer to the baseline and remove transition-only
 code before issue #2168 can accept performance.
