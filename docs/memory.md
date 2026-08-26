@@ -134,7 +134,8 @@ stored reason, explanation, supporting-memory ids, and failure metadata when a j
 candidate bound and applies validated `query` and `status` filters across that whole bound, rather
 than only the newest page. Candidate review and export responses use
 `{ "candidates": [...], "truncated": boolean }`; clients must narrow their filters or paginate at a
-higher layer instead of presenting a truncated response as complete.
+higher layer instead of presenting a truncated response as complete. CLI and MCP list/export
+operations fail explicitly with narrowing guidance when the same row or byte bound is reached.
 The CLI equivalent is
 `cortana memory candidate propose|list|export|cancel|redact|classify|consolidate`. Candidate submissions require
 an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,

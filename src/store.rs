@@ -8,7 +8,10 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use rusqlite::types::Type;
-use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params, params_from_iter};
+use rusqlite::{
+    Connection, OpenFlags, OptionalExtension, Transaction, TransactionBehavior, params,
+    params_from_iter,
+};
 use serde::Serialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -1937,18 +1940,21 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
     ) -> Result<Vec<ObservationCandidate>> {
-        Ok(self
-            .query_memory_candidates(
-                project,
-                observation_kind,
-                scope,
-                limit,
-                principal_id,
-                principal_acl,
-                owner,
-                observation::MAX_CANDIDATE_LIST_LIMIT,
-            )?
-            .candidates)
+        let page = self.query_memory_candidates(
+            project,
+            observation_kind,
+            scope,
+            limit,
+            principal_id,
+            principal_acl,
+            owner,
+            observation::MAX_CANDIDATE_LIST_LIMIT,
+        )?;
+        anyhow::ensure!(
+            !page.truncated,
+            "memory candidate list was truncated; narrow the project or scope filter"
+        );
+        Ok(page.candidates)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2127,17 +2133,20 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
     ) -> Result<Vec<ObservationCandidate>> {
-        Ok(self
-            .export_memory_candidates_page(
-                project,
-                observation_kind,
-                scope,
-                limit,
-                principal_id,
-                principal_acl,
-                owner,
-            )?
-            .candidates)
+        let page = self.export_memory_candidates_page(
+            project,
+            observation_kind,
+            scope,
+            limit,
+            principal_id,
+            principal_acl,
+            owner,
+        )?;
+        anyhow::ensure!(
+            !page.truncated,
+            "memory candidate export was truncated; narrow the project or scope filter"
+        );
+        Ok(page.candidates)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -3248,18 +3257,33 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
     ) -> Result<bool> {
-        self.expire_memory_candidates()?;
-        anyhow::ensure!(
-            !self.memory_consolidation_paused()?,
-            "memory consolidation is paused"
-        );
-        let candidate = self
-            .memory_candidate(id)?
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let paused: bool = transaction.query_row(
+            "SELECT paused FROM memory_consolidation_control WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(!paused, "memory consolidation is paused");
+        let candidate = transaction
+            .query_row(
+                "SELECT id,observation_kind,content_type,retention_tier,scope,created_by,project,title,content,
+                        source,source_id,dedupe_key,confidence,importance,sensitivity,status,acl_json,
+                        provenance_json,expires_at,rejection_reason,created_at,updated_at
+                 FROM memory_candidates WHERE id=?1",
+                [id],
+                observation_candidate_from_row,
+            )
+            .optional()?
             .ok_or_else(|| anyhow::anyhow!("memory candidate not found"))?;
         anyhow::ensure!(
             candidate.status == "pending",
             "candidate is no longer pending"
         );
+        let expires_at = DateTime::parse_from_rfc3339(&candidate.expires_at)
+            .context("candidate expiry is invalid")?
+            .with_timezone(&Utc);
+        anyhow::ensure!(expires_at > Utc::now(), "candidate is expired");
         anyhow::ensure!(
             owner || acl_allows(&candidate.acl, principal_acl),
             "candidate ACL denied"
@@ -3275,8 +3299,7 @@ impl Store {
             scope != memory::MemoryScope::OwnerGlobal || owner,
             "owner-global candidate scope requires owner authorization"
         );
-        let connection = self.connection.lock().expect("store lock poisoned");
-        let changed = connection.execute(
+        let changed = transaction.execute(
             "UPDATE memory_consolidation_jobs
              SET status='queued',attempts=0,last_error=NULL,updated_at=?2
              WHERE id=(SELECT id FROM memory_consolidation_jobs
@@ -3284,6 +3307,7 @@ impl Store {
                        ORDER BY updated_at DESC,id DESC LIMIT 1)",
             params![id, memory::now()],
         )? == 1;
+        transaction.commit()?;
         Ok(changed)
     }
 
@@ -8310,6 +8334,30 @@ mod tests {
             .expect("bounded page");
         assert_eq!(page.candidates.len(), 1);
         assert!(page.truncated);
+        let list_error = store
+            .list_memory_candidates(
+                Some("work"),
+                None,
+                None,
+                1,
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect_err("list must not hide truncation");
+        assert!(list_error.to_string().contains("was truncated"));
+        let export_error = store
+            .export_memory_candidates(
+                Some("work"),
+                None,
+                None,
+                1,
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect_err("export must not hide truncation");
+        assert!(export_error.to_string().contains("was truncated"));
     }
 
     #[test]
@@ -8527,6 +8575,15 @@ mod tests {
             .lock()
             .expect("store lock")
             .execute(
+                "UPDATE memory_candidates SET expires_at='2000-01-01T00:00:00Z' WHERE id=?1",
+                [&paused_candidate.id],
+            )
+            .expect("expire without running maintenance");
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
                 "INSERT INTO memory_consolidation_jobs(
                    id,candidate_id,policy_version,classification,decision,status,priority,attempts,
                    last_error,memory_id,created_at,updated_at)
@@ -8550,6 +8607,78 @@ mod tests {
             )
             .expect("paused job status");
         assert_eq!(status, "dead-letter");
+        let candidate_status: String = store
+            .connection
+            .lock()
+            .expect("store lock")
+            .query_row(
+                "SELECT status FROM memory_candidates WHERE id=?1",
+                [&paused_candidate.id],
+                |row| row.get(0),
+            )
+            .expect("candidate status");
+        assert_eq!(candidate_status, "pending");
+    }
+
+    #[test]
+    fn concurrent_pause_and_retry_never_leave_queued_work_while_paused() {
+        for iteration in 0..16 {
+            let directory = tempdir().expect("temporary directory");
+            let path = directory.path().join("store.sqlite3");
+            let setup = Store::open(&path).expect("open store");
+            let mut input = candidate_input("work", None);
+            input.source_id = format!("concurrent-retry-{iteration}");
+            let candidate = setup
+                .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+                .expect("candidate");
+            setup
+                .connection
+                .lock()
+                .expect("store lock")
+                .execute(
+                    "INSERT INTO memory_consolidation_jobs(
+                       id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                       last_error,memory_id,created_at,updated_at)
+                     VALUES('concurrent-job',?1,'policy','new','approve','dead-letter',5,3,'transient',NULL,?2,?2)",
+                    params![candidate.id, memory::now()],
+                )
+                .expect("retryable job");
+            let pause_store = Store::open(&path).expect("pause store");
+            let retry_store = Store::open(&path).expect("retry store");
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+            let pause_barrier = barrier.clone();
+            let pause = std::thread::spawn(move || {
+                pause_barrier.wait();
+                pause_store.pause_memory_consolidation()
+            });
+            let retry_barrier = barrier.clone();
+            let retry_candidate = candidate.id.clone();
+            let retry = std::thread::spawn(move || {
+                retry_barrier.wait();
+                retry_store.retry_memory_candidate_scoped(
+                    &retry_candidate,
+                    "agent-a",
+                    &["work".into()],
+                    false,
+                )
+            });
+            barrier.wait();
+            pause.join().expect("pause thread").expect("pause");
+            let _ = retry.join().expect("retry thread");
+
+            assert!(setup.memory_consolidation_paused().expect("paused"));
+            let status: String = setup
+                .connection
+                .lock()
+                .expect("store lock")
+                .query_row(
+                    "SELECT status FROM memory_consolidation_jobs WHERE id='concurrent-job'",
+                    [],
+                    |row| row.get(0),
+                )
+                .expect("job status");
+            assert_ne!(status, "queued");
+        }
     }
 
     #[test]
