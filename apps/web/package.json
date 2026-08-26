@@ -1,7 +1,7 @@
 {
   "name": "@cortana/web",
   "private": true,
-  "version": "0.49.0",
+  "version": "0.49.1",
   "type": "module",
   "scripts": {
     "build": "tsc -b && vite build && bun ../../scripts/check-web-bundle-budget.mjs",
