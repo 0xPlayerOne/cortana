@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.51.0](https://github.com/0xPlayerOne/cortana/compare/v0.50.0...v0.51.0) (2026-08-26)
+
+
+### Features
+
+* **web:** migrate responsive shell to shadcn ([#2192](https://github.com/0xPlayerOne/cortana/issues/2192)) ([ba3df03](https://github.com/0xPlayerOne/cortana/commit/ba3df03e92406f195604ff6319748bd45d1ab4da)), closes [#2164](https://github.com/0xPlayerOne/cortana/issues/2164)
+
 ## [0.50.0](https://github.com/0xPlayerOne/cortana/compare/v0.49.1...v0.50.0) (2026-08-26)
 
 
