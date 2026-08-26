@@ -165,6 +165,8 @@ impl ConsolidationDecision {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct PolicyContext {
     pub explicit_approval: bool,
+    #[serde(default)]
+    pub explicit_supersession: bool,
     pub same_scope: bool,
     pub reviewer: Option<String>,
 }
@@ -173,6 +175,7 @@ impl Default for PolicyContext {
     fn default() -> Self {
         Self {
             explicit_approval: false,
+            explicit_supersession: false,
             same_scope: true,
             reviewer: None,
         }
@@ -253,6 +256,11 @@ pub fn evaluate(
         decision = ConsolidationDecision::Review;
         reason_code = "cross-scope";
         explanation = "cross-scope candidates require an owner-approved review";
+        priority = 8;
+    } else if classification.classification == "supersession" && context.explicit_supersession {
+        decision = ConsolidationDecision::Approve;
+        reason_code = "explicit-supersession";
+        explanation = "an authorized reviewer explicitly approved replacement of the matched canonical memory";
         priority = 8;
     } else if matches!(
         classification.classification.as_str(),

@@ -764,7 +764,20 @@ export type MemoryCandidate = {
     attempts: number
     memory_id?: string | null
     last_error?: string | null
+    updated_at: string
   } | null
+}
+
+export type MemoryCandidateActionResult = {
+  status: string
+  updated?: boolean
+  memory_id?: string | null
+  decision?: {
+    decision: string
+    classification: string
+    reason_code: string
+    explanation: string
+  }
 }
 
 export type MemoryCandidateClassification = {

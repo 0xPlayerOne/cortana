@@ -184,12 +184,16 @@ mod backend_tests {
         validate_memory_list_request(&MemoryListRequest {
             project: Some("work".into()),
             limit: 100,
+            query: None,
+            status: None,
         })
         .expect("bounded list");
         assert!(
             validate_memory_list_request(&MemoryListRequest {
                 project: Some("work".into()),
-                limit: 101,
+                limit: 1001,
+                query: None,
+                status: None,
             })
             .is_err()
         );
@@ -253,6 +257,8 @@ struct DocumentListRequest {
 struct MemoryListRequest {
     project: Option<String>,
     limit: usize,
+    query: Option<String>,
+    status: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -330,6 +336,12 @@ async fn brain_memory_list(
         if let Some(project) = request.project {
             query.append_pair("project", &project);
         }
+        if let Some(search) = request.query {
+            query.append_pair("query", &search);
+        }
+        if let Some(status) = request.status {
+            query.append_pair("status", &status);
+        }
     }
     backend.request_url(Method::GET, url, None).await
 }
@@ -387,6 +399,11 @@ async fn brain_memory_candidate_action(
             } else {
                 object.remove("edit");
             }
+            if action == "working" {
+                backend
+                    .request(Method::POST, &format!("{base}/working"), None)
+                    .await?;
+            }
             let policy = object
                 .remove("policy")
                 .ok_or_else(|| "candidate action policy required".to_string())?;
@@ -396,7 +413,8 @@ async fn brain_memory_candidate_action(
                     &format!("{base}/consolidate"),
                     Some(serde_json::json!({
                         "policy": policy,
-                        "explicit_approval": true
+                        "explicit_approval": true,
+                        "action": if action == "supersede" { Some("supersede") } else { None }
                     })),
                 )
                 .await
@@ -413,9 +431,10 @@ async fn brain_memory_consolidation_control(
     let path = match action.as_str() {
         "pause" => "/v1/memory/consolidation/pause",
         "resume" => "/v1/memory/consolidation/resume",
+        "status" => "/v1/memory/consolidation/status",
         _ => return Err("unsupported memory consolidation control".into()),
     };
-    backend.request(Method::POST, path, None).await
+    backend.request(if action == "status" { Method::GET } else { Method::POST }, path, None).await
 }
 
 #[tauri::command]
@@ -1133,8 +1152,27 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
 }
 
 fn validate_memory_list_request(request: &MemoryListRequest) -> Result<(), String> {
-    if !(1..=100).contains(&request.limit) {
-        return Err("memory list limit must be between 1 and 100".into());
+    if !(1..=1000).contains(&request.limit) {
+        return Err("memory list limit must be between 1 and 1000".into());
+    }
+    if request.query.as_ref().is_some_and(|value| {
+        value.len() > 256 || value.chars().any(char::is_control)
+    }) {
+        return Err("memory candidate query exceeds its safe bound".into());
+    }
+    if request.status.as_ref().is_some_and(|value| {
+        !matches!(
+            value.as_str(),
+            "pending"
+                | "approved"
+                | "auto-retained"
+                | "rejected"
+                | "expired"
+                | "failed"
+                | "dead-letter"
+        )
+    }) {
+        return Err("invalid memory candidate status".into());
     }
     if request.project.as_ref().is_some_and(|value| {
         value.is_empty()

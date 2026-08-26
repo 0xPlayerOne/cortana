@@ -34,6 +34,7 @@ const candidate = {
     attempts: 0,
     memory_id: null,
     last_error: null,
+    updated_at: '2026-08-25T00:00:00Z',
   },
 }
 
@@ -41,7 +42,14 @@ function client(): MemoryReviewClient & { actions: string[] } {
   const actions: string[] = []
   return {
     actions,
-    listCandidates: () => Promise.resolve([candidate]),
+    listCandidates: (_project, query, status) =>
+      Promise.resolve(
+        (!query ||
+          `${candidate.title} ${candidate.content}`.toLowerCase().includes(query.toLowerCase())) &&
+          (!status || status === 'pending')
+          ? [candidate]
+          : []
+      ),
     classifyCandidate: () =>
       Promise.resolve({
         candidate_id: candidate.id,
@@ -85,12 +93,13 @@ function client(): MemoryReviewClient & { actions: string[] } {
       ]),
     act: (_id, action) => {
       actions.push(action)
-      return Promise.resolve()
+      return Promise.resolve({ status: 'complete', memory_id: 'memory-1' })
     },
     setConsolidationPaused: (paused) => {
       actions.push(paused ? 'pause' : 'resume')
       return Promise.resolve()
     },
+    getConsolidationPaused: () => Promise.resolve(false),
   }
 }
 
@@ -99,18 +108,18 @@ test('renders a bounded searchable queue with inspectable policy and provenance'
   render(<MemoryReview client={api} />)
 
   expect(await screen.findByRole('list', { name: 'Memory candidate queue' })).toBeTruthy()
-  fireEvent.click(screen.getByRole('button', { name: /Release preference/ }))
+  fireEvent.click(await screen.findByRole('button', { name: /Release preference/ }))
   expect(await screen.findByText('A new scoped preference.')).toBeTruthy()
   expect(screen.getByText('cortana.memory.consolidation.v1:abcd')).toBeTruthy()
   fireEvent.click(screen.getByText('Provenance and support'))
   expect(screen.getByText(/document-1/)).toBeTruthy()
-  expect(screen.getByText('Canonical memory')).toBeTruthy()
-  expect(screen.getByText('Derived · not canonical')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Canonical memory' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Derived · not canonical' })).toBeTruthy()
 
   fireEvent.change(screen.getByRole('searchbox', { name: 'Search memory candidates' }), {
     target: { value: 'missing' },
   })
-  expect(screen.getByText('No candidates match this view.')).toBeTruthy()
+  expect(await screen.findByText('No candidates match this view.')).toBeTruthy()
 })
 
 test('requires confirmation for canonical approval and keeps queue controls explicit', async () => {
@@ -126,4 +135,57 @@ test('requires confirmation for canonical approval and keeps queue controls expl
   fireEvent.click(screen.getByRole('button', { name: 'Pause consolidation' }))
   await waitFor(() => expect(api.actions).toContain('pause'))
   window.confirm = originalConfirm
+})
+
+test('reports review-only supersession without claiming a canonical write', async () => {
+  const api = client()
+  api.act = (_id, action) => {
+    api.actions.push(action)
+    return Promise.resolve({
+      status: 'review',
+      memory_id: null,
+      decision: {
+        decision: 'review',
+        classification: 'contradiction',
+        reason_code: 'conflict',
+        explanation: 'Supersession requires review.',
+      },
+    })
+  }
+  const originalConfirm = window.confirm
+  window.confirm = mock(() => true)
+  render(<MemoryReview client={api} />)
+
+  fireEvent.click(await screen.findByRole('button', { name: /Release preference/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Review and supersede' }))
+  expect(await screen.findByText(/remain in review; no canonical memory changed/)).toBeTruthy()
+  window.confirm = originalConfirm
+})
+
+test('terminal candidates show stored outcome without reclassification or actions', async () => {
+  const api = client()
+  const terminal = {
+    ...candidate,
+    status: 'accepted',
+    consolidation: {
+      ...candidate.consolidation,
+      status: 'complete',
+      decision: 'approve',
+      memory_id: 'memory-terminal',
+      attempts: 2,
+    },
+  }
+  api.listCandidates = () => Promise.resolve([terminal])
+  let classifications = 0
+  api.classifyCandidate = () => {
+    classifications += 1
+    return Promise.reject(new Error('must not classify terminal candidates'))
+  }
+  render(<MemoryReview client={api} />)
+
+  fireEvent.click(await screen.findByRole('button', { name: /Release preference/ }))
+  expect(await screen.findByText('memory-terminal')).toBeTruthy()
+  expect(screen.getByText(/stored outcome is shown above/)).toBeTruthy()
+  expect(screen.queryByRole('button', { name: 'Approve canonical memory' })).toBeNull()
+  expect(classifications).toBe(0)
 })

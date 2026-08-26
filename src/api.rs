@@ -433,6 +433,8 @@ struct MemoryCandidateListParams {
     scope: Option<String>,
     #[serde(default = "default_memory_candidate_limit")]
     limit: usize,
+    query: Option<String>,
+    status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -441,6 +443,8 @@ struct MemoryConsolidationRequest {
     policy: crate::consolidation::ConsolidationPolicy,
     #[serde(default)]
     explicit_approval: bool,
+    #[serde(default)]
+    action: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -693,12 +697,20 @@ pub fn router(state: AppState) -> Router {
             post(edit_memory_candidate),
         )
         .route(
+            "/v1/memory/candidates/{id}/working",
+            post(mark_memory_candidate_working),
+        )
+        .route(
             "/v1/memory/consolidation/pause",
             post(pause_memory_consolidation),
         )
         .route(
             "/v1/memory/consolidation/resume",
             post(resume_memory_consolidation),
+        )
+        .route(
+            "/v1/memory/consolidation/status",
+            get(memory_consolidation_status),
         )
         .route("/v1/answer", post(answer))
         .route("/v1/audit", get(audit_events))
@@ -2103,6 +2115,8 @@ async fn list_memory_candidates(
         &principal.name,
         &principal.visible_acl(),
         principal.is_owner(),
+        params.query.as_deref(),
+        params.status.as_deref(),
     ) {
         Ok(candidates) => {
             record_audit(
@@ -2324,11 +2338,64 @@ async fn edit_memory_candidate(
     }
 }
 
+async fn mark_memory_candidate_working(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<crate::observation::ObservationCandidate>, (StatusCode, String)> {
+    let started = Instant::now();
+    match state.store.set_memory_candidate_working_scoped(
+        &id,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(Some(candidate)) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.working",
+                Some(&candidate.project),
+                Some(&candidate.source),
+                "succeeded",
+                Some(1),
+                started,
+            );
+            Ok(Json(candidate))
+        }
+        Ok(None) => Err((StatusCode::NOT_FOUND, "pending candidate not found".into())),
+        Err(error)
+            if crate::memory::is_authorization_error(&error)
+                || error.to_string() == "candidate ACL denied" =>
+        {
+            Err((StatusCode::FORBIDDEN, "candidate ACL denied".into()))
+        }
+        Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
+    }
+}
+
 async fn pause_memory_consolidation(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     update_memory_consolidation_control(&state, &principal, true)
+}
+
+async fn memory_consolidation_status(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !principal.is_owner() {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "consolidation control requires owner authorization".into(),
+        ));
+    }
+    let paused = state
+        .store
+        .memory_consolidation_paused()
+        .map_err(internal_error)?;
+    Ok(Json(serde_json::json!({ "paused": paused })))
 }
 
 async fn resume_memory_consolidation(
@@ -2470,14 +2537,30 @@ async fn consolidate_memory_candidate(
     if !principal.has_scope(MEMORY_SCOPE) {
         return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
     }
-    match state.store.consolidate_memory_candidate(
-        &id,
-        &request.policy,
-        &principal.name,
-        &principal.visible_acl(),
-        principal.is_owner(),
-        request.explicit_approval,
-    ) {
+    let result = if request.action.as_deref() == Some("supersede") {
+        state.store.supersede_memory_candidate(
+            &id,
+            &request.policy,
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        )
+    } else if request.action.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "unsupported consolidation action".into(),
+        ));
+    } else {
+        state.store.consolidate_memory_candidate(
+            &id,
+            &request.policy,
+            &principal.name,
+            &principal.visible_acl(),
+            principal.is_owner(),
+            request.explicit_approval,
+        )
+    };
+    match result {
         Ok(outcome) => {
             record_audit(
                 &state,

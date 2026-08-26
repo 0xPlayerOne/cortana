@@ -143,8 +143,9 @@ Verify:
   failed, and dead-letter states, with bulk actions capped at 25 records;
 - explicit confirmation for canonical promotion, including edit-and-approve, keep-working,
   supersede, and retry actions;
-- owner-only pause/resume controls plus bounded retention ceilings, candidate review expiry,
-  retry schedule, active-memory capacity, and opt-in auto-retention controls;
+- owner-only persisted pause/resume controls plus bounded retention ceilings, candidate review
+  expiry, and active-memory capacity; recurring processing and automatic retention remain disabled
+  until an operational scheduler and release gate ship;
 - visible provenance, support, classification, policy identity, confidence, sensitivity, expiry,
   attempts, and failure state sufficient to explain why a record exists or was superseded;
 - keyboard-operable native controls, announced errors/status changes, responsive layouts, and

@@ -1,9 +1,10 @@
 import { Pause, Play, RefreshCw, Search, ShieldCheck } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   actOnMemoryCandidate,
   classifyMemoryCandidate,
+  getMemoryConsolidationPaused,
   listCanonicalMemories,
   listDerivedMemories,
   listMemoryCandidates,
@@ -14,6 +15,7 @@ import type {
   AgentMemory,
   DerivedMemoryResponse,
   MemoryCandidate,
+  MemoryCandidateActionResult,
   MemoryCandidateClassification,
   MemoryReviewPolicy,
 } from '../types'
@@ -31,7 +33,7 @@ type QueueView =
   | 'dead-letter'
 
 export type MemoryReviewClient = {
-  listCandidates: (project?: string) => Promise<MemoryCandidate[]>
+  listCandidates: (project?: string, query?: string, status?: string) => Promise<MemoryCandidate[]>
   classifyCandidate: (id: string) => Promise<MemoryCandidateClassification>
   listDerived: (project?: string) => Promise<DerivedMemoryResponse>
   listCanonical: (project?: string) => Promise<AgentMemory[]>
@@ -40,8 +42,9 @@ export type MemoryReviewClient = {
     action: MemoryCandidateAction,
     policy: MemoryReviewPolicy,
     edit?: { title: string; content: string }
-  ) => Promise<void>
+  ) => Promise<MemoryCandidateActionResult>
   setConsolidationPaused: (paused: boolean) => Promise<void>
+  getConsolidationPaused: () => Promise<boolean>
 }
 
 function MemoryPolicy({
@@ -84,27 +87,10 @@ function MemoryPolicy({
           onChange={(event) => patch({ candidateExpiryDays: Number(event.target.value) })}
         />
       </label>
-      <label>
-        Consolidation schedule
-        <select
-          value={policy.schedule}
-          onChange={(event) =>
-            patch({ schedule: event.target.value as MemoryReviewPolicy['schedule'] })
-          }
-        >
-          <option value="manual">Manual</option>
-          <option value="hourly">Hourly</option>
-          <option value="daily">Daily</option>
-        </select>
-      </label>
-      <label className="memory-policy-toggle">
-        <input
-          type="checkbox"
-          checked={policy.autoCommit}
-          onChange={(event) => patch({ autoCommit: event.target.checked })}
-        />
-        Allow policy-approved auto-commit
-      </label>
+      <p>
+        Candidate processing is manual. Automatic retention and recurring processing remain
+        disabled.
+      </p>
     </div>
   )
 }
@@ -216,6 +202,7 @@ const defaultClient: MemoryReviewClient = {
   listCanonical: listCanonicalMemories,
   act: actOnMemoryCandidate,
   setConsolidationPaused: setMemoryConsolidationPaused,
+  getConsolidationPaused: getMemoryConsolidationPaused,
 }
 
 const QUEUE_VIEWS: QueueView[] = [
@@ -267,34 +254,45 @@ export function MemoryReview({
   const [editing, setEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
+  const refreshVersion = useRef(0)
 
   async function refresh() {
+    const version = ++refreshVersion.current
     setLoading(true)
     setError('')
     try {
-      const [nextCandidates, nextCanonical, nextDerived] = await Promise.all([
-        client.listCandidates(project),
+      const [nextCandidates, nextCanonical, nextDerived, nextPaused] = await Promise.all([
+        client.listCandidates(
+          project,
+          query.trim() || undefined,
+          view === 'all' ? undefined : view
+        ),
         client.listCanonical(project),
         client.listDerived(project),
+        client.getConsolidationPaused(),
       ])
-      setCandidates(nextCandidates.slice(0, 100))
+      if (version !== refreshVersion.current) return
+      setCandidates(nextCandidates)
       setCanonical(nextCanonical.slice(0, 100))
       setDerived(nextDerived)
+      setPaused(nextPaused)
       setSelectedId((current) =>
         nextCandidates.some((candidate) => candidate.id === current)
           ? current
           : (nextCandidates[0]?.id ?? '')
       )
     } catch (caught) {
+      if (version !== refreshVersion.current) return
       setError(caught instanceof Error ? caught.message : 'Memory review failed')
     } finally {
-      setLoading(false)
+      if (version === refreshVersion.current) setLoading(false)
     }
   }
 
   useEffect(() => {
-    void refresh()
-  }, [project])
+    const timer = window.setTimeout(() => void refresh(), 200)
+    return () => window.clearTimeout(timer)
+  }, [project, query, view])
 
   useEffect(() => {
     setPolicy((current) => ({ ...current, maxActive }))
@@ -309,25 +307,17 @@ export function MemoryReview({
     setEditTitle(selected.title)
     setEditContent(selected.content)
     setClassification(null)
-    client
-      .classifyCandidate(selected.id)
-      .then(setClassification)
-      .catch(() => setClassification(null))
+    if (selected.status === 'pending') {
+      client
+        .classifyCandidate(selected.id)
+        .then(setClassification)
+        .catch(() => setClassification(null))
+    }
   }, [candidates, client, selectedId])
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    return candidates.filter((candidate) => {
-      const status = queueStatus(candidate)
-      return (
-        (view === 'all' || status === view) &&
-        (!needle ||
-          `${candidate.title} ${candidate.content} ${candidate.project} ${candidate.source}`
-            .toLowerCase()
-            .includes(needle))
-      )
-    })
-  }, [candidates, query, view])
+    return candidates
+  }, [candidates])
   const range = virtualRange(filtered.length, scrollTop, 360, ROW_HEIGHT)
   const selected = candidates.find((candidate) => candidate.id === selectedId)
 
@@ -353,8 +343,21 @@ export function MemoryReview({
     setError('')
     setNotice('')
     try {
-      for (const id of boundedIds) await client.act(id, action, policy, edit)
-      setNotice(`${action.replace('-', ' ')} completed for ${boundedIds.length} candidate(s).`)
+      const results: MemoryCandidateActionResult[] = []
+      for (const id of boundedIds) results.push(await client.act(id, action, policy, edit))
+      const reviews = results.filter(
+        (result) => result.status === 'review' || result.decision?.decision === 'review'
+      ).length
+      const writes = results.filter((result) => Boolean(result.memory_id)).length
+      if (reviews) {
+        setNotice(
+          `${reviews} candidate(s) remain in review; no canonical memory changed for those records.`
+        )
+      } else if (writes) {
+        setNotice(`Canonical memory updated for ${writes} candidate(s).`)
+      } else {
+        setNotice(`${action.replace('-', ' ')} recorded for ${boundedIds.length} candidate(s).`)
+      }
       setEditing(false)
       setSelectedIds(new Set())
       await refresh()
@@ -520,14 +523,21 @@ function CandidateDetail({
         <p>{selected.content}</p>
       )}
       <CandidateMetadata selected={selected} classification={classification} />
-      <CandidateActions
-        busy={busy}
-        editing={editing}
-        editTitle={editTitle}
-        editContent={editContent}
-        onEditing={onEditing}
-        onAction={onAction}
-      />
+      {selected.status === 'pending' ? (
+        <CandidateActions
+          busy={busy}
+          editing={editing}
+          editTitle={editTitle}
+          editContent={editContent}
+          onEditing={onEditing}
+          onAction={onAction}
+        />
+      ) : (
+        <p className="memory-explanation">
+          This candidate is terminal. Its stored outcome is shown above; no new classification or
+          action was run.
+        </p>
+      )}
     </article>
   )
 }
@@ -568,14 +578,56 @@ function CandidateMetadata({
         </div>
         <div>
           <span>Classification</span>
-          <strong>{classification?.classification ?? 'Inspecting…'}</strong>
+          <strong>
+            {selected.consolidation?.classification ??
+              classification?.classification ??
+              'Not evaluated'}
+          </strong>
         </div>
         <div>
           <span>Policy version</span>
           <strong>{selected.consolidation?.policy_version ?? 'Not evaluated'}</strong>
         </div>
       </div>
+      {selected.consolidation && (
+        <div className="memory-metadata">
+          <div>
+            <span>Decision</span>
+            <strong>{selected.consolidation.decision}</strong>
+          </div>
+          <div>
+            <span>Job status</span>
+            <strong>{selected.consolidation.status}</strong>
+          </div>
+          <div>
+            <span>Attempts</span>
+            <strong>{selected.consolidation.attempts}</strong>
+          </div>
+          <div>
+            <span>Canonical memory</span>
+            <strong>{selected.consolidation.memory_id ?? 'None'}</strong>
+          </div>
+          <div>
+            <span>Last error</span>
+            <strong>{selected.consolidation.last_error ?? 'None'}</strong>
+          </div>
+          <div>
+            <span>Evaluated</span>
+            <strong>{selected.consolidation.updated_at}</strong>
+          </div>
+        </div>
+      )}
       {classification && <p className="memory-explanation">{classification.explanation}</p>}
+      {!classification && selected.consolidation && (
+        <p className="memory-explanation">
+          Stored policy decision {selected.consolidation.decision} ended as{' '}
+          {selected.consolidation.status}
+          {selected.consolidation.memory_id
+            ? ` and created canonical memory ${selected.consolidation.memory_id}`
+            : ' without creating canonical memory'}
+          .
+        </p>
+      )}
       <details>
         <summary>Provenance and support</summary>
         <pre>{JSON.stringify(selected.provenance, null, 2)}</pre>
@@ -627,7 +679,7 @@ function CandidateActions({
         disabled={busy}
         onClick={() => onAction('supersede')}
       >
-        Supersede
+        Review and supersede
       </Button>
       <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction('retry')}>
         Retry

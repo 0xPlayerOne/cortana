@@ -39,6 +39,7 @@ import type {
   AgentMemory,
   DerivedMemoryResponse,
   MemoryCandidate,
+  MemoryCandidateActionResult,
   MemoryCandidateClassification,
   MemoryReviewPolicy,
 } from './types'
@@ -443,13 +444,24 @@ export async function getReflection(
   return (await response.json()) as ReflectResponse
 }
 
-export async function listMemoryCandidates(project?: string): Promise<MemoryCandidate[]> {
-  const request = { project: project || null, limit: 100 }
+export async function listMemoryCandidates(
+  project?: string,
+  queryValue?: string,
+  status?: string
+): Promise<MemoryCandidate[]> {
+  const request = {
+    project: project || null,
+    limit: 1000,
+    query: queryValue || null,
+    status: status || null,
+  }
   if (isTauri()) {
     return invokeDesktop<MemoryCandidate[]>('brain_memory_candidates', { request })
   }
-  const query = new URLSearchParams({ limit: '100' })
+  const query = new URLSearchParams({ limit: '1000' })
   if (project) query.set('project', project)
+  if (queryValue) query.set('query', queryValue)
+  if (status) query.set('status', status)
   const response = await authorizedFetch(`/v1/memory/candidates?${query}`, {})
   if (!response.ok) throw new Error(`Memory candidate review failed (${response.status})`)
   return (await response.json()) as MemoryCandidate[]
@@ -479,11 +491,14 @@ export async function actOnMemoryCandidate(
   action: MemoryCandidateAction,
   policy: MemoryReviewPolicy,
   edit?: { title: string; content: string }
-): Promise<void> {
+): Promise<MemoryCandidateActionResult> {
   const request = { policy: consolidationPolicy(policy), edit: edit || null }
   if (isTauri()) {
-    await invokeDesktop('brain_memory_candidate_action', { id, action, request })
-    return
+    return invokeDesktop<MemoryCandidateActionResult>('brain_memory_candidate_action', {
+      id,
+      action,
+      request,
+    })
   }
   if (action === 'edit-approve') {
     const edited = await authorizedFetch(`/v1/memory/candidates/${encodeURIComponent(id)}/edit`, {
@@ -493,6 +508,15 @@ export async function actOnMemoryCandidate(
     })
     if (!edited.ok) throw new Error(`Memory candidate edit failed (${edited.status})`)
   }
+  if (action === 'working') {
+    const working = await authorizedFetch(
+      `/v1/memory/candidates/${encodeURIComponent(id)}/working`,
+      {
+        method: 'POST',
+      }
+    )
+    if (!working.ok) throw new Error(`Memory candidate working failed (${working.status})`)
+  }
   const suffix = action === 'reject' ? 'cancel' : action === 'redact' ? 'redact' : 'consolidate'
   const response = await authorizedFetch(
     `/v1/memory/candidates/${encodeURIComponent(id)}/${suffix}`,
@@ -500,11 +524,16 @@ export async function actOnMemoryCandidate(
       ? {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ policy: request.policy, explicit_approval: true }),
+          body: JSON.stringify({
+            policy: request.policy,
+            explicit_approval: true,
+            action: action === 'supersede' ? 'supersede' : null,
+          }),
         }
       : { method: 'POST' }
   )
   if (!response.ok) throw new Error(`Memory candidate ${action} failed (${response.status})`)
+  return (await response.json()) as MemoryCandidateActionResult
 }
 
 export async function setMemoryConsolidationPaused(paused: boolean): Promise<void> {
@@ -519,6 +548,21 @@ export async function setMemoryConsolidationPaused(paused: boolean): Promise<voi
     { method: 'POST' }
   )
   if (!response.ok) throw new Error(`Memory consolidation control failed (${response.status})`)
+}
+
+export async function getMemoryConsolidationPaused(): Promise<boolean> {
+  if (isTauri()) {
+    const response = await invokeDesktop<{ paused: boolean }>(
+      'brain_memory_consolidation_control',
+      {
+        action: 'status',
+      }
+    )
+    return response.paused
+  }
+  const response = await authorizedFetch('/v1/memory/consolidation/status', {})
+  if (!response.ok) throw new Error(`Memory consolidation status failed (${response.status})`)
+  return ((await response.json()) as { paused: boolean }).paused
 }
 
 export async function listDerivedMemories(project?: string): Promise<DerivedMemoryResponse> {
