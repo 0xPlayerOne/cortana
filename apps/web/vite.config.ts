@@ -22,5 +22,13 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
     manifest: true,
+    rollupOptions: {
+      output: {
+        onlyExplicitManualChunks: true,
+        manualChunks(id) {
+          if (id.endsWith('/M7NavigationOverlays.tsx')) return 'm7-navigation-overlays'
+        },
+      },
+    },
   },
 })

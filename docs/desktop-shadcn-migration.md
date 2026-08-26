@@ -102,10 +102,13 @@ code before issue #2168 can accept performance.
 
 `bun run build` enforces reviewed uncompressed budgets from the Vite manifest: 475,000 bytes for
 the complete legacy-default initial JavaScript graph, 80,000 bytes for its CSS, 220,000 bytes for
-the lazy foundation prototype, and 125,000 bytes for its CSS. The CSS threshold was reviewed from
-120,000 to 125,000 bytes when the explicit Combobox contract completed the #2162 primitive
-inventory; the resulting measured asset is 121.35 kB (18.83 kB gzip). Raising a threshold requires an
-explicit measured review;
+the lazy foundation prototype entry, 330,000 bytes for its complete incremental static import
+graph beyond the already-loaded app shell, and 125,000 bytes for its CSS. The #2163 overlay slice
+measures 40.55 kB for the renderer entry and 322.59 kB for that complete incremental graph; the
+graph budget prevents manual chunking from hiding imported JavaScript. The CSS threshold was
+reviewed from 120,000 to 125,000 bytes when the explicit Combobox contract completed the #2162
+primitive inventory; the resulting measured asset is 121.62 kB (18.87 kB gzip). Raising a threshold
+requires an explicit measured review;
 the final migration replaces these transition budgets rather than silently carrying them forward.
 
 The added JavaScript packages use MIT or Apache-2.0 licenses. The bundled Geist font package uses
