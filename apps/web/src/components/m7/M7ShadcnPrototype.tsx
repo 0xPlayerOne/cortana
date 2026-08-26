@@ -34,6 +34,13 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/shadcn/field'
 import { Input } from '@/components/shadcn/input'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/shadcn/select'
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -222,6 +229,32 @@ export function M7ShadcnPrototype() {
                         <FieldDescription>
                           Scopes documents, memory, and agent context.
                         </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="prototype-retrieval-mode">Retrieval mode</FieldLabel>
+                        <Select defaultValue="balanced">
+                          <SelectTrigger id="prototype-retrieval-mode" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="precise">Precise</SelectItem>
+                            <SelectItem value="balanced">Balanced</SelectItem>
+                            <SelectItem value="broad">Broad</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FieldDescription>
+                          Balances recall against evidence precision.
+                        </FieldDescription>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="prototype-source-limit">Maximum sources</FieldLabel>
+                        <Input
+                          id="prototype-source-limit"
+                          type="number"
+                          min="1"
+                          defaultValue="12"
+                        />
+                        <FieldDescription>Caps the evidence set before synthesis.</FieldDescription>
                       </Field>
                       <Field orientation="horizontal">
                         <div>

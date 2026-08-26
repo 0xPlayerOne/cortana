@@ -18,3 +18,17 @@ test('switches evidence tabs without losing the document workflow', async () => 
   fireEvent.click(screen.getByRole('tab', { name: 'Document' }))
   expect(await screen.findByText('Evidence spine')).toBeTruthy()
 })
+
+test('composes dense retrieval settings from shared controls', () => {
+  render(<M7ShadcnPrototype />)
+
+  expect(screen.getByRole('combobox', { name: 'Retrieval mode' })).toBeTruthy()
+  expect(
+    (screen.getByRole('spinbutton', { name: 'Maximum sources' }) as HTMLInputElement).value
+  ).toBe('12')
+
+  const citations = screen.getByRole('switch', { name: 'Require citations' })
+  expect(citations.getAttribute('aria-checked')).toBe('true')
+  fireEvent.click(citations)
+  expect(citations.getAttribute('aria-checked')).toBe('false')
+})
