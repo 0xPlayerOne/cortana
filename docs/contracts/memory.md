@@ -99,6 +99,34 @@ those writes instead of approximating identity with ACL membership. A selected w
 filter, never authorization. Cross-workspace dedupe, cache, supersession, export, and revision paths
 must remain isolated.
 
+## Derived representations and relations
+
+The versioned `cortana.memory-derived.v1` contract computes higher-order views from a bounded,
+already-authorized memory page. It exposes episodic `experience` views, consolidated
+`observation` patterns, confidence-bearing `mental-model` and `belief` interpretations, and
+`subject-predicate-object`, `temporal`, `causal`, `reinforcement`, `contradiction`, and
+`supersession` relations. Every item includes its supporting canonical memory IDs, exact ACL
+intersection, scope, freshness, memory revision, derivation engine version, support digest,
+confidence, and project.
+Mental models and beliefs expose contradicting record IDs separately.
+
+These projections are recomputed rather than promoted or treated as evidence. Their
+`citation_authority` and `canonical_memory_mutated` fields are always false. Joining records with
+no common ACL produces no combined representation, so derivation cannot widen visibility. Only
+active, currently valid records support representations. Remember, supersede, retract, and forget
+writes advance `memory_revision`; wall-clock expiry is evaluated on every projection read. Answers
+that can see a future-expiring memory are not cache eligible, so a cached response cannot outlive
+its support. Historical supersession relations may describe a visible tombstone, but the tombstone
+cannot support an experience, observation, mental model, or belief.
+
+`GET /v1/memory/derived` and MCP `inspect_memory_representations` provide bounded inspection and
+export. `GET /v1/graph?...&include_derived=true` requires both query and memory scopes and adds
+explicitly labeled derived nodes and support edges without loading the full corpus. Each projected
+graph node carries the same contract version, derivation version, memory revision, support IDs, and
+non-citation flag as the dedicated endpoint. `POST /v1/memory/reflect` accepts
+`include_derived: true` to return projections over the same authorized memory page; the reflection
+token budget may omit derived items before returning an oversized response.
+
 ## Lifecycle rules
 
 1. `remember` is explicit and idempotent for a `(project, dedupe_key)` pair.

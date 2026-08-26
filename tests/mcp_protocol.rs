@@ -63,6 +63,7 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
                 "export_memory",
                 "export_memory_candidates",
                 "forget",
+                "inspect_memory_representations",
                 "list_memory_candidates",
                 "propose_memory_candidate",
                 "recall",
@@ -197,6 +198,31 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
         let reflection: Value = serde_json::from_str(&reflected_text)?;
         assert_eq!(reflection["status"], "completed");
         assert_eq!(reflection["metrics"]["canonical_memory_mutated"], false);
+
+        let derived = client
+            .call_tool(
+                CallToolRequestParams::new("inspect_memory_representations").with_arguments(
+                    serde_json::json!({"project": "work", "limit": 20})
+                        .as_object()
+                        .expect("derived arguments")
+                        .clone(),
+                ),
+            )
+            .await?;
+        assert_ne!(derived.is_error, Some(true), "derived inspection failed");
+        let derived_text = derived
+            .content
+            .iter()
+            .filter_map(|content| content.as_text())
+            .map(|text| text.text.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        let derived_json: Value = serde_json::from_str(&derived_text)?;
+        assert_eq!(
+            derived_json["contract_version"],
+            "cortana.memory-derived.v1"
+        );
+        assert_eq!(derived_json["canonical_memory_mutated"], false);
 
         let after: CallToolResult = client
             .call_tool(CallToolRequestParams::new("brain_status"))

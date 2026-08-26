@@ -106,6 +106,13 @@ pub struct MemoryExportParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct DerivedMemoryParams {
+    project: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryForgetParams {
     id: String,
 }
@@ -1402,6 +1409,63 @@ impl BrainServer {
                     started,
                 );
                 format!("memory export error: {error}")
+            }
+        }
+    }
+
+    #[tool(
+        description = "Inspect or export bounded provenance-bearing experiences, observations, mental models, beliefs, and memory relations. Results are derived, never canonical memory or citation authority."
+    )]
+    async fn inspect_memory_representations(
+        &self,
+        Parameters(params): Parameters<DerivedMemoryParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(MEMORY_SCOPE) {
+            return "authorization error: memory scope required".into();
+        }
+        if let Err(error) = validate_scopes(params.project.as_deref(), None) {
+            return format!("invalid derived memory scope: {error}");
+        }
+        let limit = params
+            .limit
+            .unwrap_or(64)
+            .clamp(1, crate::derived::MAX_DERIVED_INPUTS);
+        let result = crate::derived::derive_authorized_memory(
+            &self.store,
+            params.project.as_deref(),
+            limit,
+            &principal.visible_acl(),
+            principal.is_owner(),
+        );
+        match result {
+            Ok(response) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_derived.read",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(response.representations.len() + response.relations.len()),
+                    started,
+                );
+                serde_json::to_string(&response).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.memory_derived.read",
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                format!("derived memory error: {error}")
             }
         }
     }

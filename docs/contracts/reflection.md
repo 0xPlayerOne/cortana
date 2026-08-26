@@ -15,6 +15,8 @@ and ingestion.
   scope, and a bounded record limit;
 - `include_evidence`, which requires evidence to have been retrieved for the
   same project;
+- `include_derived`, which adds bounded, explicitly non-canonical projections
+  over the same authorized memory page;
 - a bounded token budget and deadline;
 - `provider_policy`: `deterministic-only`, `prefer-provider`, or
   `require-provider`.
@@ -39,6 +41,12 @@ evidence IDs, and proposed candidates. Every derived item carries supporting
 memory IDs (and claims may carry evidence IDs). A provider response is rejected
 if it references an unknown ID, emits an unsupported candidate, or returns an
 ungrounded chronology entry.
+
+When `include_derived` is true, the response also carries versioned
+`derived_representations` and `memory_relations`. Those items expose their own
+support IDs and ACL intersection, set `citation_authority: false`, and are
+removed before canonical reflection content when the response must degrade to
+its token budget.
 
 The deterministic implementation is provider-free and extractive. It groups
 visible memories by content type, detects bounded polarity tensions, orders
