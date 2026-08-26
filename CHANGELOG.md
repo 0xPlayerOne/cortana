@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.48.0](https://github.com/0xPlayerOne/cortana/compare/v0.47.0...v0.48.0) (2026-08-26)
+
+
+### Features
+
+* **desktop:** establish M7 shadcn foundation ([#2184](https://github.com/0xPlayerOne/cortana/issues/2184)) ([7f19b36](https://github.com/0xPlayerOne/cortana/commit/7f19b36cd94b5073fc0936a5b9c8dc17a23ca64e))
+
 ## [0.47.0](https://github.com/0xPlayerOne/cortana/compare/v0.46.0...v0.47.0) (2026-08-26)
 
 
