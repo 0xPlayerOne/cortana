@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event'
 
 import {
   Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
   ComboboxContent,
   ComboboxInput,
   ComboboxItem,
@@ -103,9 +106,29 @@ test('supports keyboard selection through the shared combobox', async () => {
   )
 
   const input = screen.getByRole('combobox', { name: 'Workspace scope' })
+  expect(screen.getByRole('button', { name: 'Toggle options' })).toBeTruthy()
   await user.click(input)
   await user.keyboard('{ArrowDown}{Enter}')
   expect((input as HTMLInputElement).value).toBe('Personal')
+})
+
+test('names combobox clear and chip-removal actions', () => {
+  render(
+    <Combobox items={['Personal', 'Work']} defaultValue="Personal">
+      <ComboboxInput aria-label="Workspace scope" showClear />
+    </Combobox>
+  )
+  expect(screen.getByRole('button', { name: 'Clear selection' })).toBeTruthy()
+
+  render(
+    <Combobox multiple defaultValue={['Personal']}>
+      <ComboboxChips>
+        <ComboboxChip>Personal</ComboboxChip>
+        <ComboboxChipsInput aria-label="Workspace scopes" />
+      </ComboboxChips>
+    </Combobox>
+  )
+  expect(screen.getByRole('button', { name: 'Remove item' })).toBeTruthy()
 })
 
 test('renders a scalar slider value with exactly one thumb', async () => {
