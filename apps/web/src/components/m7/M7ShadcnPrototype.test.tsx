@@ -37,7 +37,11 @@ test('composes dense retrieval settings from shared controls', () => {
 
 test('uses the shared feedback contract for exceptional retrieval states', () => {
   const { rerender } = render(<M7ShadcnPrototype previewState="loading" />)
-  expect(screen.getByLabelText('Loading release evidence')).toBeTruthy()
+  expect(
+    screen.getByRole('status', {
+      name: 'Loading release evidence: Retrieving bounded sources.',
+    })
+  ).toBeTruthy()
 
   rerender(<M7ShadcnPrototype previewState="empty" />)
   expect(screen.getByText('No release evidence')).toBeTruthy()
