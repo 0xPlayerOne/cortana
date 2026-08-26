@@ -7,11 +7,8 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 }
 
 /**
- * Small, theme-token-backed action primitive for controls that should never
- * fall back to the browser's default grey button chrome.
- *
- * It intentionally stays dependency-free so the existing Vite/Tauri renderer
- * can adopt shadcn-style composition incrementally without a Tailwind rewrite.
+ * Temporary legacy action primitive. M7 removes this file after every caller
+ * moves to the generated shadcn Button.
  */
 export function Button({
   variant = 'secondary',

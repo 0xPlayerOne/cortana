@@ -95,6 +95,7 @@ Durable documentation has separate ownership:
 - [Operations](docs/operations.md) defines supported operational procedures.
 - [Source rollout](docs/source-rollout.md) defines the source-activation procedure.
 - [Desktop UX audit](docs/desktop-ux-audit.md) defines packaged-product acceptance.
+- [Desktop shadcn migration record](docs/desktop-shadcn-migration.md) defines the M7 baseline and locked renderer foundation.
 - ADRs record durable architecture decisions.
 
 See [Planning and tracking](docs/planning.md).
