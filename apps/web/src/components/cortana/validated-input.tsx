@@ -3,7 +3,10 @@ import type { ComponentProps } from 'react'
 import { Field, FieldDescription, FieldError, FieldLabel } from '@/components/shadcn/field'
 import { Input } from '@/components/shadcn/input'
 
-type ValidatedInputProps = Omit<ComponentProps<typeof Input>, 'id'> & {
+type ValidatedInputProps = Omit<
+  ComponentProps<typeof Input>,
+  'id' | 'aria-invalid' | 'aria-describedby'
+> & {
   id: string
   label: string
   description?: string
@@ -16,13 +19,13 @@ export function ValidatedInput({ id, label, description, error, ...props }: Vali
   const describedBy = [descriptionId, errorId].filter(Boolean).join(' ') || undefined
 
   return (
-    <Field data-invalid={error ? '' : undefined}>
+    <Field data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
+        {...props}
         id={id}
         aria-invalid={error ? true : undefined}
         aria-describedby={describedBy}
-        {...props}
       />
       {description ? <FieldDescription id={descriptionId}>{description}</FieldDescription> : null}
       {error ? <FieldError id={errorId}>{error}</FieldError> : null}

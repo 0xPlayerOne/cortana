@@ -34,3 +34,14 @@ test('composes dense retrieval settings from shared controls', () => {
   fireEvent.click(citations)
   expect(citations.getAttribute('aria-checked')).toBe('false')
 })
+
+test('uses the shared feedback contract for exceptional retrieval states', () => {
+  const { rerender } = render(<M7ShadcnPrototype previewState="loading" />)
+  expect(screen.getByLabelText('Loading release evidence')).toBeTruthy()
+
+  rerender(<M7ShadcnPrototype previewState="empty" />)
+  expect(screen.getByText('No release evidence')).toBeTruthy()
+
+  rerender(<M7ShadcnPrototype previewState="error" />)
+  expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy()
+})

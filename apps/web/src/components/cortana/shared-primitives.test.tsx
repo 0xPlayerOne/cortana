@@ -1,5 +1,22 @@
 import { afterEach, expect, mock, test } from 'bun:test'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+
+import {
+  Combobox,
+  ComboboxContent,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from '@/components/shadcn/combobox'
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+} from '@/components/shadcn/pagination'
+import { Slider } from '@/components/shadcn/slider'
+import { ToggleGroup, ToggleGroupItem } from '@/components/shadcn/toggle-group'
 
 import { AsyncButton } from './async-button'
 import { FeedbackState } from './feedback-state'
@@ -24,8 +41,9 @@ test('announces status and exposes a consistent busy button contract', () => {
   expect((button as HTMLButtonElement).disabled).toBe(true)
 })
 
-test('keeps error recovery keyboard-operable', () => {
+test('keeps error recovery keyboard-operable', async () => {
   const retry = mock(() => undefined)
+  const user = userEvent.setup()
   render(
     <FeedbackState
       kind="error"
@@ -36,9 +54,8 @@ test('keeps error recovery keyboard-operable', () => {
   )
 
   const button = screen.getByRole('button', { name: 'Retry' })
-  button.focus()
-  fireEvent.keyDown(button, { key: 'Enter' })
-  fireEvent.click(button)
+  await user.tab()
+  await user.keyboard('{Enter}')
   expect(document.activeElement).toBe(button)
   expect(retry).toHaveBeenCalledTimes(1)
 })
@@ -69,4 +86,65 @@ test('associates field help and validation errors programmatically', () => {
   expect(input.getAttribute('aria-invalid')).toBe('true')
   expect(input.getAttribute('aria-describedby')).toBe('provider-url-description provider-url-error')
   expect(screen.getByRole('alert').textContent).toBe('Enter a valid HTTPS URL.')
+})
+
+test('supports keyboard selection through the shared combobox', async () => {
+  const user = userEvent.setup()
+  render(
+    <Combobox items={['Personal', 'Work']}>
+      <ComboboxInput aria-label="Workspace scope" />
+      <ComboboxContent>
+        <ComboboxList>
+          <ComboboxItem value="Personal">Personal</ComboboxItem>
+          <ComboboxItem value="Work">Work</ComboboxItem>
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  )
+
+  const input = screen.getByRole('combobox', { name: 'Workspace scope' })
+  await user.click(input)
+  await user.keyboard('{ArrowDown}{Enter}')
+  expect((input as HTMLInputElement).value).toBe('Personal')
+})
+
+test('renders a scalar slider value with exactly one thumb', async () => {
+  const { container } = render(<Slider aria-label="Relevance" defaultValue={50} />)
+  await waitFor(() => {
+    expect(container.querySelectorAll('[data-slot="slider-thumb"]')).toHaveLength(1)
+    expect(container.querySelector('input[type="range"]')?.getAttribute('value')).toBe('50')
+  })
+})
+
+test('honors vertical toggle-group keyboard orientation', async () => {
+  const user = userEvent.setup()
+  render(
+    <ToggleGroup orientation="vertical">
+      <ToggleGroupItem value="recent">Recent</ToggleGroupItem>
+      <ToggleGroupItem value="relevant">Relevant</ToggleGroupItem>
+    </ToggleGroup>
+  )
+
+  const recent = screen.getByRole('button', { name: 'Recent' })
+  const relevant = screen.getByRole('button', { name: 'Relevant' })
+  recent.focus()
+  await user.keyboard('{ArrowDown}')
+  expect(document.activeElement).toBe(relevant)
+})
+
+test('keeps pagination links exposed as links', () => {
+  render(
+    <Pagination>
+      <PaginationContent>
+        <PaginationItem>
+          <PaginationLink href="/?page=2">2</PaginationLink>
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
+  )
+
+  const link = screen.getByRole('link', { name: '2' })
+  expect(link.getAttribute('href')).toBe('/?page=2')
+  expect(link.getAttribute('role')).toBeNull()
+  expect(screen.queryByRole('button', { name: '2' })).toBeNull()
 })

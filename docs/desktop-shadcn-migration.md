@@ -52,8 +52,8 @@ Install the matching browser once with `bunx playwright install chromium` when P
 that it is missing. The capture fails on browser console errors. The legacy run records 56 images:
 all primary wide-screen destinations; the default and accessibility themes at 320, 768, 1024,
 and 1440 CSS pixels; Forest and Plum at compact and desktop widths; command, source-sheet,
-settings, and graph states. The prototype run records 18 images: the shell at all four widths in
-all four themes, plus its mobile navigation and dialog.
+settings, and graph states. The prototype run records 21 images: the shell at all four widths in
+all four themes, its mobile navigation and dialog, plus loading, empty, and error retrieval states.
 
 `.github/workflows/m7-visual-evidence.yml` runs the same capture on the exact pull-request revision,
 audits every prototype theme/width against WCAG 2.2 AA automation, and uploads the complete
@@ -95,14 +95,16 @@ diagnostic comparison points, not packaged performance claims.
 The pre-migration production build transformed 1,699 modules in 1.55 seconds. Its renderer entry
 was 453,729 bytes (133.57 kB gzip), and legacy CSS was 72,299 bytes (13.67 kB gzip). The flag-disabled
 foundation build keeps the shadcn prototype in separate lazy chunks: the complete legacy-default
-initial graph is 455.04 kB, while the prototype is 200.62 kB (64.86 kB gzip) plus the complete
-shared primitive CSS contract at 116.62 kB (18.25 kB gzip). Issue #2167 must compare the final
+initial graph is 455.07 kB, while the prototype is 206.01 kB (66.57 kB gzip) plus the complete
+shared primitive CSS contract at 121.35 kB (18.83 kB gzip). Issue #2167 must compare the final
 single renderer to the baseline and remove transition-only
 code before issue #2168 can accept performance.
 
 `bun run build` enforces reviewed uncompressed budgets from the Vite manifest: 475,000 bytes for
 the complete legacy-default initial JavaScript graph, 80,000 bytes for its CSS, 220,000 bytes for
-the lazy foundation prototype, and 120,000 bytes for its CSS. Raising a threshold requires an
+the lazy foundation prototype, and 125,000 bytes for its CSS. The CSS threshold was reviewed from
+120,000 to 125,000 bytes when the explicit Combobox contract completed the #2162 primitive
+inventory; the resulting measured asset is 121.35 kB (18.83 kB gzip). Raising a threshold requires an
 explicit measured review;
 the final migration replaces these transition budgets rather than silently carrying them forward.
 

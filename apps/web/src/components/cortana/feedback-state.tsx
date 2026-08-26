@@ -22,7 +22,7 @@ type FeedbackStateProps = {
 export function FeedbackState({ kind, title, description, onRetry }: FeedbackStateProps) {
   if (kind === 'loading') {
     return (
-      <div className="flex flex-col gap-3" aria-busy="true" aria-label={title}>
+      <div className="flex flex-col gap-3" role="status" aria-busy="true" aria-label={title}>
         <Skeleton className="h-5 w-2/5" />
         <Skeleton className="h-20 w-full" />
       </div>
