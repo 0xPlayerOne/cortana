@@ -2321,6 +2321,7 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                     limit: *limit,
                 },
                 include_evidence: false,
+                include_derived: false,
                 token_budget: *token_budget,
                 provider_policy: cortana::reflection::ProviderPolicy::DeterministicOnly,
                 deadline_ms: *deadline_ms,

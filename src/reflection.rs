@@ -118,6 +118,10 @@ pub struct ReflectRequest {
     pub memory: MemoryReflectFilter,
     #[serde(default)]
     pub include_evidence: bool,
+    /// Include bounded, non-canonical projections over the same authorized
+    /// memory page used for this reflection.
+    #[serde(default)]
+    pub include_derived: bool,
     #[serde(default = "default_token_budget")]
     pub token_budget: usize,
     #[serde(default)]
@@ -225,7 +229,7 @@ pub struct ReflectMetrics {
     pub canonical_memory_mutated: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ReflectResponse {
     pub contract_version: String,
     pub request_digest: String,
@@ -242,6 +246,8 @@ pub struct ReflectResponse {
     pub chronology: Vec<ReflectChronology>,
     pub recommendations: Vec<ReflectRecommendation>,
     pub proposed_candidates: Vec<ProposedReflectCandidate>,
+    pub derived_representations: Vec<crate::derived::DerivedRepresentation>,
+    pub memory_relations: Vec<crate::derived::MemoryRelation>,
     pub evidence_ids: Vec<String>,
     pub metrics: ReflectMetrics,
 }
@@ -485,7 +491,22 @@ pub fn reflect_with_provider(
 ) -> Result<ReflectResponse> {
     validate_request(request)?;
     let started = Instant::now();
-    let selected = authorize_and_select_memories(request, inputs)?
+    let selected = authorize_and_select_memories(request, inputs)?;
+    let derived = if request.include_derived {
+        crate::derived::derive_memory(&selected, inputs.memory_revision, selected.len().max(1))?
+    } else {
+        crate::derived::DerivedMemoryResponse {
+            contract_version: crate::derived::DERIVED_MEMORY_CONTRACT_VERSION.into(),
+            derivation_version: crate::derived::DERIVATION_ENGINE_VERSION.into(),
+            memory_revision: inputs.memory_revision,
+            canonical_memory_mutated: false,
+            recomputed: false,
+            inputs_considered: 0,
+            representations: Vec::new(),
+            relations: Vec::new(),
+        }
+    };
+    let selected = selected
         .into_iter()
         .map(bound_memory_input)
         .collect::<Vec<_>>();
@@ -581,6 +602,8 @@ pub fn reflect_with_provider(
                                 &selected,
                                 &evidence,
                                 inputs.evidence.len(),
+                                derived.representations.clone(),
+                                derived.relations.clone(),
                             )?;
                             return Ok(response);
                         }
@@ -660,6 +683,8 @@ pub fn reflect_with_provider(
         &selected,
         &evidence,
         inputs.evidence.len(),
+        derived.representations,
+        derived.relations,
     )?;
     if fallback.deadline_exceeded {
         response.status = ReflectStatus::DeadlineExceeded;
@@ -669,6 +694,8 @@ pub fn reflect_with_provider(
         response.chronology.clear();
         response.recommendations.clear();
         response.proposed_candidates.clear();
+        response.derived_representations.clear();
+        response.memory_relations.clear();
     }
     Ok(response)
 }
@@ -986,6 +1013,8 @@ fn response_from_output(
     memories: &[MemoryRecord],
     evidence: &[Evidence],
     evidence_considered: usize,
+    derived_representations: Vec<crate::derived::DerivedRepresentation>,
+    memory_relations: Vec<crate::derived::MemoryRelation>,
 ) -> Result<ReflectResponse> {
     output.claims.truncate(MAX_REFLECTION_CLAIMS);
     output.patterns.truncate(MAX_REFLECTION_PATTERNS);
@@ -1012,6 +1041,8 @@ fn response_from_output(
         chronology: output.chronology,
         recommendations: output.recommendations,
         proposed_candidates: output.proposed_candidates,
+        derived_representations,
+        memory_relations,
         evidence_ids,
         metrics: ReflectMetrics {
             memories_considered: memories.len(),
@@ -1029,6 +1060,8 @@ fn response_from_output(
             break;
         }
         if response.proposed_candidates.pop().is_some()
+            || response.memory_relations.pop().is_some()
+            || response.derived_representations.pop().is_some()
             || response.recommendations.pop().is_some()
             || response.tensions.pop().is_some()
             || response.patterns.pop().is_some()
@@ -1090,6 +1123,8 @@ fn empty_response(
         chronology: Vec::new(),
         recommendations: Vec::new(),
         proposed_candidates: Vec::new(),
+        derived_representations: Vec::new(),
+        memory_relations: Vec::new(),
         evidence_ids: Vec::new(),
         metrics: ReflectMetrics {
             memories_considered,
@@ -1449,6 +1484,7 @@ mod tests {
             project: Some("work".into()),
             memory: MemoryReflectFilter::default(),
             include_evidence: false,
+            include_derived: false,
             token_budget: 2_048,
             provider_policy: ProviderPolicy::DeterministicOnly,
             deadline_ms: 5_000,
