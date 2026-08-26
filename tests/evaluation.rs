@@ -47,6 +47,51 @@ fn deterministic_evaluation_cli_passes_built_in_thresholds() {
     );
 }
 
+#[test]
+fn memory_intelligence_evaluation_keeps_automatic_retention_gated() {
+    let output = Command::cargo_bin("cortana")
+        .expect("cortana binary")
+        .args(["eval", "--memory"])
+        .output()
+        .expect("memory evaluation command");
+    assert!(
+        output.status.success(),
+        "memory evaluation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("memory evaluation JSON");
+    assert_eq!(report["passed"], true);
+    assert_eq!(report["metrics"]["unauthorized_exposures"], 0);
+    assert_eq!(report["metrics"]["unsupported_reflection_claims"], 0);
+    assert_eq!(report["baseline"]["explicit_memory_passed"], true);
+    assert_eq!(report["activation"]["automatic_retention"], false);
+    assert_eq!(report["activation"]["approved_private_gate_required"], true);
+    assert_eq!(report["activation"]["private_gate_status"], "not-run");
+    assert_eq!(report["metrics"]["provider_requests"], 2);
+    assert_eq!(report["metrics"]["estimated_provider_cost_usd"], 0.0);
+    assert_eq!(report["metrics"]["candidate_precision"], 1.0);
+    assert_eq!(report["metrics"]["candidate_recall"], 1.0);
+    assert_eq!(report["metrics"]["approval_load"], 1.0);
+    assert_eq!(report["metrics"]["disposable_store_cases"], 20);
+    assert_eq!(report["metrics"]["failures_by_domain"]["candidate"], 0);
+    let comparisons = report["comparisons"].as_array().expect("comparisons");
+    assert_eq!(comparisons.len(), 6);
+    assert!(comparisons.iter().take(5).all(|comparison| {
+        comparison["passed"] == true
+            && comparison["explicit_memory_preserved"] == true
+            && comparison["canonical_write_requires_approval"] == true
+    }));
+    assert_eq!(comparisons[5]["capability"], "automatic-retention");
+    assert_eq!(comparisons[5]["passed"], false);
+    assert_eq!(comparisons[5]["explicit_memory_preserved"], true);
+    assert!(
+        report["cases"]
+            .as_array()
+            .is_some_and(|cases| cases.len() >= 12)
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn model_evaluation_synthesizes_even_when_production_config_disables_synthesis() {
     // Local loopback provider: three answer passes run planner+synthesis for

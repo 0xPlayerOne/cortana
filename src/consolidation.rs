@@ -44,6 +44,10 @@ impl Default for RetentionCeilings {
 pub struct ConsolidationPolicy {
     pub version: String,
     pub enabled: bool,
+    /// Release-controlled gate. Policy JSON cannot set this field; a reviewed
+    /// runtime change must opt in after approved private evidence exists.
+    #[serde(skip_deserializing, default)]
+    pub automatic_retention_release_authorized: bool,
     pub auto_retain_min_confidence: f32,
     pub auto_retain_min_importance: f32,
     pub max_queue: usize,
@@ -75,6 +79,7 @@ impl Default for ConsolidationPolicy {
         Self {
             version: CONSOLIDATION_POLICY_VERSION.into(),
             enabled: false,
+            automatic_retention_release_authorized: false,
             auto_retain_min_confidence: 0.9,
             auto_retain_min_importance: 0.65,
             max_queue: DEFAULT_MAX_QUEUE,
@@ -286,6 +291,13 @@ pub fn evaluate(
         decision = ConsolidationDecision::Review;
         reason_code = "preference-working-disabled";
         explanation = "user preferences require review before retaining working memory";
+    } else if candidate.retention_tier == "working"
+        && !context.explicit_approval
+        && !policy.automatic_retention_release_authorized
+    {
+        decision = ConsolidationDecision::Review;
+        reason_code = "automatic-retention-release-gate";
+        explanation = "automatic working retention remains disabled until approved private evidence and a reviewed runtime release gate exist";
     } else if candidate.retention_tier == "working" {
         decision = ConsolidationDecision::Working;
         reason_code = "working-retention";
@@ -295,6 +307,18 @@ pub fn evaluate(
         "new" | "reinforcement" | "semantic-duplicate" | "exact-duplicate"
     ) && candidate.importance >= policy.auto_retain_min_importance
         && policy.preferences.allow_auto_retain
+        && !context.explicit_approval
+        && !policy.automatic_retention_release_authorized
+    {
+        decision = ConsolidationDecision::Review;
+        reason_code = "automatic-retention-release-gate";
+        explanation = "automatic retention remains disabled until approved private evidence and a reviewed runtime release gate exist";
+    } else if matches!(
+        classification.classification.as_str(),
+        "new" | "reinforcement" | "semantic-duplicate" | "exact-duplicate"
+    ) && candidate.importance >= policy.auto_retain_min_importance
+        && policy.preferences.allow_auto_retain
+        && policy.automatic_retention_release_authorized
     {
         decision = ConsolidationDecision::AutoRetain;
         reason_code = "thresholds-met";
@@ -548,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn safe_high_confidence_candidate_auto_retains_only_when_enabled() {
+    fn safe_high_confidence_candidate_requires_the_non_deserializable_release_gate() {
         let mut policy = ConsolidationPolicy {
             enabled: true,
             ..Default::default()
@@ -560,7 +584,41 @@ mod tests {
             &PolicyContext::default(),
         )
         .unwrap();
-        assert_eq!(result.decision, ConsolidationDecision::AutoRetain);
+        assert_eq!(result.decision, ConsolidationDecision::Review);
+        assert_eq!(result.reason_code, "automatic-retention-release-gate");
+        let mut working = candidate();
+        working.retention_tier = "working".into();
+        let working_result = evaluate(
+            &working,
+            &classification("new"),
+            &policy,
+            &PolicyContext::default(),
+        )
+        .expect("working release gate");
+        assert_eq!(working_result.decision, ConsolidationDecision::Review);
+        assert_eq!(
+            working_result.reason_code,
+            "automatic-retention-release-gate"
+        );
+        let serialized = serde_json::to_value(&policy).expect("serialized policy");
+        let mut submitted = serialized.clone();
+        submitted["automatic_retention_release_authorized"] = true.into();
+        let submitted: ConsolidationPolicy =
+            serde_json::from_value(submitted).expect("submitted policy");
+        assert!(!submitted.automatic_retention_release_authorized);
+
+        policy.automatic_retention_release_authorized = true;
+        assert_eq!(
+            evaluate(
+                &candidate(),
+                &classification("new"),
+                &policy,
+                &PolicyContext::default()
+            )
+            .unwrap()
+            .decision,
+            ConsolidationDecision::AutoRetain
+        );
         policy.enabled = false;
         assert_eq!(
             evaluate(

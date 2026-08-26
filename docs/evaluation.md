@@ -273,6 +273,61 @@ measurements; later retrieval changes compare against the same corpus and manife
 - derived-representation invalidation;
 - unauthorized-memory count.
 
+Run the checked-in, provider-free native-memory gate with:
+
+```bash
+cortana eval --memory
+```
+
+The versioned `eval/memory-intelligence-fixtures.json` suite uses disposable stores and synthetic
+preferences, decisions, contradictions, stale working state, sensitive-data rejection, and
+cross-workspace distractors. It reports observed per-case candidate/model/policy/corpus failure
+domains with stable sanitized reason codes; nested policy failures retain their policy attribution
+instead of being relabeled as the case's expected domain. Failed capability comparisons carry the
+same attribution and contribute to the aggregate failure-domain counts. Untagged store, SQLite, or
+evaluation-pipeline errors fail closed as sanitized corpus/infrastructure failures. The report also includes
+explicit-only baselines, each proposed capability's comparison, latency, provider requests,
+estimated provider cost, and measured disposable-store count and bytes. Candidate precision and
+recall come from the labeled safe/sensitive/cross-workspace proposal confusion matrix; provider
+requests and approval load are counted from the operations actually executed. Every gating fixture
+must contain the complete ordered canonical case registry with its fixed category and failure
+domain. A custom fixture may tighten thresholds but cannot omit cases or weaken quality, privacy,
+latency, cost, or resource bounds. Synthetic success can enable release claims for manual candidate
+review, deterministic classification, approval-gated consolidation, reflection, and derived
+inspection; it cannot authorize automatic retention.
+
+The synthetic contents cover a durable preference, semantic decision contradiction and
+supersession, procedural consolidation, repeated episodic experience deduplication, stale working
+state, sensitive rejection, and a cross-workspace distractor.
+
+Each automatic capability comparison runs in its own disposable store, first writes an explicit
+baseline memory, then proves the capability works without deleting that baseline or performing an
+unapproved canonical write. Its approval work, provider use, store bytes, and latency are included
+in the aggregate gates alongside the canonical cases. The reproducible report digest covers fixture identity, deterministic
+case outcomes, quality/safety metrics, baseline state, and comparisons. Observational wall-clock
+latency and store-byte measurements remain in the report and gates but are deliberately excluded
+from the digest, so identical outcomes have the same evidence identity across machines.
+
+The checked-in `eval/memory-intelligence-private.example.json` is a non-runnable governance
+template for the separate approved private lane. Raw private cases stay outside repository history.
+An authorized reviewer fills the opaque corpus revision, case results, approval load, latency,
+CPU/RSS, and cost fields after running against a disposable private store. Even a passing private
+report is evidence only: automatic retention remains disabled until a separate reviewed runtime
+policy change is approved and reproducibly linked to both report digests.
+
+Verify a completed external evidence record without loading its raw corpus:
+
+```bash
+cortana eval --memory-private-evidence /path/to/approved-private-evidence.json
+```
+
+The verifier requires all eight canonical private case categories, zero exposure, unsupported
+claims, and automatic retentions, complete bounded quality/resource metrics, non-secret governance
+metadata, and external encrypted raw-data storage. It emits only counts, the opaque corpus revision,
+and a stable evidence digest. Private evidence is capped at 60 CPU seconds, 2 GiB peak RSS, 5 seconds
+p95 latency, 16 provider requests, and $1 estimated provider cost. The checked-in `not-run` template
+intentionally fails verification.
+
 ### Performance and economics
 
 - p50/p95/p99 latency where relevant;

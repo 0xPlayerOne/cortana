@@ -111,6 +111,19 @@ enum Command {
             help = "Evaluate planner+synthesis against the configured query model"
         )]
         model: bool,
+        #[arg(
+            long,
+            conflicts_with = "model",
+            help = "Evaluate native memory-intelligence quality and safety gates"
+        )]
+        memory: bool,
+        #[arg(
+            long,
+            value_name = "PATH",
+            conflicts_with_all = ["model", "memory", "fixture"],
+            help = "Verify an externally approved private-memory evidence record"
+        )]
+        memory_private_evidence: Option<PathBuf>,
     },
     /// Check production dependencies without starting or scheduling ingestion.
     Readiness {
@@ -672,7 +685,30 @@ async fn main() -> Result<()> {
         println!("migrated Hermes configuration");
         return Ok(());
     }
-    if let Some(Command::Eval { fixture, model }) = cli.command.as_ref() {
+    if let Some(Command::Eval {
+        fixture,
+        model,
+        memory,
+        memory_private_evidence,
+    }) = cli.command.as_ref()
+    {
+        if let Some(path) = memory_private_evidence {
+            let report = cortana::memory_evaluation::verify_private_evidence(path)?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            return Ok(());
+        }
+        if *memory {
+            let report = match fixture {
+                Some(path) => cortana::memory_evaluation::run(path).await?,
+                None => cortana::memory_evaluation::run_default().await?,
+            };
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            anyhow::ensure!(
+                report.passed,
+                "memory-intelligence evaluation thresholds failed"
+            );
+            return Ok(());
+        }
         if !*model {
             let report = match fixture {
                 Some(path) => cortana::evaluation::run(path).await?,

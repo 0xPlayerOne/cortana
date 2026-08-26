@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "fixture_class": "synthetic",
+  "thresholds": {
+    "min_candidate_precision": 1.0,
+    "min_candidate_recall": 1.0,
+    "min_classification_accuracy": 1.0,
+    "min_lifecycle_pass_rate": 1.0,
+    "min_reflection_grounding": 1.0,
+    "min_duplicate_suppression": 1.0,
+    "min_contradiction_detection": 1.0,
+    "min_supersession_correctness": 1.0,
+    "min_retention_accuracy": 1.0,
+    "min_recall_quality": 1.0,
+    "min_derived_invalidation": 1.0,
+    "max_unauthorized_exposures": 0,
+    "max_unsupported_reflection_claims": 0,
+    "max_automatic_retention_without_private_gate": 0,
+    "max_approval_load": 1.0,
+    "max_provider_requests": 2,
+    "max_estimated_provider_cost_usd": 0.0,
+    "max_disposable_store_cases": 20,
+    "max_case_store_bytes": 16777216,
+    "max_total_store_bytes": 268435456,
+    "max_case_latency_ms": 5000,
+    "max_total_case_latency_ms": 30000
+  },
+  "cases": [
+    { "id": "explicit-idempotent-recall", "category": "recall", "failure_domain": "corpus" },
+    { "id": "expiry-excludes-stale-working", "category": "retention", "failure_domain": "policy" },
+    { "id": "redaction-removes-recall", "category": "redaction", "failure_domain": "policy" },
+    { "id": "acl-cross-workspace-denial", "category": "authorization", "failure_domain": "policy" },
+    { "id": "candidate-safety-boundaries", "category": "candidate", "failure_domain": "candidate" },
+    {
+      "id": "classification-exact-duplicate",
+      "category": "classification",
+      "failure_domain": "candidate"
+    },
+    {
+      "id": "classification-contradiction",
+      "category": "classification",
+      "failure_domain": "candidate"
+    },
+    {
+      "id": "classification-supersession",
+      "category": "classification",
+      "failure_domain": "candidate"
+    },
+    {
+      "id": "classification-provider-failure",
+      "category": "classification",
+      "failure_domain": "model"
+    },
+    {
+      "id": "automatic-retention-remains-disabled",
+      "category": "activation",
+      "failure_domain": "policy"
+    },
+    { "id": "consolidation-idempotency", "category": "consolidation", "failure_domain": "policy" },
+    {
+      "id": "policy-change-rechecks-candidate",
+      "category": "consolidation",
+      "failure_domain": "policy"
+    },
+    { "id": "backup-restore-preserves-memory", "category": "recovery", "failure_domain": "corpus" },
+    { "id": "reflection-grounding", "category": "reflection", "failure_domain": "model" },
+    { "id": "reflection-provider-failure", "category": "reflection", "failure_domain": "model" },
+    {
+      "id": "derived-representation-invalidation",
+      "category": "derived",
+      "failure_domain": "corpus"
+    }
+  ]
+}

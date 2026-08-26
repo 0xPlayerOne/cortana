@@ -76,7 +76,8 @@ reason code, priority, and expiry; explanations never copy candidate content int
 The decision state is one of `auto-retain`, `approve`, `review`, `reject`, or `working`:
 
 - only non-sensitive, in-scope, non-conflicting candidates above policy thresholds may
-  `auto-retain`;
+  `auto-retain`, and only when the non-deserializable reviewed release gate is enabled; client
+  policy JSON cannot authorize it;
 - explicit approval may retain a below-threshold candidate, subject to the same ACL, capacity,
   expiry, and canonical write invariants;
 - sensitive, contradictory, low-confidence, and cross-scope candidates cannot auto-commit;
@@ -134,8 +135,9 @@ token budget may omit derived items before returning an oversized response.
    importance, valid-from/valid-until, ACL, and status.
 3. `recall` excludes retracted, superseded, expired, or ACL-invisible records.
 4. `reflect` is strictly non-mutating; it may propose candidates but cannot write them.
-5. Consolidation, automatic retention, and contradiction resolution require an approved policy and
-   preserve provenance. They are not enabled by retrieval alone.
+5. Consolidation and contradiction resolution require an approved policy and preserve provenance.
+   Automatic retention additionally requires a reviewed runtime release gate that client input
+   cannot set. They are not enabled by retrieval alone.
 6. `forget`/redaction removes the record from recall and increments `memory_revision`; audit data
    contains metadata only and never memory content.
 7. Schema-axis migration is additive and idempotent. It does not increment `memory_revision`;

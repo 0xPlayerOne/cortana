@@ -9053,6 +9053,7 @@ mod tests {
             .expect("candidate");
         let policy = crate::consolidation::ConsolidationPolicy {
             enabled: true,
+            automatic_retention_release_authorized: true,
             ..Default::default()
         };
         let first = store
