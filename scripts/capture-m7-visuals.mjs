@@ -30,16 +30,23 @@ async function openPage(theme, width) {
   const context = await browser.newContext({ viewport: { width, height: 1000 } })
   await context.addInitScript((value) => localStorage.setItem('cortana.theme.v1', value), theme)
   const page = await context.newPage()
-  page.setDefaultTimeout(10_000)
+  page.setDefaultTimeout(60_000)
   page.on('console', (message) => {
     if (message.type() === 'error') {
       consoleErrors.push(`${renderer}/${theme}/${width}: ${message.text()}`)
     }
   })
   const query = renderer === 'shadcn' ? '?demo=1&renderer=shadcn' : '?demo=1'
-  await page.goto(`${baseUrl}/${query}`, { waitUntil: 'networkidle' })
+  await page.goto(`${baseUrl}/${query}`, { waitUntil: 'domcontentloaded' })
   if (renderer === 'shadcn') {
     await page.getByRole('heading', { name: 'Release evidence' }).waitFor()
+    await page.locator('[data-m7-header-overlays-ready]').waitFor({ state: 'attached' })
+    if (width > 768) {
+      await page.locator('[data-m7-workspace-overlays-ready]').waitFor({ state: 'attached' })
+    }
+    if (!new URL(page.url()).searchParams.has('prototypeState')) {
+      await page.locator('[data-m7-evidence-overlays-ready]').waitFor({ state: 'attached' })
+    }
   } else {
     await page.getByRole('main').waitFor()
   }
@@ -60,7 +67,12 @@ async function auditAccessibility(page, label) {
     .analyze()
   if (accessibility.violations.length > 0) {
     const summary = accessibility.violations
-      .map((violation) => `${violation.id}: ${violation.help}`)
+      .map(
+        (violation) =>
+          `${violation.id}: ${violation.help}\n${violation.nodes
+            .map((node) => `  ${node.target.join(' ')}: ${node.failureSummary}`)
+            .join('\n')}`
+      )
       .join('\n')
     throw new Error(`Accessibility violations in ${label}:\n${summary}`)
   }
@@ -86,6 +98,7 @@ if (renderer === 'shadcn') {
         }
         await navigationTrigger.press('Enter')
         await page.getByText('Settings', { exact: true }).last().waitFor()
+        await page.locator('[data-m7-workspace-overlays-ready]').waitFor({ state: 'attached' })
         await page.waitForTimeout(250)
         await auditAccessibility(page, 'mobile navigation overlay')
         await screenshot(page, 'mobile-navigation-blue-320')
@@ -105,6 +118,41 @@ if (renderer === 'shadcn') {
         await page.waitForTimeout(150)
         await auditAccessibility(page, 'context boundary dialog')
         await screenshot(page, 'dialog-blue-1440')
+        await page.keyboard.press('Escape')
+        await page.getByRole('dialog').waitFor({ state: 'detached' })
+
+        await page.getByRole('button', { name: 'Open command palette' }).click()
+        await page.getByRole('dialog', { name: 'Command palette' }).waitFor()
+        await page.waitForTimeout(150)
+        await auditAccessibility(page, 'command palette')
+        await screenshot(page, 'command-blue-1440')
+        await page.keyboard.press('Escape')
+        await page.getByRole('dialog', { name: 'Command palette' }).waitFor({ state: 'detached' })
+
+        await page.getByRole('button', { name: 'Filter evidence' }).click()
+        await page
+          .getByText('Narrow the visible evidence without expanding retrieval scope.')
+          .waitFor()
+        await page.waitForTimeout(150)
+        await auditAccessibility(page, 'filter popover')
+        await screenshot(page, 'filter-popover-blue-1440')
+        await page.keyboard.press('Escape')
+
+        await page
+          .getByRole('button', { name: 'Switch workspace. Current workspace: Personal' })
+          .click()
+        await page.getByRole('menuitem', { name: 'Product' }).waitFor()
+        await page.waitForTimeout(150)
+        await auditAccessibility(page, 'workspace menu')
+        await screenshot(page, 'workspace-menu-blue-1440')
+        await page.keyboard.press('Escape')
+
+        await page.getByRole('tab', { name: 'Document' }).click()
+        await page.getByText('How do releases work?').click({ button: 'right' })
+        await page.getByRole('menuitem', { name: 'Copy citation' }).waitFor()
+        await page.waitForTimeout(150)
+        await auditAccessibility(page, 'evidence context menu')
+        await screenshot(page, 'context-menu-blue-1440')
       }
       await context.close()
     }
@@ -113,9 +161,13 @@ if (renderer === 'shadcn') {
   for (const state of ['loading', 'empty', 'error']) {
     const { context, page } = await openPage('blue', 1024)
     await page.goto(`${baseUrl}/?demo=1&renderer=shadcn&prototypeState=${state}`, {
-      waitUntil: 'networkidle',
+      waitUntil: 'domcontentloaded',
     })
     await page.getByRole('heading', { name: 'Release evidence' }).waitFor()
+    await Promise.all([
+      page.locator('[data-m7-workspace-overlays-ready]').waitFor({ state: 'attached' }),
+      page.locator('[data-m7-header-overlays-ready]').waitFor({ state: 'attached' }),
+    ])
     await auditAccessibility(page, `${state} retrieval state`)
     await screenshot(page, `retrieval-${state}-blue-1024`)
     await context.close()
@@ -128,7 +180,7 @@ if (renderer === 'shadcn') {
     deviceScaleFactor: 2,
   })
   const zoomPage = await zoomContext.newPage()
-  await zoomPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, { waitUntil: 'networkidle' })
+  await zoomPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, { waitUntil: 'domcontentloaded' })
   await zoomPage.getByRole('heading', { name: 'Release evidence' }).waitFor()
   const horizontalOverflow = await zoomPage.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
@@ -141,7 +193,15 @@ if (renderer === 'shadcn') {
     reducedMotion: 'reduce',
   })
   const motionPage = await motionContext.newPage()
-  await motionPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, { waitUntil: 'networkidle' })
+  await motionPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, {
+    waitUntil: 'domcontentloaded',
+  })
+  await motionPage.getByRole('heading', { name: 'Release evidence' }).waitFor()
+  await Promise.all([
+    motionPage.locator('[data-m7-workspace-overlays-ready]').waitFor({ state: 'attached' }),
+    motionPage.locator('[data-m7-header-overlays-ready]').waitFor({ state: 'attached' }),
+    motionPage.locator('[data-m7-evidence-overlays-ready]').waitFor({ state: 'attached' }),
+  ])
   const reviewButton = motionPage.getByRole('button', { name: 'Review context boundary' })
   const reviewElement = await reviewButton.elementHandle()
   if (!reviewElement) throw new Error('Context boundary trigger was not rendered')
@@ -192,7 +252,7 @@ if (renderer === 'shadcn') {
         await screenshot(page, `source-sheet-${theme}-${width}`)
       } else {
         for (const surface of ['settings', 'graph']) {
-          await page.goto(`${baseUrl}/?demo=1`, { waitUntil: 'networkidle' })
+          await page.goto(`${baseUrl}/?demo=1`, { waitUntil: 'domcontentloaded' })
           await page
             .getByRole('button', {
               name: surface[0].toUpperCase() + surface.slice(1),

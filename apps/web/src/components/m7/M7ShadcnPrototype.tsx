@@ -8,25 +8,24 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
 } from 'lucide-react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/shadcn/alert'
 import { Badge } from '@/components/shadcn/badge'
 import { Button } from '@/components/shadcn/button'
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/shadcn/breadcrumb'
 import { AsyncButton } from '@/components/cortana/async-button'
 import { FeedbackState } from '@/components/cortana/feedback-state'
 import { StatusBadge } from '@/components/cortana/status-badge'
 import { ValidatedInput } from '@/components/cortana/validated-input'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/shadcn/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/shadcn/card'
 import {
   Dialog,
   DialogContent,
@@ -57,6 +56,11 @@ import {
 import { Switch } from '@/components/shadcn/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/shadcn/tabs'
 import { TooltipProvider } from '@/components/shadcn/tooltip'
+import {
+  EvidenceDocumentCard,
+  HeaderOverlayActions,
+  WorkspaceSwitcher,
+} from './M7NavigationOverlays'
 import '@/shadcn.css'
 
 const navigation = [
@@ -71,6 +75,7 @@ type PrototypeState = 'populated' | 'loading' | 'empty' | 'error'
 
 export function M7ShadcnPrototype({ previewState }: { previewState?: PrototypeState }) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [workspace, setWorkspace] = useState('Personal')
   const resolvedPreviewState =
     previewState ??
     (new URLSearchParams(window.location.search).get('prototypeState') as PrototypeState | null) ??
@@ -81,13 +86,7 @@ export function M7ShadcnPrototype({ previewState }: { previewState?: PrototypeSt
       <SidebarProvider defaultOpen>
         <Sidebar variant="inset" collapsible="icon">
           <SidebarHeader>
-            <div className="flex h-10 items-center gap-2 px-2">
-              <img className="size-7 rounded-lg" src="/app-icon.svg" alt="" />
-              <div className="min-w-0 group-data-[collapsible=icon]:hidden">
-                <p className="font-heading text-sm font-medium">Cortana</p>
-                <p className="truncate text-xs text-muted-foreground">Evidence workbench</p>
-              </div>
-            </div>
+            <WorkspaceSwitcher workspace={workspace} onWorkspaceChange={setWorkspace} />
           </SidebarHeader>
           <SidebarSeparator />
           <SidebarContent>
@@ -146,9 +145,7 @@ export function M7ShadcnPrototype({ previewState }: { previewState?: PrototypeSt
               <Sparkles data-icon="inline-start" />
               <span className="hidden sm:inline">Reflect</span>
             </Button>
-            <Button variant="ghost" size="icon-sm" aria-label="Filter evidence">
-              <SlidersHorizontal />
-            </Button>
+            <HeaderOverlayActions onWorkspaceChange={setWorkspace} />
           </header>
 
           <main className="min-h-0 flex-1 overflow-auto p-3 md:p-5" id="main-content">
@@ -156,9 +153,15 @@ export function M7ShadcnPrototype({ previewState }: { previewState?: PrototypeSt
               <section className="flex min-w-0 flex-col gap-4" aria-labelledby="evidence-title">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <p className="text-xs font-medium tracking-[0.16em] text-primary uppercase">
-                      Personal / All sources
-                    </p>
+                    <Breadcrumb className="mb-1">
+                      <BreadcrumbList className="text-xs font-medium tracking-[0.12em] uppercase">
+                        <BreadcrumbItem>{workspace}</BreadcrumbItem>
+                        <BreadcrumbSeparator />
+                        <BreadcrumbItem>
+                          <BreadcrumbPage>All sources</BreadcrumbPage>
+                        </BreadcrumbItem>
+                      </BreadcrumbList>
+                    </Breadcrumb>
                     <h1 id="evidence-title" className="font-heading text-2xl font-medium">
                       Release evidence
                     </h1>
@@ -204,30 +207,7 @@ export function M7ShadcnPrototype({ previewState }: { previewState?: PrototypeSt
                         onRetry={() => undefined}
                       />
                     ) : (
-                      <Card>
-                        <CardHeader>
-                          <CardTitle>How do releases work?</CardTitle>
-                          <CardDescription>
-                            work-drive / release-process · updated Jul 28
-                          </CardDescription>
-                          <CardAction>
-                            <Badge variant="secondary">98% match</Badge>
-                          </CardAction>
-                        </CardHeader>
-                        <CardContent className="flex flex-col gap-4 leading-6">
-                          <p>
-                            Releases follow trunk-based development with short-lived feature
-                            branches and automated delivery from main.
-                          </p>
-                          <div className="border-l-2 border-primary pl-4">
-                            <p className="font-medium text-foreground">Evidence spine</p>
-                            <p className="text-muted-foreground">
-                              Plan against the roadmap, validate the pull request, then cut and
-                              monitor the release. Roll back if health checks regress.
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
+                      <EvidenceDocumentCard onReview={() => setDialogOpen(true)} />
                     )}
                   </TabsContent>
                   <TabsContent value="answer" className="pt-3 text-muted-foreground">
