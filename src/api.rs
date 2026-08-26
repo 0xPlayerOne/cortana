@@ -2110,7 +2110,10 @@ async fn list_memory_candidates(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
     AxumQuery(params): AxumQuery<MemoryCandidateListParams>,
-) -> Result<Json<Vec<crate::store::MemoryCandidateReview>>, (StatusCode, String)> {
+) -> Result<
+    Json<crate::store::BoundedMemoryCandidates<crate::store::MemoryCandidateReview>>,
+    (StatusCode, String),
+> {
     let started = Instant::now();
     match state.store.list_memory_candidate_reviews(
         params.project.as_deref(),
@@ -2123,7 +2126,7 @@ async fn list_memory_candidates(
         params.query.as_deref(),
         params.status.as_deref(),
     ) {
-        Ok(candidates) => {
+        Ok(page) => {
             record_audit(
                 &state,
                 &principal,
@@ -2131,10 +2134,10 @@ async fn list_memory_candidates(
                 params.project.as_deref(),
                 None,
                 "succeeded",
-                Some(candidates.len()),
+                Some(page.candidates.len()),
                 started,
             );
-            Ok(Json(candidates))
+            Ok(Json(page))
         }
         Err(error) => {
             record_audit(
@@ -2156,9 +2159,12 @@ async fn export_memory_candidates(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
     AxumQuery(params): AxumQuery<MemoryCandidateListParams>,
-) -> Result<Json<Vec<crate::observation::ObservationCandidate>>, (StatusCode, String)> {
+) -> Result<
+    Json<crate::store::BoundedMemoryCandidates<crate::observation::ObservationCandidate>>,
+    (StatusCode, String),
+> {
     let started = Instant::now();
-    match state.store.export_memory_candidates(
+    match state.store.export_memory_candidates_page(
         params.project.as_deref(),
         params.observation_kind.as_deref(),
         params.scope.as_deref(),
@@ -2167,7 +2173,7 @@ async fn export_memory_candidates(
         &principal.visible_acl(),
         principal.is_owner(),
     ) {
-        Ok(candidates) => {
+        Ok(page) => {
             record_audit(
                 &state,
                 &principal,
@@ -2175,10 +2181,10 @@ async fn export_memory_candidates(
                 params.project.as_deref(),
                 None,
                 "succeeded",
-                Some(candidates.len()),
+                Some(page.candidates.len()),
                 started,
             );
-            Ok(Json(candidates))
+            Ok(Json(page))
         }
         Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
     }
@@ -3753,6 +3759,34 @@ mod tests {
     async fn memory_scoped_principal_can_read_control_state_but_cannot_bypass_supersession_approval()
      {
         let (_directory, state) = test_state();
+        for index in 0..2 {
+            state
+                .store
+                .propose_memory_candidate(
+                    &ObservationCandidateInput {
+                        observation_kind: "evidence-backed".into(),
+                        content_type: "semantic".into(),
+                        retention_tier: "working".into(),
+                        scope: "workspace".into(),
+                        project: "work".into(),
+                        title: format!("Candidate {index}"),
+                        content: "Bounded review candidate".into(),
+                        source: "api-test".into(),
+                        source_id: format!("candidate-{index}"),
+                        dedupe_key: None,
+                        confidence: 0.8,
+                        importance: 0.5,
+                        sensitivity: "normal".into(),
+                        acl: vec!["work".into()],
+                        provenance: serde_json::json!({"test": true}),
+                        expires_at: (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339(),
+                    },
+                    "memory-agent",
+                    &["work".into()],
+                    false,
+                )
+                .expect("candidate");
+        }
         let mut config = Config::default();
         config
             .environment
@@ -3785,6 +3819,31 @@ mod tests {
             serde_json::from_slice(&status_body).expect("status JSON");
         assert_eq!(status_json["paused"], false);
         assert_eq!(status_json["can_control"], false);
+
+        for path in [
+            "/v1/memory/candidates?project=work&limit=1",
+            "/v1/memory/candidates/export?project=work&limit=1",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(path)
+                        .header(header::AUTHORIZATION, "Bearer memory-secret")
+                        .body(Body::empty())
+                        .expect("candidate page request"),
+                )
+                .await
+                .expect("candidate page response");
+            assert_eq!(response.status(), StatusCode::OK);
+            let body = to_bytes(response.into_body(), 64 * 1024)
+                .await
+                .expect("candidate page body");
+            let page: serde_json::Value =
+                serde_json::from_slice(&body).expect("candidate page JSON");
+            assert_eq!(page["candidates"].as_array().map(Vec::len), Some(1));
+            assert_eq!(page["truncated"], true);
+        }
 
         let supersede = app
             .oneshot(

@@ -132,7 +132,9 @@ the state, while only the owner can change it. Candidate list responses include 
 consolidation status, decision, classification, policy identity, attempts, canonical memory id, and
 stored reason, explanation, supporting-memory ids, and failure metadata when a job exists. The review client may request up to the project-wide 1,000
 candidate bound and applies validated `query` and `status` filters across that whole bound, rather
-than only the newest page.
+than only the newest page. Candidate review and export responses use
+`{ "candidates": [...], "truncated": boolean }`; clients must narrow their filters or paginate at a
+higher layer instead of presenting a truncated response as complete.
 The CLI equivalent is
 `cortana memory candidate propose|list|export|cancel|redact|classify|consolidate`. Candidate submissions require
 an explicit JSON provenance object, source id, sensitivity, and expiry; content is limited to 8 KiB,

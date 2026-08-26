@@ -449,6 +449,7 @@ export async function listMemoryCandidates(
   queryValue?: string,
   status?: string
 ): Promise<MemoryCandidate[]> {
+  type CandidatePage = { candidates: MemoryCandidate[]; truncated: boolean }
   const request = {
     project: project || null,
     limit: 1000,
@@ -456,7 +457,11 @@ export async function listMemoryCandidates(
     status: status || null,
   }
   if (isTauri()) {
-    return invokeDesktop<MemoryCandidate[]>('brain_memory_candidates', { request })
+    const page = await invokeDesktop<CandidatePage>('brain_memory_candidates', { request })
+    if (page.truncated) {
+      throw new Error('Memory candidate review was truncated; narrow the search or status filter')
+    }
+    return page.candidates
   }
   const query = new URLSearchParams({ limit: '1000' })
   if (project) query.set('project', project)
@@ -464,7 +469,11 @@ export async function listMemoryCandidates(
   if (status) query.set('status', status)
   const response = await authorizedFetch(`/v1/memory/candidates?${query}`, {})
   if (!response.ok) throw new Error(`Memory candidate review failed (${response.status})`)
-  return (await response.json()) as MemoryCandidate[]
+  const page = (await response.json()) as CandidatePage
+  if (page.truncated) {
+    throw new Error('Memory candidate review was truncated; narrow the search or status filter')
+  }
+  return page.candidates
 }
 
 export async function classifyMemoryCandidate(id: string): Promise<MemoryCandidateClassification> {

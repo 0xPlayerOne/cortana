@@ -529,6 +529,10 @@ function CandidateDetail({
       {selected.status === 'pending' ? (
         <CandidateActions
           busy={busy}
+          retryable={
+            selected.consolidation?.status === 'dead-letter' ||
+            selected.consolidation?.status === 'retry'
+          }
           editing={editing}
           editTitle={editTitle}
           editContent={editContent}
@@ -652,6 +656,7 @@ function CandidateMetadata({
 
 function CandidateActions({
   busy,
+  retryable,
   editing,
   editTitle,
   editContent,
@@ -659,6 +664,7 @@ function CandidateActions({
   onAction,
 }: {
   busy: boolean
+  retryable: boolean
   editing: boolean
   editTitle: string
   editContent: string
@@ -694,9 +700,11 @@ function CandidateActions({
       >
         Review and supersede
       </Button>
-      <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction('retry')}>
-        Retry
-      </Button>
+      {retryable && (
+        <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction('retry')}>
+          Retry
+        </Button>
+      )}
       <Button type="button" variant="secondary" disabled={busy} onClick={() => onAction('reject')}>
         Reject
       </Button>
@@ -756,11 +764,11 @@ function MemoryLayers({
 
 function queueStatus(candidate: MemoryCandidate): QueueView {
   const job = candidate.consolidation
-  if (job?.status === 'dead-letter') return 'dead-letter'
-  if (job?.status === 'retry' || job?.last_error) return 'failed'
   if (candidate.status === 'expired') return 'expired'
   if (candidate.status === 'accepted' && job?.decision === 'auto-retain') return 'auto-retained'
   if (candidate.status === 'accepted') return 'approved'
   if (['cancelled', 'rejected', 'redacted'].includes(candidate.status)) return 'rejected'
+  if (job?.status === 'dead-letter') return 'dead-letter'
+  if (job?.status === 'retry') return 'failed'
   return 'pending'
 }

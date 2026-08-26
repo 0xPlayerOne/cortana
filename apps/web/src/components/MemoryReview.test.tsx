@@ -151,6 +151,17 @@ test('keeps the review queue available while disabling owner-only consolidation 
   expect(pause.getAttribute('title')).toMatch(/owner/i)
 })
 
+test('surfaces bounded-response truncation instead of presenting a partial queue as complete', async () => {
+  const api = client()
+  api.listCandidates = () =>
+    Promise.reject(
+      new Error('Memory candidate review was truncated; narrow the search or status filter')
+    )
+  render(<MemoryReview client={api} />)
+
+  expect((await screen.findByRole('alert')).textContent).toMatch(/truncated.*narrow/i)
+})
+
 test('reports review-only supersession without claiming a canonical write', async () => {
   const api = client()
   api.act = (_id, action) => {

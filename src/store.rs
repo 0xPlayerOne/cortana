@@ -120,6 +120,14 @@ pub struct MemoryCandidateReview {
 }
 
 #[derive(Clone, Debug, Serialize)]
+pub struct BoundedMemoryCandidates<T> {
+    pub candidates: Vec<T>,
+    pub truncated: bool,
+}
+
+const CANDIDATE_PAGE_RESPONSE_OVERHEAD_BYTES: usize = 64;
+
+#[derive(Clone, Debug, Serialize)]
 pub struct PublicAclSummary {
     pub project: String,
     pub documents: usize,
@@ -1929,16 +1937,18 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
     ) -> Result<Vec<ObservationCandidate>> {
-        self.query_memory_candidates(
-            project,
-            observation_kind,
-            scope,
-            limit,
-            principal_id,
-            principal_acl,
-            owner,
-            observation::MAX_CANDIDATE_LIST_LIMIT,
-        )
+        Ok(self
+            .query_memory_candidates(
+                project,
+                observation_kind,
+                scope,
+                limit,
+                principal_id,
+                principal_acl,
+                owner,
+                observation::MAX_CANDIDATE_LIST_LIMIT,
+            )?
+            .candidates)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1953,7 +1963,7 @@ impl Store {
         owner: bool,
         query: Option<&str>,
         status: Option<&str>,
-    ) -> Result<Vec<MemoryCandidateReview>> {
+    ) -> Result<BoundedMemoryCandidates<MemoryCandidateReview>> {
         self.expire_memory_candidates()?;
         let requested_limit = limit.clamp(1, observation::MAX_CANDIDATE_REVIEW_LIMIT);
         let normalized_query = query.map(str::trim).filter(|value| !value.is_empty());
@@ -2025,12 +2035,12 @@ impl Store {
                     OR lower(c.project) LIKE ?7 ESCAPE '\\'
                     OR lower(c.source) LIKE ?7 ESCAPE '\\')
                AND (?8 IS NULL OR ?8=(CASE
-                    WHEN j.status='dead-letter' THEN 'dead-letter'
-                    WHEN j.status='retry' OR j.last_error IS NOT NULL THEN 'failed'
                     WHEN c.status='expired' THEN 'expired'
                     WHEN c.status='accepted' AND j.decision='auto-retain' THEN 'auto-retained'
                     WHEN c.status='accepted' THEN 'approved'
                     WHEN c.status IN ('cancelled','rejected','redacted') THEN 'rejected'
+                    WHEN j.status='dead-letter' THEN 'dead-letter'
+                    WHEN j.status='retry' THEN 'failed'
                     ELSE 'pending' END))
              ORDER BY c.created_at DESC,c.id DESC LIMIT ?9",
         )?;
@@ -2044,7 +2054,7 @@ impl Store {
                 acl_json,
                 search_pattern.as_deref(),
                 status,
-                i64::try_from(requested_limit).unwrap_or(i64::MAX),
+                i64::try_from(requested_limit.saturating_add(1)).unwrap_or(i64::MAX),
             ],
             |row| {
                 let candidate = observation_candidate_from_row(row)?;
@@ -2084,17 +2094,26 @@ impl Store {
             },
         )?;
         let mut reviews = Vec::new();
-        let mut response_bytes = 2usize;
+        let mut response_bytes = CANDIDATE_PAGE_RESPONSE_OVERHEAD_BYTES;
+        let mut truncated = false;
         for row in rows {
             let review = row?;
+            if reviews.len() == requested_limit {
+                truncated = true;
+                break;
+            }
             let bytes = serde_json::to_vec(&review)?.len().saturating_add(1);
             if response_bytes.saturating_add(bytes) > observation::MAX_CANDIDATE_RESPONSE_BYTES {
+                truncated = true;
                 break;
             }
             response_bytes = response_bytes.saturating_add(bytes);
             reviews.push(review);
         }
-        Ok(reviews)
+        Ok(BoundedMemoryCandidates {
+            candidates: reviews,
+            truncated,
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2108,6 +2127,30 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
     ) -> Result<Vec<ObservationCandidate>> {
+        Ok(self
+            .export_memory_candidates_page(
+                project,
+                observation_kind,
+                scope,
+                limit,
+                principal_id,
+                principal_acl,
+                owner,
+            )?
+            .candidates)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_memory_candidates_page(
+        &self,
+        project: Option<&str>,
+        observation_kind: Option<&str>,
+        scope: Option<&str>,
+        limit: usize,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<BoundedMemoryCandidates<ObservationCandidate>> {
         self.query_memory_candidates(
             project,
             observation_kind,
@@ -2131,8 +2174,9 @@ impl Store {
         principal_acl: &[String],
         owner: bool,
         max_limit: usize,
-    ) -> Result<Vec<ObservationCandidate>> {
+    ) -> Result<BoundedMemoryCandidates<ObservationCandidate>> {
         self.expire_memory_candidates()?;
+        let requested_limit = limit.clamp(1, max_limit);
         let normalized_kind = observation_kind
             .map(observation::ObservationKind::parse)
             .transpose()?
@@ -2171,24 +2215,33 @@ impl Store {
                 owner,
                 principal_id,
                 acl_json,
-                i64::try_from(limit.clamp(1, max_limit)).unwrap_or(i64::MAX),
+                i64::try_from(requested_limit.saturating_add(1)).unwrap_or(i64::MAX),
             ],
             observation_candidate_from_row,
         )?;
         let mut result = Vec::new();
-        let mut response_bytes = 2usize;
+        let mut response_bytes = CANDIDATE_PAGE_RESPONSE_OVERHEAD_BYTES;
+        let mut truncated = false;
         for row in rows {
             let candidate = row?;
+            if result.len() == requested_limit {
+                truncated = true;
+                break;
+            }
             let candidate_bytes = serde_json::to_vec(&candidate)?.len().saturating_add(1);
             if response_bytes.saturating_add(candidate_bytes)
                 > observation::MAX_CANDIDATE_RESPONSE_BYTES
             {
+                truncated = true;
                 break;
             }
             response_bytes = response_bytes.saturating_add(candidate_bytes);
             result.push(candidate);
         }
-        Ok(result)
+        Ok(BoundedMemoryCandidates {
+            candidates: result,
+            truncated,
+        })
     }
 
     pub fn memory_candidate(&self, id: &str) -> Result<Option<ObservationCandidate>> {
@@ -3196,6 +3249,10 @@ impl Store {
         owner: bool,
     ) -> Result<bool> {
         self.expire_memory_candidates()?;
+        anyhow::ensure!(
+            !self.memory_consolidation_paused()?,
+            "memory consolidation is paused"
+        );
         let candidate = self
             .memory_candidate(id)?
             .ok_or_else(|| anyhow::anyhow!("memory candidate not found"))?;
@@ -3223,7 +3280,7 @@ impl Store {
             "UPDATE memory_consolidation_jobs
              SET status='queued',attempts=0,last_error=NULL,updated_at=?2
              WHERE id=(SELECT id FROM memory_consolidation_jobs
-                       WHERE candidate_id=?1 AND status='dead-letter'
+                       WHERE candidate_id=?1 AND status IN ('dead-letter','retry')
                        ORDER BY updated_at DESC,id DESC LIMIT 1)",
             params![id, memory::now()],
         )? == 1;
@@ -8179,9 +8236,9 @@ mod tests {
                 None,
             )
             .expect("reviews");
-        assert_eq!(reviews.len(), 1);
+        assert_eq!(reviews.candidates.len(), 1);
         assert_eq!(
-            reviews[0]
+            reviews.candidates[0]
                 .consolidation
                 .as_ref()
                 .expect("job metadata")
@@ -8228,6 +8285,34 @@ mod tests {
     }
 
     #[test]
+    fn candidate_review_reports_row_limit_truncation() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        for index in 0..2 {
+            let mut input = candidate_input("work", None);
+            input.source_id = format!("bounded-page-{index}");
+            store
+                .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+                .expect("candidate");
+        }
+        let page = store
+            .list_memory_candidate_reviews(
+                Some("work"),
+                None,
+                None,
+                1,
+                "agent-a",
+                &["work".into()],
+                false,
+                None,
+                None,
+            )
+            .expect("bounded page");
+        assert_eq!(page.candidates.len(), 1);
+        assert!(page.truncated);
+    }
+
+    #[test]
     fn candidate_review_search_reaches_beyond_the_legacy_page() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
@@ -8247,6 +8332,47 @@ mod tests {
                 )
                 .expect("terminal candidate")
         );
+        let now = memory::now();
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "INSERT INTO memory_consolidation_jobs(
+                   id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                   last_error,memory_id,created_at,updated_at)
+                 VALUES('cancelled-job',?1,'policy','new','reject','cancelled',5,1,'cancelled',NULL,?2,?2)",
+                params![oldest.id, now],
+            )
+            .expect("cancelled job");
+
+        let mut expired_input = candidate_input("work", None);
+        expired_input.title = "Expired needle from oldest page".into();
+        expired_input.source_id = "evidence-expired".into();
+        let expired = store
+            .propose_memory_candidate(&expired_input, "agent-expired", &["work".into()], false)
+            .expect("expiring candidate");
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "UPDATE memory_candidates SET expires_at='2000-01-01T00:00:00Z' WHERE id=?1",
+                [&expired.id],
+            )
+            .expect("expire candidate");
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "INSERT INTO memory_consolidation_jobs(
+                   id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                   last_error,memory_id,created_at,updated_at)
+                 VALUES('expiring-job',?1,'policy','new','approve','queued',5,1,NULL,NULL,?2,?2)",
+                params![expired.id, now],
+            )
+            .expect("expiring job");
         for index in 0..1_000 {
             let mut input = candidate_input("work", None);
             input.title = format!("Candidate {index}");
@@ -8273,8 +8399,34 @@ mod tests {
                 Some("rejected"),
             )
             .expect("search reviews");
-        assert_eq!(reviews.len(), 1);
-        assert_eq!(reviews[0].candidate.title, "Needle from oldest page");
+        assert_eq!(reviews.candidates.len(), 1);
+        assert!(!reviews.truncated);
+        assert_eq!(
+            reviews.candidates[0].candidate.title,
+            "Needle from oldest page"
+        );
+        let expired_reviews = store
+            .list_memory_candidate_reviews(
+                Some("work"),
+                None,
+                None,
+                10,
+                "agent-expired",
+                &["work".into()],
+                false,
+                Some("expired needle"),
+                Some("expired"),
+            )
+            .expect("expired search reviews");
+        assert_eq!(expired_reviews.candidates.len(), 1);
+        assert_eq!(expired_reviews.candidates[0].candidate.id, expired.id);
+        assert_eq!(
+            expired_reviews.candidates[0]
+                .consolidation
+                .as_ref()
+                .map(|job| job.status.as_str()),
+            Some("dead-letter")
+        );
     }
 
     #[test]
@@ -8318,18 +8470,58 @@ mod tests {
     }
 
     #[test]
-    fn explicit_retry_requeues_the_latest_pending_dead_letter() {
+    fn explicit_retry_requeues_pending_dead_letter_and_transient_retry_jobs() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
-        let candidate = store
-            .propose_memory_candidate(
-                &candidate_input("work", None),
-                "agent-a",
-                &["work".into()],
-                false,
-            )
-            .expect("candidate");
-        let now = memory::now();
+        for (index, initial_status) in ["dead-letter", "retry"].into_iter().enumerate() {
+            let mut input = candidate_input("work", None);
+            input.source_id = format!("retry-evidence-{index}");
+            let candidate = store
+                .propose_memory_candidate(&input, "agent-a", &["work".into()], false)
+                .expect("candidate");
+            let job_id = format!("retry-job-{index}");
+            store
+                .connection
+                .lock()
+                .expect("store lock")
+                .execute(
+                    "INSERT INTO memory_consolidation_jobs(
+                       id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                       last_error,memory_id,created_at,updated_at)
+                     VALUES(?1,?2,'policy','new','approve',?3,5,3,'transient',NULL,?4,?4)",
+                    params![job_id, candidate.id, initial_status, memory::now()],
+                )
+                .expect("retryable job");
+            assert!(
+                store
+                    .retry_memory_candidate_scoped(
+                        &candidate.id,
+                        "agent-a",
+                        &["work".into()],
+                        false,
+                    )
+                    .expect("retry")
+            );
+            let (status, attempts, error): (String, i64, Option<String>) = store
+                .connection
+                .lock()
+                .expect("store lock")
+                .query_row(
+                    "SELECT status,attempts,last_error FROM memory_consolidation_jobs WHERE id=?1",
+                    [&job_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .expect("retried job");
+            assert_eq!(status, "queued");
+            assert_eq!(attempts, 0);
+            assert!(error.is_none());
+        }
+
+        let mut paused_input = candidate_input("work", None);
+        paused_input.source_id = "retry-evidence-paused".into();
+        let paused_candidate = store
+            .propose_memory_candidate(&paused_input, "agent-a", &["work".into()], false)
+            .expect("paused candidate");
         store
             .connection
             .lock()
@@ -8338,28 +8530,26 @@ mod tests {
                 "INSERT INTO memory_consolidation_jobs(
                    id,candidate_id,policy_version,classification,decision,status,priority,attempts,
                    last_error,memory_id,created_at,updated_at)
-                 VALUES('dead-job',?1,'policy','new','approve','dead-letter',5,3,'transient',NULL,?2,?2)",
-                params![candidate.id, now],
+                 VALUES('paused-retry-job',?1,'policy','new','approve','dead-letter',5,3,'transient',NULL,?2,?2)",
+                params![paused_candidate.id, memory::now()],
             )
-            .expect("dead letter");
-        assert!(
-            store
-                .retry_memory_candidate_scoped(&candidate.id, "agent-a", &["work".into()], false,)
-                .expect("retry")
-        );
-        let (status, attempts, error): (String, i64, Option<String>) = store
+            .expect("paused retry job");
+        store.pause_memory_consolidation().expect("pause");
+        let error = store
+            .retry_memory_candidate_scoped(&paused_candidate.id, "agent-a", &["work".into()], false)
+            .expect_err("paused retry must fail before mutation");
+        assert!(error.to_string().contains("consolidation is paused"));
+        let status: String = store
             .connection
             .lock()
             .expect("store lock")
             .query_row(
-                "SELECT status,attempts,last_error FROM memory_consolidation_jobs WHERE id='dead-job'",
+                "SELECT status FROM memory_consolidation_jobs WHERE id='paused-retry-job'",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| row.get(0),
             )
-            .expect("retried job");
-        assert_eq!(status, "queued");
-        assert_eq!(attempts, 0);
-        assert!(error.is_none());
+            .expect("paused job status");
+        assert_eq!(status, "dead-letter");
     }
 
     #[test]
