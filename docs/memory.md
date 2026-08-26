@@ -121,14 +121,16 @@ Candidate HTTP endpoints are `POST /v1/memory/candidates`, `GET /v1/memory/candi
 `GET /v1/memory/candidates/export`,
 `POST /v1/memory/candidates/{id}/cancel`, `POST /v1/memory/candidates/{id}/redact`, and
 `POST /v1/memory/candidates/{id}/classify`, `POST /v1/memory/candidates/{id}/edit`, and
-`POST /v1/memory/candidates/{id}/working`, and `POST /v1/memory/candidates/{id}/consolidate`.
+`POST /v1/memory/candidates/{id}/working`, `POST /v1/memory/candidates/{id}/retry`, and
+`POST /v1/memory/candidates/{id}/consolidate`.
 The working endpoint changes a pending proposal's retention tier before consolidation; it does not
-silently reinterpret a durable proposal. Owner-local operators can persistently pause or resume
+silently reinterpret a durable proposal. Retry explicitly requeues the latest dead-lettered job
+before attempting consolidation again. Owner-local operators can persistently pause or resume
 all current and future queued work through `POST /v1/memory/consolidation/pause|resume`, and inspect
-that durable gate through `GET /v1/memory/consolidation/status`; non-owner memory
-principals cannot operate this control plane. Candidate list responses include the latest bounded
+that durable gate through `GET /v1/memory/consolidation/status`; memory-scoped principals can read
+the state, while only the owner can change it. Candidate list responses include the latest bounded
 consolidation status, decision, classification, policy identity, attempts, canonical memory id, and
-failure metadata when a job exists. The review client may request up to the project-wide 1,000
+stored reason, explanation, supporting-memory ids, and failure metadata when a job exists. The review client may request up to the project-wide 1,000
 candidate bound and applies validated `query` and `status` filters across that whole bound, rather
 than only the newest page.
 The CLI equivalent is

@@ -35,6 +35,9 @@ const candidate = {
     memory_id: null,
     last_error: null,
     updated_at: '2026-08-25T00:00:00Z',
+    reason_code: 'review-required',
+    explanation: 'Candidate requires review.',
+    supporting_memory_ids: ['memory-1'],
   },
 }
 
@@ -99,7 +102,7 @@ function client(): MemoryReviewClient & { actions: string[] } {
       actions.push(paused ? 'pause' : 'resume')
       return Promise.resolve()
     },
-    getConsolidationPaused: () => Promise.resolve(false),
+    getConsolidationState: () => Promise.resolve({ paused: false, canControl: true }),
   }
 }
 
@@ -135,6 +138,17 @@ test('requires confirmation for canonical approval and keeps queue controls expl
   fireEvent.click(screen.getByRole('button', { name: 'Pause consolidation' }))
   await waitFor(() => expect(api.actions).toContain('pause'))
   window.confirm = originalConfirm
+})
+
+test('keeps the review queue available while disabling owner-only consolidation controls', async () => {
+  const api = client()
+  api.getConsolidationState = () => Promise.resolve({ paused: false, canControl: false })
+  render(<MemoryReview client={api} />)
+
+  expect(await screen.findByRole('list', { name: 'Memory candidate queue' })).toBeTruthy()
+  const pause = screen.getByRole('button', { name: 'Pause consolidation' })
+  expect(pause.hasAttribute('disabled')).toBe(true)
+  expect(pause.getAttribute('title')).toMatch(/owner/i)
 })
 
 test('reports review-only supersession without claiming a canonical write', async () => {

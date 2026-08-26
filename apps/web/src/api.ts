@@ -517,6 +517,12 @@ export async function actOnMemoryCandidate(
     )
     if (!working.ok) throw new Error(`Memory candidate working failed (${working.status})`)
   }
+  if (action === 'retry') {
+    const retry = await authorizedFetch(`/v1/memory/candidates/${encodeURIComponent(id)}/retry`, {
+      method: 'POST',
+    })
+    if (!retry.ok) throw new Error(`Memory candidate retry failed (${retry.status})`)
+  }
   const suffix = action === 'reject' ? 'cancel' : action === 'redact' ? 'redact' : 'consolidate'
   const response = await authorizedFetch(
     `/v1/memory/candidates/${encodeURIComponent(id)}/${suffix}`,
@@ -550,19 +556,23 @@ export async function setMemoryConsolidationPaused(paused: boolean): Promise<voi
   if (!response.ok) throw new Error(`Memory consolidation control failed (${response.status})`)
 }
 
-export async function getMemoryConsolidationPaused(): Promise<boolean> {
+export async function getMemoryConsolidationState(): Promise<{
+  paused: boolean
+  canControl: boolean
+}> {
   if (isTauri()) {
-    const response = await invokeDesktop<{ paused: boolean }>(
+    const response = await invokeDesktop<{ paused: boolean; can_control: boolean }>(
       'brain_memory_consolidation_control',
       {
         action: 'status',
       }
     )
-    return response.paused
+    return { paused: response.paused, canControl: response.can_control }
   }
   const response = await authorizedFetch('/v1/memory/consolidation/status', {})
   if (!response.ok) throw new Error(`Memory consolidation status failed (${response.status})`)
-  return ((await response.json()) as { paused: boolean }).paused
+  const state = (await response.json()) as { paused: boolean; can_control: boolean }
+  return { paused: state.paused, canControl: state.can_control }
 }
 
 export async function listDerivedMemories(project?: string): Promise<DerivedMemoryResponse> {

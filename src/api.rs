@@ -701,6 +701,10 @@ pub fn router(state: AppState) -> Router {
             post(mark_memory_candidate_working),
         )
         .route(
+            "/v1/memory/candidates/{id}/retry",
+            post(retry_memory_candidate),
+        )
+        .route(
             "/v1/memory/consolidation/pause",
             post(pause_memory_consolidation),
         )
@@ -772,7 +776,8 @@ async fn authorize(
         | "/v1/memory/reflect"
         | "/v1/memory/candidates"
         | "/v1/memory/consolidation/pause"
-        | "/v1/memory/consolidation/resume" => MEMORY_SCOPE,
+        | "/v1/memory/consolidation/resume"
+        | "/v1/memory/consolidation/status" => MEMORY_SCOPE,
         path if path.starts_with("/v1/memory/candidates/") => MEMORY_SCOPE,
         "/v1/status" | "/readyz" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
@@ -2374,6 +2379,47 @@ async fn mark_memory_candidate_working(
     }
 }
 
+async fn retry_memory_candidate(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let started = Instant::now();
+    match state.store.retry_memory_candidate_scoped(
+        &id,
+        &principal.name,
+        &principal.visible_acl(),
+        principal.is_owner(),
+    ) {
+        Ok(true) => {
+            record_audit(
+                &state,
+                &principal,
+                "memory.candidate.retry",
+                None,
+                None,
+                "queued",
+                Some(1),
+                started,
+            );
+            Ok(Json(
+                serde_json::json!({ "id": id, "status": "queued", "updated": true }),
+            ))
+        }
+        Ok(false) => Err((
+            StatusCode::CONFLICT,
+            "candidate has no dead-letter job to retry".into(),
+        )),
+        Err(error)
+            if crate::memory::is_authorization_error(&error)
+                || error.to_string() == "candidate ACL denied" =>
+        {
+            Err((StatusCode::FORBIDDEN, "candidate ACL denied".into()))
+        }
+        Err(error) => Err((StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
+    }
+}
+
 async fn pause_memory_consolidation(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
@@ -2385,17 +2431,14 @@ async fn memory_consolidation_status(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    if !principal.is_owner() {
-        return Err((
-            StatusCode::FORBIDDEN,
-            "consolidation control requires owner authorization".into(),
-        ));
-    }
     let paused = state
         .store
         .memory_consolidation_paused()
         .map_err(internal_error)?;
-    Ok(Json(serde_json::json!({ "paused": paused })))
+    Ok(Json(serde_json::json!({
+        "paused": paused,
+        "can_control": principal.is_owner()
+    })))
 }
 
 async fn resume_memory_consolidation(
@@ -2538,6 +2581,12 @@ async fn consolidate_memory_candidate(
         return Err((StatusCode::FORBIDDEN, "memory scope required".into()));
     }
     let result = if request.action.as_deref() == Some("supersede") {
+        if !request.explicit_approval {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "explicit approval is required for supersession".into(),
+            ));
+        }
         state.store.supersede_memory_candidate(
             &id,
             &request.policy,
@@ -3698,6 +3747,65 @@ mod tests {
             serde_json::from_slice(&body).expect("reflection JSON response");
         assert_eq!(parsed["objective"], "Review launch risk");
         assert_eq!(parsed["metrics"]["canonical_memory_mutated"], false);
+    }
+
+    #[tokio::test]
+    async fn memory_scoped_principal_can_read_control_state_but_cannot_bypass_supersession_approval()
+     {
+        let (_directory, state) = test_state();
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("MEMORY_TOKEN".into(), "memory-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "memory-agent".into(),
+            token_env: "MEMORY_TOKEN".into(),
+            scopes: vec![MEMORY_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let app =
+            router(state.with_auth_policy(AuthPolicy::from_config(&config).expect("auth policy")));
+
+        let status = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/memory/consolidation/status")
+                    .header(header::AUTHORIZATION, "Bearer memory-secret")
+                    .body(Body::empty())
+                    .expect("status request"),
+            )
+            .await
+            .expect("status response");
+        assert_eq!(status.status(), StatusCode::OK);
+        let status_body = to_bytes(status.into_body(), 8 * 1024)
+            .await
+            .expect("status body");
+        let status_json: serde_json::Value =
+            serde_json::from_slice(&status_body).expect("status JSON");
+        assert_eq!(status_json["paused"], false);
+        assert_eq!(status_json["can_control"], false);
+
+        let supersede = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/memory/candidates/missing/consolidate")
+                    .header(header::AUTHORIZATION, "Bearer memory-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "policy": crate::consolidation::ConsolidationPolicy::default(),
+                            "action": "supersede",
+                            "explicit_approval": false
+                        })
+                        .to_string(),
+                    ))
+                    .expect("supersede request"),
+            )
+            .await
+            .expect("supersede response");
+        assert_eq!(supersede.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

@@ -107,6 +107,9 @@ pub struct ConsolidationJobReview {
     pub memory_id: Option<String>,
     pub last_error: Option<String>,
     pub updated_at: String,
+    pub reason_code: Option<String>,
+    pub explanation: Option<String>,
+    pub supporting_memory_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -114,30 +117,6 @@ pub struct MemoryCandidateReview {
     #[serde(flatten)]
     pub candidate: ObservationCandidate,
     pub consolidation: Option<ConsolidationJobReview>,
-}
-
-fn candidate_review_status(review: &MemoryCandidateReview) -> &'static str {
-    let job = review.consolidation.as_ref();
-    if job.is_some_and(|job| job.status == "dead-letter") {
-        "dead-letter"
-    } else if job.is_some_and(|job| job.status == "retry" || job.last_error.is_some()) {
-        "failed"
-    } else if review.candidate.status == "expired" {
-        "expired"
-    } else if review.candidate.status == "accepted"
-        && job.is_some_and(|job| job.decision == "auto-retain")
-    {
-        "auto-retained"
-    } else if review.candidate.status == "accepted" {
-        "approved"
-    } else if matches!(
-        review.candidate.status.as_str(),
-        "cancelled" | "rejected" | "redacted"
-    ) {
-        "rejected"
-    } else {
-        "pending"
-    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -370,6 +349,9 @@ impl Store {
                attempts INTEGER NOT NULL DEFAULT 0,
                last_error TEXT,
                memory_id TEXT,
+               reason_code TEXT,
+               explanation TEXT,
+               supporting_memory_ids_json TEXT,
                created_at TEXT NOT NULL,
                updated_at TEXT NOT NULL,
                UNIQUE(candidate_id,policy_version));
@@ -438,6 +420,24 @@ impl Store {
         migrate_memory_axes(&mut connection)?;
         migrate_memory_dedupe_scope(&mut connection)?;
         migrate_memory_candidates(&mut connection)?;
+        ensure_column(
+            &connection,
+            "memory_consolidation_jobs",
+            "reason_code",
+            "TEXT",
+        )?;
+        ensure_column(
+            &connection,
+            "memory_consolidation_jobs",
+            "explanation",
+            "TEXT",
+        )?;
+        ensure_column(
+            &connection,
+            "memory_consolidation_jobs",
+            "supporting_memory_ids_json",
+            "TEXT",
+        )?;
         connection.execute_batch(
             "CREATE INDEX IF NOT EXISTS idx_memories_scope
                ON memories(project,kind,status,updated_at DESC);
@@ -1954,7 +1954,8 @@ impl Store {
         query: Option<&str>,
         status: Option<&str>,
     ) -> Result<Vec<MemoryCandidateReview>> {
-        let requested_limit = limit.min(observation::MAX_CANDIDATE_REVIEW_LIMIT);
+        self.expire_memory_candidates()?;
+        let requested_limit = limit.clamp(1, observation::MAX_CANDIDATE_REVIEW_LIMIT);
         let normalized_query = query.map(str::trim).filter(|value| !value.is_empty());
         if let Some(value) = normalized_query {
             anyhow::ensure!(value.len() <= 256, "candidate search exceeds 256 bytes");
@@ -1978,59 +1979,122 @@ impl Store {
                 "unsupported candidate review status"
             );
         }
-        let candidates = self.query_memory_candidates(
-            project,
-            observation_kind,
-            scope,
-            observation::MAX_CANDIDATE_REVIEW_LIMIT,
-            principal_id,
-            principal_acl,
-            owner,
-            observation::MAX_CANDIDATE_REVIEW_LIMIT,
-        )?;
+        let normalized_kind = observation_kind
+            .map(observation::ObservationKind::parse)
+            .transpose()?
+            .map(|kind| kind.as_str().to_string());
+        let normalized_scope = scope
+            .map(memory::MemoryScope::parse)
+            .transpose()?
+            .map(|value| value.as_str().to_string());
+        if normalized_scope.as_deref() == Some("owner-global") && !owner {
+            bail!("owner-global candidate scope requires owner authorization");
+        }
+        let search_pattern = normalized_query.map(|value| {
+            let escaped = value
+                .to_ascii_lowercase()
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            format!("%{escaped}%")
+        });
+        let acl_json = serde_json::to_string(principal_acl)?;
         let connection = self.read_connection.lock().expect("store lock poisoned");
-        let needle = normalized_query.map(str::to_ascii_lowercase);
-        candidates
-            .into_iter()
-            .map(|candidate| {
-                let consolidation = connection
-                    .query_row(
-                        "SELECT status,decision,classification,policy_version,attempts,memory_id,last_error,updated_at
-                         FROM memory_consolidation_jobs
-                         WHERE candidate_id=?1
-                         ORDER BY updated_at DESC,id DESC LIMIT 1",
-                        [&candidate.id],
-                        |row| {
-                            Ok(ConsolidationJobReview {
-                                status: row.get(0)?,
-                                decision: row.get(1)?,
-                                classification: row.get(2)?,
-                                policy_version: row.get(3)?,
-                                attempts: row.get(4)?,
-                                memory_id: row.get(5)?,
-                                last_error: row.get(6)?,
-                                updated_at: row.get(7)?,
-                            })
-                        },
-                    )
-                    .optional()?;
+        let mut statement = connection.prepare(
+            "SELECT c.id,c.observation_kind,c.content_type,c.retention_tier,c.scope,c.created_by,c.project,c.title,c.content,
+                    c.source,c.source_id,c.dedupe_key,c.confidence,c.importance,c.sensitivity,c.status,c.acl_json,
+                    c.provenance_json,c.expires_at,c.rejection_reason,c.created_at,c.updated_at,
+                    j.status,j.decision,j.classification,j.policy_version,j.attempts,j.memory_id,j.last_error,j.updated_at,
+                    j.reason_code,j.explanation,j.supporting_memory_ids_json
+             FROM memory_candidates c
+             LEFT JOIN memory_consolidation_jobs j ON j.id=(
+               SELECT latest.id FROM memory_consolidation_jobs latest
+               WHERE latest.candidate_id=c.id ORDER BY latest.updated_at DESC,latest.id DESC LIMIT 1)
+             WHERE (?1 IS NULL OR c.project=?1)
+               AND (?2 IS NULL OR c.observation_kind=?2)
+               AND (?3 IS NULL OR c.scope=?3)
+               AND (?4 OR c.scope<>'owner-global')
+               AND (c.scope<>'principal' OR c.created_by=?5)
+               AND (json_array_length(c.acl_json)=0 OR EXISTS(
+                 SELECT 1 FROM json_each(?6) principal_acl
+                 WHERE principal_acl.value='*' OR EXISTS(
+                   SELECT 1 FROM json_each(c.acl_json) candidate_acl
+                   WHERE candidate_acl.value=principal_acl.value)))
+               AND (?7 IS NULL OR lower(c.title) LIKE ?7 ESCAPE '\\'
+                    OR lower(c.content) LIKE ?7 ESCAPE '\\'
+                    OR lower(c.project) LIKE ?7 ESCAPE '\\'
+                    OR lower(c.source) LIKE ?7 ESCAPE '\\')
+               AND (?8 IS NULL OR ?8=(CASE
+                    WHEN j.status='dead-letter' THEN 'dead-letter'
+                    WHEN j.status='retry' OR j.last_error IS NOT NULL THEN 'failed'
+                    WHEN c.status='expired' THEN 'expired'
+                    WHEN c.status='accepted' AND j.decision='auto-retain' THEN 'auto-retained'
+                    WHEN c.status='accepted' THEN 'approved'
+                    WHEN c.status IN ('cancelled','rejected','redacted') THEN 'rejected'
+                    ELSE 'pending' END))
+             ORDER BY c.created_at DESC,c.id DESC LIMIT ?9",
+        )?;
+        let rows = statement.query_map(
+            params![
+                project,
+                normalized_kind.as_deref(),
+                normalized_scope.as_deref(),
+                owner,
+                principal_id,
+                acl_json,
+                search_pattern.as_deref(),
+                status,
+                i64::try_from(requested_limit).unwrap_or(i64::MAX),
+            ],
+            |row| {
+                let candidate = observation_candidate_from_row(row)?;
+                let consolidation = row
+                    .get::<_, Option<String>>(22)?
+                    .map(|job_status| {
+                        Ok::<ConsolidationJobReview, rusqlite::Error>(ConsolidationJobReview {
+                            status: job_status,
+                            decision: row.get(23)?,
+                            classification: row.get(24)?,
+                            policy_version: row.get(25)?,
+                            attempts: row.get(26)?,
+                            memory_id: row.get(27)?,
+                            last_error: row.get(28)?,
+                            updated_at: row.get(29)?,
+                            reason_code: row.get(30)?,
+                            explanation: row.get(31)?,
+                            supporting_memory_ids: row
+                                .get::<_, Option<String>>(32)?
+                                .map(|value| serde_json::from_str(&value))
+                                .transpose()
+                                .map_err(|error| {
+                                    rusqlite::Error::FromSqlConversionFailure(
+                                        32,
+                                        Type::Text,
+                                        Box::new(error),
+                                    )
+                                })?
+                                .unwrap_or_default(),
+                        })
+                    })
+                    .transpose()?;
                 Ok(MemoryCandidateReview {
                     candidate,
                     consolidation,
                 })
-            })
-            .filter(|review| {
-                let Ok(review) = review else { return true };
-                let matches_query = needle.as_ref().is_none_or(|needle| {
-                    [&review.candidate.title, &review.candidate.content, &review.candidate.project, &review.candidate.source]
-                        .iter()
-                        .any(|value| value.to_ascii_lowercase().contains(needle))
-                });
-                let matches_status = status.is_none_or(|expected| candidate_review_status(review) == expected);
-                matches_query && matches_status
-            })
-            .take(requested_limit)
-            .collect()
+            },
+        )?;
+        let mut reviews = Vec::new();
+        let mut response_bytes = 2usize;
+        for row in rows {
+            let review = row?;
+            let bytes = serde_json::to_vec(&review)?.len().saturating_add(1);
+            if response_bytes.saturating_add(bytes) > observation::MAX_CANDIDATE_RESPONSE_BYTES {
+                break;
+            }
+            response_bytes = response_bytes.saturating_add(bytes);
+            reviews.push(review);
+        }
+        Ok(reviews)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2116,9 +2180,8 @@ impl Store {
         for row in rows {
             let candidate = row?;
             let candidate_bytes = serde_json::to_vec(&candidate)?.len().saturating_add(1);
-            if max_limit != observation::MAX_CANDIDATE_REVIEW_LIMIT
-                && response_bytes.saturating_add(candidate_bytes)
-                    > observation::MAX_CANDIDATE_RESPONSE_BYTES
+            if response_bytes.saturating_add(candidate_bytes)
+                > observation::MAX_CANDIDATE_RESPONSE_BYTES
             {
                 break;
             }
@@ -2296,6 +2359,8 @@ impl Store {
             .max_active
             .min(self.memory_max_active.load(AtomicOrdering::Acquire));
         let now = memory::now();
+        let supporting_memory_ids_json =
+            serde_json::to_string(&classification.supporting_memory_ids)?;
         let policy_identity = policy.identity()?;
         let mut connection = self.connection.lock().expect("store lock poisoned");
         let transaction = connection.transaction()?;
@@ -2459,8 +2524,8 @@ impl Store {
             transaction.execute(
                 "INSERT INTO memory_consolidation_jobs(
                    id,candidate_id,policy_version,classification,decision,status,priority,attempts,
-                   last_error,memory_id,created_at,updated_at)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,0,?8,NULL,?9,?9)",
+                   last_error,memory_id,reason_code,explanation,supporting_memory_ids_json,created_at,updated_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,0,?8,NULL,?9,?10,?11,?12,?12)",
                 params![
                     uuid::Uuid::new_v4().to_string(),
                     id,
@@ -2470,6 +2535,9 @@ impl Store {
                     reconciled_status,
                     i64::from(report.queue_priority),
                     format!("candidate-terminal:{}", candidate.status),
+                    report.reason_code,
+                    report.explanation,
+                    supporting_memory_ids_json,
                     now,
                 ],
             )?;
@@ -2559,9 +2627,11 @@ impl Store {
             {
                 transaction.execute(
                     "UPDATE memory_consolidation_jobs
-                     SET status='queued',classification=?2,decision=?3,last_error=NULL,updated_at=?4
+                     SET status='queued',classification=?2,decision=?3,last_error=NULL,updated_at=?4,
+                         reason_code=?5,explanation=?6,supporting_memory_ids_json=?7
                      WHERE id=?1",
-                    params![job_id, report.classification, report.decision.as_str(), now],
+                    params![job_id, report.classification, report.decision.as_str(), now,
+                        report.reason_code, report.explanation, supporting_memory_ids_json],
                 )?;
                 job_id
             } else {
@@ -2589,8 +2659,8 @@ impl Store {
             transaction.execute(
                 "INSERT INTO memory_consolidation_jobs(
                    id,candidate_id,policy_version,classification,decision,status,priority,attempts,
-                   last_error,memory_id,created_at,updated_at)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,0,NULL,NULL,?8,?8)",
+                   last_error,memory_id,reason_code,explanation,supporting_memory_ids_json,created_at,updated_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,0,NULL,NULL,?8,?9,?10,?11,?11)",
                 params![
                     job_id,
                     id,
@@ -2609,6 +2679,9 @@ impl Store {
                         "paused"
                     },
                     i64::from(report.queue_priority),
+                    report.reason_code,
+                    report.explanation,
+                    supporting_memory_ids_json,
                     now,
                 ],
             )?;
@@ -2618,9 +2691,18 @@ impl Store {
         if report.decision == ConsolidationDecision::Review {
             transaction.execute(
                 "UPDATE memory_consolidation_jobs
-                 SET status='paused',classification=?2,decision=?3,updated_at=?4
+                 SET status='paused',classification=?2,decision=?3,updated_at=?4,
+                     reason_code=?5,explanation=?6,supporting_memory_ids_json=?7
                  WHERE id=?1 AND status IN ('queued','retry','running','paused')",
-                params![job_id, report.classification, report.decision.as_str(), now],
+                params![
+                    job_id,
+                    report.classification,
+                    report.decision.as_str(),
+                    now,
+                    report.reason_code,
+                    report.explanation,
+                    supporting_memory_ids_json
+                ],
             )?;
             transaction.commit()?;
             drop(connection);
@@ -3104,6 +3186,48 @@ impl Store {
         transaction.commit()?;
         drop(connection);
         self.memory_candidate(id)
+    }
+
+    pub fn retry_memory_candidate_scoped(
+        &self,
+        id: &str,
+        principal_id: &str,
+        principal_acl: &[String],
+        owner: bool,
+    ) -> Result<bool> {
+        self.expire_memory_candidates()?;
+        let candidate = self
+            .memory_candidate(id)?
+            .ok_or_else(|| anyhow::anyhow!("memory candidate not found"))?;
+        anyhow::ensure!(
+            candidate.status == "pending",
+            "candidate is no longer pending"
+        );
+        anyhow::ensure!(
+            owner || acl_allows(&candidate.acl, principal_acl),
+            "candidate ACL denied"
+        );
+        let scope = memory::MemoryScope::parse(&candidate.scope)?;
+        anyhow::ensure!(
+            scope != memory::MemoryScope::Principal
+                || candidate.created_by == principal_id
+                || owner,
+            "candidate ACL denied"
+        );
+        anyhow::ensure!(
+            scope != memory::MemoryScope::OwnerGlobal || owner,
+            "owner-global candidate scope requires owner authorization"
+        );
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let changed = connection.execute(
+            "UPDATE memory_consolidation_jobs
+             SET status='queued',attempts=0,last_error=NULL,updated_at=?2
+             WHERE id=(SELECT id FROM memory_consolidation_jobs
+                       WHERE candidate_id=?1 AND status='dead-letter'
+                       ORDER BY updated_at DESC,id DESC LIMIT 1)",
+            params![id, memory::now()],
+        )? == 1;
+        Ok(changed)
     }
 
     fn update_memory_candidate_status(
@@ -8107,13 +8231,25 @@ mod tests {
     fn candidate_review_search_reaches_beyond_the_legacy_page() {
         let directory = tempdir().expect("temporary directory");
         let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
-        for index in 0..101 {
+        let mut oldest_input = candidate_input("work", None);
+        oldest_input.title = "Needle from oldest page".into();
+        oldest_input.source_id = "evidence-oldest".into();
+        let oldest = store
+            .propose_memory_candidate(&oldest_input, "agent-oldest", &["work".into()], false)
+            .expect("oldest candidate");
+        assert!(
+            store
+                .cancel_memory_candidate_scoped(
+                    &oldest.id,
+                    "agent-oldest",
+                    &["work".into()],
+                    false,
+                )
+                .expect("terminal candidate")
+        );
+        for index in 0..1_000 {
             let mut input = candidate_input("work", None);
-            input.title = if index == 0 {
-                "Needle from oldest page".into()
-            } else {
-                format!("Candidate {index}")
-            };
+            input.title = format!("Candidate {index}");
             input.source_id = format!("evidence-{index}");
             store
                 .propose_memory_candidate(
@@ -8134,7 +8270,7 @@ mod tests {
                 &["work".into()],
                 false,
                 Some("oldest page"),
-                Some("pending"),
+                Some("rejected"),
             )
             .expect("search reviews");
         assert_eq!(reviews.len(), 1);
@@ -8179,6 +8315,51 @@ mod tests {
         assert!(error.to_string().contains("consolidation is paused"));
         reopened.resume_memory_consolidation().expect("resume");
         assert!(!reopened.memory_consolidation_paused().expect("resumed"));
+    }
+
+    #[test]
+    fn explicit_retry_requeues_the_latest_pending_dead_letter() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let candidate = store
+            .propose_memory_candidate(
+                &candidate_input("work", None),
+                "agent-a",
+                &["work".into()],
+                false,
+            )
+            .expect("candidate");
+        let now = memory::now();
+        store
+            .connection
+            .lock()
+            .expect("store lock")
+            .execute(
+                "INSERT INTO memory_consolidation_jobs(
+                   id,candidate_id,policy_version,classification,decision,status,priority,attempts,
+                   last_error,memory_id,created_at,updated_at)
+                 VALUES('dead-job',?1,'policy','new','approve','dead-letter',5,3,'transient',NULL,?2,?2)",
+                params![candidate.id, now],
+            )
+            .expect("dead letter");
+        assert!(
+            store
+                .retry_memory_candidate_scoped(&candidate.id, "agent-a", &["work".into()], false,)
+                .expect("retry")
+        );
+        let (status, attempts, error): (String, i64, Option<String>) = store
+            .connection
+            .lock()
+            .expect("store lock")
+            .query_row(
+                "SELECT status,attempts,last_error FROM memory_consolidation_jobs WHERE id='dead-job'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("retried job");
+        assert_eq!(status, "queued");
+        assert_eq!(attempts, 0);
+        assert!(error.is_none());
     }
 
     #[test]

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   actOnMemoryCandidate,
   classifyMemoryCandidate,
-  getMemoryConsolidationPaused,
+  getMemoryConsolidationState,
   listCanonicalMemories,
   listDerivedMemories,
   listMemoryCandidates,
@@ -44,7 +44,7 @@ export type MemoryReviewClient = {
     edit?: { title: string; content: string }
   ) => Promise<MemoryCandidateActionResult>
   setConsolidationPaused: (paused: boolean) => Promise<void>
-  getConsolidationPaused: () => Promise<boolean>
+  getConsolidationState: () => Promise<{ paused: boolean; canControl: boolean }>
 }
 
 function MemoryPolicy({
@@ -202,7 +202,7 @@ const defaultClient: MemoryReviewClient = {
   listCanonical: listCanonicalMemories,
   act: actOnMemoryCandidate,
   setConsolidationPaused: setMemoryConsolidationPaused,
-  getConsolidationPaused: getMemoryConsolidationPaused,
+  getConsolidationState: getMemoryConsolidationState,
 }
 
 const QUEUE_VIEWS: QueueView[] = [
@@ -248,6 +248,7 @@ export function MemoryReview({
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [paused, setPaused] = useState(false)
+  const [canControl, setCanControl] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [policy, setPolicy] = useState({ ...DEFAULT_POLICY, maxActive })
@@ -261,7 +262,7 @@ export function MemoryReview({
     setLoading(true)
     setError('')
     try {
-      const [nextCandidates, nextCanonical, nextDerived, nextPaused] = await Promise.all([
+      const [nextCandidates, nextCanonical, nextDerived, consolidationState] = await Promise.all([
         client.listCandidates(
           project,
           query.trim() || undefined,
@@ -269,13 +270,14 @@ export function MemoryReview({
         ),
         client.listCanonical(project),
         client.listDerived(project),
-        client.getConsolidationPaused(),
+        client.getConsolidationState(),
       ])
       if (version !== refreshVersion.current) return
       setCandidates(nextCandidates)
       setCanonical(nextCanonical.slice(0, 100))
       setDerived(nextDerived)
-      setPaused(nextPaused)
+      setPaused(consolidationState.paused)
+      setCanControl(consolidationState.canControl)
       setSelectedId((current) =>
         nextCandidates.some((candidate) => candidate.id === current)
           ? current
@@ -394,7 +396,8 @@ export function MemoryReview({
           <Button
             type="button"
             variant="secondary"
-            disabled={busy}
+            disabled={busy || !canControl}
+            title={canControl ? undefined : 'Owner authorization is required'}
             onClick={() => void togglePause()}
           >
             {paused ? <Play size={14} /> : <Pause size={14} />}
@@ -620,18 +623,28 @@ function CandidateMetadata({
       {classification && <p className="memory-explanation">{classification.explanation}</p>}
       {!classification && selected.consolidation && (
         <p className="memory-explanation">
-          Stored policy decision {selected.consolidation.decision} ended as{' '}
-          {selected.consolidation.status}
+          {selected.consolidation.explanation ??
+            `Stored policy decision ${selected.consolidation.decision} ended as ${selected.consolidation.status}`}
           {selected.consolidation.memory_id
             ? ` and created canonical memory ${selected.consolidation.memory_id}`
             : ' without creating canonical memory'}
+          {selected.consolidation.reason_code
+            ? ` (reason: ${selected.consolidation.reason_code})`
+            : ''}
           .
         </p>
       )}
       <details>
         <summary>Provenance and support</summary>
         <pre>{JSON.stringify(selected.provenance, null, 2)}</pre>
-        <p>Supporting memories: {classification?.supporting_memory_ids.join(', ') || 'None'}</p>
+        <p>
+          Supporting memories:{' '}
+          {(
+            classification?.supporting_memory_ids ??
+            selected.consolidation?.supporting_memory_ids ??
+            []
+          ).join(', ') || 'None'}
+        </p>
       </details>
     </>
   )

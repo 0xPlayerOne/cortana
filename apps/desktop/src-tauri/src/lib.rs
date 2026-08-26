@@ -142,7 +142,8 @@ fn required_scope_for_path(path: &str) -> &'static str {
         | "/v1/memory/reflect"
         | "/v1/memory/candidates"
         | "/v1/memory/consolidation/pause"
-        | "/v1/memory/consolidation/resume" => "memory",
+        | "/v1/memory/consolidation/resume"
+        | "/v1/memory/consolidation/status" => "memory",
         path if path.starts_with("/v1/memory/candidates/") => "memory",
         _ => "query",
     }
@@ -170,6 +171,10 @@ mod backend_tests {
         assert_eq!(required_scope_for_path("/v1/memory/derived"), "memory");
         assert_eq!(
             required_scope_for_path("/v1/memory/consolidation/pause"),
+            "memory"
+        );
+        assert_eq!(
+            required_scope_for_path("/v1/memory/consolidation/status"),
             "memory"
         );
         assert_eq!(
@@ -402,6 +407,11 @@ async fn brain_memory_candidate_action(
             if action == "working" {
                 backend
                     .request(Method::POST, &format!("{base}/working"), None)
+                    .await?;
+            }
+            if action == "retry" {
+                backend
+                    .request(Method::POST, &format!("{base}/retry"), None)
                     .await?;
             }
             let policy = object

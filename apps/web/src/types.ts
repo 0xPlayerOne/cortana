@@ -765,6 +765,9 @@ export type MemoryCandidate = {
     memory_id?: string | null
     last_error?: string | null
     updated_at: string
+    reason_code?: string | null
+    explanation?: string | null
+    supporting_memory_ids: string[]
   } | null
 }
 
