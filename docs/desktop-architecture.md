@@ -147,25 +147,46 @@ general filesystem permission.
 
 ## Web UI component strategy
 
-The webview uses a small, local component contract rather than a second runtime design system.
-Shared tokens in `apps/web/src/styles/tokens.css` define colors, radii, focus rings, spacing, and
-button sizes; the `.cortana-button` classes, `Button` component, `buttonClasses.ts`, `quick-tooltip`,
-and icon-button contracts are the source of truth for new controls. The shared variants are `primary`,
-`secondary`, `compact`, `ghost`, `icon`, and semantic `danger`; destructive actions use `danger`
-instead of an ambiguous neutral control, and the global button reset removes browser-native grey
-chrome from specialized controls. This keeps the Obsidian-inspired shell, source tree, graph, and
-responsive layout under one stylesheet and avoids a Tailwind migration solely to obtain component
-primitives.
+shadcn/ui is the authoritative component and visual system for the React/Vite webview. Cortana owns
+the generated component source in `apps/web`; the registry is an upstream source, not a runtime
+service or opaque package boundary. The checked-in `components.json` records the selected shadcn
+style, primitive base, icon library, aliases, and Tailwind CSS entrypoint so every component is
+generated and updated consistently.
 
-shadcn/ui is compatible with Cortana, but it is an opt-in implementation pattern, not a wholesale
-migration requirement. If a future surface needs a missing primitive, copy the smallest shadcn
-component into the repository and map it to the existing tokens before adding it. Prefer this
-sequence: Button/Tooltip/Dialog for a demonstrated consistency or accessibility gap, then
-DropdownMenu/Tabs/Select where a real settings workflow benefits from the primitive. Do not add a
-parallel Tailwind/Radix stack, replace the shell/tree/graph CSS, or copy components speculatively.
-Every adopted primitive must preserve keyboard behavior, reduced-motion support, the current theme
-variables, and the shared focus/error/status contracts, with a focused regression test and a
-packaged-UI acceptance note.
+Tailwind CSS and semantic shadcn theme variables own application styling. Colors, typography,
+radii, spacing, focus, error, warning, success, destructive, muted, surface, and chart treatments
+must use semantic tokens rather than raw values or page-local variants. Supported Cortana themes
+map to that same token contract; a theme may change values, but it may not fork component markup or
+interaction behavior. Layout utilities may compose components, while component color and typography
+remain in the component variants and theme contract.
+
+Every ordinary control and surface must use the corresponding shared primitive: Button and form
+controls for actions and input; Field and FieldGroup for form structure; Card for grouped content;
+Sidebar, Tabs, Breadcrumb, and ScrollArea for navigation; Dialog, AlertDialog, Sheet, Popover,
+DropdownMenu, Select, Tooltip, and Command for layered interaction; and Alert, Badge, Empty,
+Skeleton, Spinner, Progress, Separator, and toast for status and feedback. Components are composed
+instead of copied into page-specific markup. Destructive actions use an explicit destructive
+variant and confirmation where the operation requires it. Icon-only actions have accessible names,
+and dialogs, sheets, and drawers always expose programmatic titles.
+
+The graph canvas, virtualized document list, native title-bar integration, and other renderer-specific
+surfaces may keep custom rendering where no shadcn primitive fits. Their surrounding controls,
+loading and error states, menus, overlays, typography, focus behavior, and responsive layout still
+use the shared system. Custom components belong above the primitives and may not recreate a second
+button, form, card, menu, tab, tooltip, dialog, or status language.
+
+The wholesale migration is delivered behind a temporary renderer feature flag so foundation and
+surface slices can merge without exposing a mixed production UI. Completion requires enabling the
+new renderer by default, removing the flag, deleting superseded component and CSS contracts, and
+proving that no ordinary surface falls back to the legacy system or browser-native chrome. The
+migration must not widen the Tauri capability set, move credentials into renderer state, change
+the typed native-command boundary, or weaken source and service approval gates.
+
+Each migrated workflow requires focused component coverage plus matched before/after screenshots.
+The final packaged acceptance record must cover supported themes, 320, 768, 1024, and 1440 CSS-pixel
+widths, keyboard-only operation, 200% zoom, reduced motion, loading/empty/error states, overlays,
+and the operating-system webviews named by the Desktop support policy. Source tests and a successful
+web build do not substitute for visual and packaged interaction evidence.
 
 ## Workspaces and settings
 

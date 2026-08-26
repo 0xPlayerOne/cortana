@@ -228,6 +228,28 @@ Verify:
 
 An update must not enable a source, schedule, remote principal, or synthesis policy.
 
+### Visual system and responsive layout
+
+Verify:
+
+- the checked-in shadcn configuration, selected primitive base, icon library, aliases, and Tailwind entrypoint agree with the generated components;
+- shared shadcn primitives own ordinary actions, forms, cards, navigation, overlays, menus, status, loading, empty, and error states;
+- renderer-specific graph, virtualization, and native-window components compose the shared tokens and controls without recreating parallel primitives;
+- every supported theme uses the same semantic token contract and preserves readable hierarchy, contrast, focus, status, and destructive treatments;
+- the shell, setup, sources, workspace, search, document, context, graph, memory, services, settings, backup, updater, activity, and recovery surfaces form one coherent visual language;
+- phone, tablet, compact desktop, and wide desktop layouts remain usable at 320, 768, 1024, and 1440 CSS pixels;
+- content remains operable at 200% zoom without clipped controls, hidden actions, overlapping regions, or two-dimensional scrolling except where the content itself requires it;
+- loading, empty, partial, degraded, offline, busy, success, warning, destructive, and error states retain stable layout and clear recovery actions;
+- dialogs, sheets, dropdowns, popovers, tooltips, command surfaces, and native-dialog launch points have correct placement, stacking, focus entry, focus return, and dismissal behavior;
+- no ordinary surface retains superseded page-local button, form, card, tab, menu, tooltip, dialog, or status styling, and no control falls back to browser-native chrome.
+
+Capture matched before/after screenshots using deterministic fixtures for every primary surface.
+The evidence matrix must include all four target widths, the default and accessibility themes at
+every width, every other supported theme at desktop and compact widths, representative populated
+data, and all loading, empty, error, destructive-confirmation, dialog, sheet, menu, and tooltip
+states. A build, component test, or sampled screenshot is not visual acceptance. Review must record
+the complete matrix and any intentional renderer-specific exception.
+
 ### Accessibility
 
 Verify:
@@ -237,12 +259,15 @@ Verify:
 - screen-reader names and roles;
 - heading and landmark hierarchy;
 - alert versus status semantics;
-- contrast;
+- WCAG 2.2 AA text, non-text, and focus contrast;
 - zoom and responsive resizing;
 - reduced-motion behavior;
 - tooltip accessibility;
 - disabled and busy states;
-- error recovery without pointer-only interaction.
+- error recovery without pointer-only interaction;
+- minimum 24-by-24 CSS-pixel targets and comfortable touch targets for primary mobile actions;
+- no keyboard trap or focused control obscured by sticky or layered content;
+- automated axe coverage plus manual VoiceOver, NVDA, or platform-equivalent screen-reader evidence on supported packaged lanes.
 
 Accessibility is a release requirement, not optional polish.
 
@@ -290,7 +315,8 @@ Each packaged acceptance record should include:
 - application/core/connector versions;
 - exact acceptance cases run;
 - pass/fail/blocked result;
-- non-secret logs, screenshots, or recordings where useful;
+- the complete non-secret visual evidence matrix for renderer changes;
+- non-secret logs or recordings where useful;
 - known limitations;
 - linked issues for failures;
 - reviewer and date.
