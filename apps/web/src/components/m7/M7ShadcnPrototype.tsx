@@ -34,13 +34,6 @@ import {
 import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/shadcn/field'
 import { Input } from '@/components/shadcn/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/shadcn/select'
-import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -232,16 +225,7 @@ export function M7ShadcnPrototype() {
                       </Field>
                       <Field>
                         <FieldLabel htmlFor="prototype-retrieval-mode">Retrieval mode</FieldLabel>
-                        <Select defaultValue="balanced">
-                          <SelectTrigger id="prototype-retrieval-mode" className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="precise">Precise</SelectItem>
-                            <SelectItem value="balanced">Balanced</SelectItem>
-                            <SelectItem value="broad">Broad</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Input id="prototype-retrieval-mode" defaultValue="Balanced" />
                         <FieldDescription>
                           Balances recall against evidence precision.
                         </FieldDescription>

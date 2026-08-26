@@ -22,7 +22,9 @@ test('switches evidence tabs without losing the document workflow', async () => 
 test('composes dense retrieval settings from shared controls', () => {
   render(<M7ShadcnPrototype />)
 
-  expect(screen.getByRole('combobox', { name: 'Retrieval mode' })).toBeTruthy()
+  expect((screen.getByRole('textbox', { name: 'Retrieval mode' }) as HTMLInputElement).value).toBe(
+    'Balanced'
+  )
   expect(
     (screen.getByRole('spinbutton', { name: 'Maximum sources' }) as HTMLInputElement).value
   ).toBe('12')
