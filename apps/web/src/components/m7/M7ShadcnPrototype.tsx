@@ -15,6 +15,10 @@ import {
 import { Alert, AlertDescription, AlertTitle } from '@/components/shadcn/alert'
 import { Badge } from '@/components/shadcn/badge'
 import { Button } from '@/components/shadcn/button'
+import { AsyncButton } from '@/components/cortana/async-button'
+import { FeedbackState } from '@/components/cortana/feedback-state'
+import { StatusBadge } from '@/components/cortana/status-badge'
+import { ValidatedInput } from '@/components/cortana/validated-input'
 import {
   Card,
   CardAction,
@@ -63,8 +67,14 @@ const navigation = [
   { label: 'Agent tools', icon: Braces },
 ]
 
-export function M7ShadcnPrototype() {
+type PrototypeState = 'populated' | 'loading' | 'empty' | 'error'
+
+export function M7ShadcnPrototype({ previewState }: { previewState?: PrototypeState }) {
   const [dialogOpen, setDialogOpen] = useState(false)
+  const resolvedPreviewState =
+    previewState ??
+    (new URLSearchParams(window.location.search).get('prototypeState') as PrototypeState | null) ??
+    'populated'
 
   return (
     <TooltipProvider delay={250}>
@@ -155,7 +165,7 @@ export function M7ShadcnPrototype() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">4 sources</Badge>
-                    <Badge>Index online</Badge>
+                    <StatusBadge tone="success">Index online</StatusBadge>
                   </div>
                 </div>
 
@@ -174,30 +184,51 @@ export function M7ShadcnPrototype() {
                     <TabsTrigger value="context">Context</TabsTrigger>
                   </TabsList>
                   <TabsContent value="document" className="pt-3">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>How do releases work?</CardTitle>
-                        <CardDescription>
-                          work-drive / release-process · updated Jul 28
-                        </CardDescription>
-                        <CardAction>
-                          <Badge variant="secondary">98% match</Badge>
-                        </CardAction>
-                      </CardHeader>
-                      <CardContent className="flex flex-col gap-4 leading-6">
-                        <p>
-                          Releases follow trunk-based development with short-lived feature branches
-                          and automated delivery from main.
-                        </p>
-                        <div className="border-l-2 border-primary pl-4">
-                          <p className="font-medium text-foreground">Evidence spine</p>
-                          <p className="text-muted-foreground">
-                            Plan against the roadmap, validate the pull request, then cut and
-                            monitor the release. Roll back if health checks regress.
+                    {resolvedPreviewState === 'loading' ? (
+                      <FeedbackState
+                        kind="loading"
+                        title="Loading release evidence"
+                        description="Retrieving bounded sources."
+                      />
+                    ) : resolvedPreviewState === 'empty' ? (
+                      <FeedbackState
+                        kind="empty"
+                        title="No release evidence"
+                        description="Try a broader query or another approved source."
+                      />
+                    ) : resolvedPreviewState === 'error' ? (
+                      <FeedbackState
+                        kind="error"
+                        title="Release evidence unavailable"
+                        description="The bounded retrieval request failed without changing scope."
+                        onRetry={() => undefined}
+                      />
+                    ) : (
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>How do releases work?</CardTitle>
+                          <CardDescription>
+                            work-drive / release-process · updated Jul 28
+                          </CardDescription>
+                          <CardAction>
+                            <Badge variant="secondary">98% match</Badge>
+                          </CardAction>
+                        </CardHeader>
+                        <CardContent className="flex flex-col gap-4 leading-6">
+                          <p>
+                            Releases follow trunk-based development with short-lived feature
+                            branches and automated delivery from main.
                           </p>
-                        </div>
-                      </CardContent>
-                    </Card>
+                          <div className="border-l-2 border-primary pl-4">
+                            <p className="font-medium text-foreground">Evidence spine</p>
+                            <p className="text-muted-foreground">
+                              Plan against the roadmap, validate the pull request, then cut and
+                              monitor the release. Roll back if health checks regress.
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
                   </TabsContent>
                   <TabsContent value="answer" className="pt-3 text-muted-foreground">
                     Synthesized answers will compose the same evidence cards and citations.
@@ -216,13 +247,12 @@ export function M7ShadcnPrototype() {
                   </CardHeader>
                   <CardContent>
                     <FieldGroup>
-                      <Field>
-                        <FieldLabel htmlFor="prototype-workspace">Workspace</FieldLabel>
-                        <Input id="prototype-workspace" defaultValue="Personal" />
-                        <FieldDescription>
-                          Scopes documents, memory, and agent context.
-                        </FieldDescription>
-                      </Field>
+                      <ValidatedInput
+                        id="prototype-workspace"
+                        label="Workspace"
+                        defaultValue="Personal"
+                        description="Scopes documents, memory, and agent context."
+                      />
                       <Field>
                         <FieldLabel htmlFor="prototype-retrieval-mode">Retrieval mode</FieldLabel>
                         <Input id="prototype-retrieval-mode" defaultValue="Balanced" />
@@ -250,9 +280,13 @@ export function M7ShadcnPrototype() {
                     </FieldGroup>
                   </CardContent>
                 </Card>
-                <Button variant="outline" className="w-full" onClick={() => setDialogOpen(true)}>
+                <AsyncButton
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setDialogOpen(true)}
+                >
                   Review context boundary
-                </Button>
+                </AsyncButton>
               </aside>
             </div>
           </main>

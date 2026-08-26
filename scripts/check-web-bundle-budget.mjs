@@ -46,7 +46,7 @@ export function verifyWebBundleBudget() {
     ['legacy-default initial JavaScript', uniqueAssetBytes(manifest, initialLegacyKeys), 475_000],
     ['legacy-default renderer CSS', size(legacyCss), 80_000],
     ['lazy shadcn prototype entry', size(prototype.file), 220_000],
-    ['lazy shadcn prototype CSS', size(prototypeCss), 120_000],
+    ['lazy shadcn prototype CSS', size(prototypeCss), 125_000],
   ]
 
   for (const [label, bytes, budget] of measurements) {

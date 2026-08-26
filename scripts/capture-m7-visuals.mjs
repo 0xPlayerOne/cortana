@@ -77,6 +77,13 @@ if (renderer === 'shadcn') {
         const navigationElement = await navigationTrigger.elementHandle()
         if (!navigationElement) throw new Error('Mobile navigation trigger was not rendered')
         await navigationTrigger.focus()
+        const focusStyle = await navigationTrigger.evaluate((element) => {
+          const style = getComputedStyle(element)
+          return { boxShadow: style.boxShadow, outlineStyle: style.outlineStyle }
+        })
+        if (focusStyle.boxShadow === 'none' && focusStyle.outlineStyle === 'none') {
+          throw new Error('Mobile navigation trigger has no visible focus indicator')
+        }
         await navigationTrigger.press('Enter')
         await page.getByText('Settings', { exact: true }).last().waitFor()
         await page.waitForTimeout(250)
@@ -101,6 +108,17 @@ if (renderer === 'shadcn') {
       }
       await context.close()
     }
+  }
+
+  for (const state of ['loading', 'empty', 'error']) {
+    const { context, page } = await openPage('blue', 1024)
+    await page.goto(`${baseUrl}/?demo=1&renderer=shadcn&prototypeState=${state}`, {
+      waitUntil: 'networkidle',
+    })
+    await page.getByRole('heading', { name: 'Release evidence' }).waitFor()
+    await auditAccessibility(page, `${state} retrieval state`)
+    await screenshot(page, `retrieval-${state}-blue-1024`)
+    await context.close()
   }
 
   // A 1440-physical-pixel window at 200% browser zoom exposes a 720 CSS-pixel
