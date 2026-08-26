@@ -54,27 +54,33 @@ async function screenshot(page, name) {
   screenshotCount += 1
 }
 
+async function auditAccessibility(page, label) {
+  const accessibility = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+    .analyze()
+  if (accessibility.violations.length > 0) {
+    const summary = accessibility.violations
+      .map((violation) => `${violation.id}: ${violation.help}`)
+      .join('\n')
+    throw new Error(`Accessibility violations in ${label}:\n${summary}`)
+  }
+}
+
 if (renderer === 'shadcn') {
   for (const theme of themes) {
     for (const width of widths) {
       const { context, page } = await openPage(theme, width)
       await screenshot(page, `shell-${theme}-${width}`)
-      const accessibility = await new AxeBuilder({ page })
-        .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-        .analyze()
-      if (accessibility.violations.length > 0) {
-        const summary = accessibility.violations
-          .map((violation) => `${violation.id}: ${violation.help}`)
-          .join('\n')
-        throw new Error(`Accessibility violations in ${theme}/${width}:\n${summary}`)
-      }
+      await auditAccessibility(page, `${theme}/${width}`)
       if (theme === 'blue' && width === 320) {
-        const navigationTrigger = page.getByRole('button', { name: 'Open navigation' })
+        const navigationTrigger = page.getByRole('button', { name: 'Toggle navigation' })
         const navigationElement = await navigationTrigger.elementHandle()
         if (!navigationElement) throw new Error('Mobile navigation trigger was not rendered')
         await navigationTrigger.focus()
         await navigationTrigger.press('Enter')
         await page.getByText('Settings', { exact: true }).last().waitFor()
+        await page.waitForTimeout(250)
+        await auditAccessibility(page, 'mobile navigation overlay')
         await screenshot(page, 'mobile-navigation-blue-320')
         await page.keyboard.press('Escape')
         await page.locator('[data-slot="sheet-content"]').waitFor({ state: 'detached' })
@@ -89,6 +95,8 @@ if (renderer === 'shadcn') {
           .waitFor()
         await page.getByRole('button', { name: 'Review context boundary' }).click()
         await page.getByRole('dialog').waitFor()
+        await page.waitForTimeout(150)
+        await auditAccessibility(page, 'context boundary dialog')
         await screenshot(page, 'dialog-blue-1440')
       }
       await context.close()

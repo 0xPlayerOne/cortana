@@ -99,7 +99,7 @@ export function M7ShadcnPrototype() {
             </SidebarGroup>
             <SidebarGroup>
               <SidebarGroupLabel>Sources</SidebarGroupLabel>
-              <SidebarGroupContent className="flex flex-col gap-1 px-2 text-xs text-muted-foreground">
+              <SidebarGroupContent className="flex flex-col gap-1 px-2 text-xs text-sidebar-foreground/80">
                 <p className="flex items-center justify-between gap-2">
                   Work Drive <span className="tabular-nums">1,982</span>
                 </p>
@@ -123,7 +123,7 @@ export function M7ShadcnPrototype() {
 
         <SidebarInset className="min-h-svh overflow-hidden">
           <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 md:px-4">
-            <SidebarTrigger aria-label="Open navigation" />
+            <SidebarTrigger aria-label="Toggle navigation" />
             <div className="relative min-w-0 flex-1 md:max-w-2xl">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
