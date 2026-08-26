@@ -95,8 +95,9 @@ diagnostic comparison points, not packaged performance claims.
 The pre-migration production build transformed 1,699 modules in 1.55 seconds. Its renderer entry
 was 453,729 bytes (133.57 kB gzip), and legacy CSS was 72,299 bytes (13.67 kB gzip). The flag-disabled
 foundation build keeps the shadcn prototype in separate lazy chunks: the complete legacy-default
-initial graph is 455.04 kB, while the prototype is 200.38 kB (64.85 kB gzip) plus 100.86 kB CSS (16.24 kB
-gzip). Issue #2167 must compare the final single renderer to the baseline and remove transition-only
+initial graph is 455.04 kB, while the prototype is 200.62 kB (64.86 kB gzip) plus the complete
+shared primitive CSS contract at 116.62 kB (18.25 kB gzip). Issue #2167 must compare the final
+single renderer to the baseline and remove transition-only
 code before issue #2168 can accept performance.
 
 `bun run build` enforces reviewed uncompressed budgets from the Vite manifest: 475,000 bytes for
@@ -109,6 +110,23 @@ The added JavaScript packages use MIT or Apache-2.0 licenses. The bundled Geist 
 OFL-1.1. No copyleft runtime, native library, hosted font request, or new executable is introduced.
 `bun audit --production` reports no known vulnerabilities after pinning the remediated transitive
 `js-yaml` and `nanoid` releases in `bun.lock`.
+
+## Shared primitive contract
+
+Issue #2162 installs the source-owned form, data, feedback, and interaction families required by
+the migration: Button, Input, Textarea, Checkbox, RadioGroup, Switch, Slider, Select, Combobox
+composition, Toggle/ToggleGroup, InputGroup, Field/FieldSet, Card, Table, Badge, Avatar, Alert,
+Empty, Skeleton, Spinner, Progress, Separator, toast, Accordion, Collapsible, Resizable,
+Pagination, ContextMenu, and HoverCard. Generated registry components remain unmodified except for
+the reviewed semantic overlay and mobile-sidebar accessibility fixes recorded above.
+
+The approved composed contracts live under `components/cortana`: `AsyncButton` owns busy and
+disabled semantics, `ValidatedInput` owns label/help/error association, `StatusBadge` owns busy,
+offline, success, warning, and error tones, and `FeedbackState` owns loading, empty, success,
+warning, error, and retry presentation. Primary, secondary, outline, ghost, link, destructive,
+compact, icon, busy, disabled, and validation behavior is expressed through generated variants,
+sizes, and these compositions rather than page-local classes. Ordinary icon-only actions use the
+generated icon sizes and always require an accessible name at the call site.
 
 ## Legacy control and CSS inventory
 
