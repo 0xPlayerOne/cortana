@@ -2470,8 +2470,9 @@ fn manage_memory(config: &Config, store: &Store, action: &MemoryAction) -> Resul
                             Some(candidates.len()),
                             started,
                         );
-                        println!("{}", serde_json::to_string_pretty(&candidates)?);
-                        Ok(())
+                        let stdout = std::io::stdout();
+                        let mut stdout = stdout.lock();
+                        write_bounded_candidate_json(&mut stdout, &candidates)
                     }
                     Err(error) => {
                         record_cli_memory_audit(
@@ -4277,6 +4278,20 @@ fn record_cli_memory_audit(
     }
 }
 
+fn write_bounded_candidate_json<W: Write, T: serde::Serialize>(
+    writer: &mut W,
+    candidates: &T,
+) -> Result<()> {
+    let output = serde_json::to_vec(candidates)?;
+    anyhow::ensure!(
+        output.len().saturating_add(1) <= cortana::observation::MAX_CANDIDATE_RESPONSE_BYTES,
+        "memory candidate output exceeded the response byte limit; narrow the project or scope filter"
+    );
+    writer.write_all(&output)?;
+    writer.write_all(b"\n")?;
+    Ok(())
+}
+
 #[allow(dead_code)]
 fn chunk(content: &str) -> Vec<String> {
     const TARGET: usize = 1_600;
@@ -4343,7 +4358,7 @@ mod tests {
         configured_connector_command, context_bundle, ensure_recurring_sync_validated,
         failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, manage_memory,
         private_file, require_sync_validation, run_connector_to_spool, validate_configured_source,
-        validate_connector_spool, validation_overrides,
+        validate_connector_spool, validation_overrides, write_bounded_candidate_json,
     };
     use cortana::chunking::chunk_document;
     use cortana::config::{Config, SourceConfig};
@@ -4352,6 +4367,27 @@ mod tests {
     use cortana::model::Document;
     use cortana::source_validation::{SourceValidationStatus, configuration_fingerprint, record};
     use cortana::store::Store;
+
+    #[test]
+    fn candidate_json_writer_enforces_the_final_cli_byte_bound() {
+        let mut compact = Vec::new();
+        write_bounded_candidate_json(&mut compact, &vec!["line one\nline two"])
+            .expect("bounded compact output");
+        assert_eq!(compact, b"[\"line one\\nline two\"]\n");
+
+        let mut oversized = Vec::new();
+        let error = write_bounded_candidate_json(
+            &mut oversized,
+            &vec!["x".repeat(cortana::observation::MAX_CANDIDATE_RESPONSE_BYTES)],
+        )
+        .expect_err("oversized final output must fail closed");
+        assert!(
+            error
+                .to_string()
+                .contains("exceeded the response byte limit")
+        );
+        assert!(oversized.is_empty());
+    }
 
     #[test]
     fn acl_plan_can_include_unmapped_public_projects_in_quarantine() {
