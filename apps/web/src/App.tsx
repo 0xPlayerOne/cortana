@@ -1690,6 +1690,7 @@ export function App({
         )}
         {view === 'settings' ? (
           <SettingsView
+            renderer={renderer}
             desktopSettings={desktopSettings ?? undefined}
             onLoaded={applyDesktopSettings}
             initialSection={settingsSection}
@@ -1793,6 +1794,7 @@ export function App({
                 onOpenChange={setLeftOpen}
               >
                 <SourcePanel
+                  renderer={renderer}
                   open={leftOpen}
                   status={status}
                   workspace={effectiveWorkspace}
@@ -1869,6 +1871,7 @@ export function App({
               />
             )}
             <Workspace
+              renderer={renderer}
               query={activeQuery}
               answer={answer}
               reflection={reflection}
@@ -1903,6 +1906,7 @@ export function App({
                 onOpenChange={setRightOpen}
               >
                 <ContextPanel
+                  renderer={renderer}
                   open={rightOpen}
                   query={activeQuery}
                   evidence={evidence}
@@ -1956,6 +1960,7 @@ export function App({
         ) : (
           <UtilityView
             kind={view}
+            renderer={renderer}
             status={status}
             statusError={statusError}
             onRetryStatus={retryStatus}

@@ -1,8 +1,10 @@
 import { afterEach, expect, test } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import type { AnswerResponse, ContextBundle, Evidence } from './types'
 import { ContextPanel } from './components/ContextPanel'
+import { m7SurfacePrimitives } from './components/m7/M7SurfacePrimitives.shadcn'
+import { M7SurfacePrimitivesProvider } from './components/m7/M7SurfacePrimitives'
 
 afterEach(cleanup)
 
@@ -35,7 +37,10 @@ const baseAnswer: AnswerResponse = {
   },
 }
 
-function renderPanel(overrides: Partial<ContextBundle | null> = {}) {
+function renderPanel(
+  overrides: Partial<ContextBundle | null> = {},
+  renderer: 'legacy' | 'shadcn' = 'legacy'
+) {
   const contextBundle: ContextBundle | null =
     overrides === null
       ? null
@@ -53,8 +58,9 @@ function renderPanel(overrides: Partial<ContextBundle | null> = {}) {
           ...overrides,
         }
 
-  return render(
+  const panel = (
     <ContextPanel
+      renderer={renderer}
       open
       query="How do releases work?"
       evidence={baseEvidence}
@@ -71,7 +77,26 @@ function renderPanel(overrides: Partial<ContextBundle | null> = {}) {
       onClose={() => {}}
     />
   )
+  return render(
+    renderer === 'shadcn' ? (
+      <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>{panel}</M7SurfacePrimitivesProvider>
+    ) : (
+      panel
+    )
+  )
 }
+
+test('shadcn renderer composes the context inspector from shared primitives', async () => {
+  await act(async () => {
+    renderPanel({}, 'shadcn')
+  })
+
+  expect(document.querySelector('[data-m7-context-panel]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="scroll-area"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="card"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="badge"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="button"]')).toBeTruthy()
+})
 
 test('Context panel copy action surfaces failures instead of failing silently', async () => {
   const originalClipboard = navigator.clipboard

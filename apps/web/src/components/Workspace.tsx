@@ -9,12 +9,21 @@ import {
   Search,
   Star,
 } from 'lucide-react'
-import { type CSSProperties, useEffect, useMemo, useState } from 'react'
+import {
+  createContext,
+  type ComponentProps,
+  type CSSProperties,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
 import { isFavoriteDocument, toggleFavoriteDocument } from '../favoriteDocuments'
 import { safeSourceLink } from '../sourceLinks'
-import { Button } from './ui/Button'
+import { useM7SurfacePrimitives } from './m7/M7SurfacePrimitives'
+import { Button, type ButtonProps } from './ui/Button'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -37,6 +46,48 @@ export type WorkspaceTab = (typeof tabs)[number]['id'] | 'graph'
 // The Document tab is the default primary view and Graph remains an explicit
 // separate view, so neither is gated.
 const resultGatedTabs = new Set<WorkspaceTab>(['answer', 'sources', 'timeline'])
+const WorkspaceRendererContext = createContext<'legacy' | 'shadcn'>('legacy')
+
+function WorkspaceButton({ variant = 'secondary', ...props }: ButtonProps) {
+  const renderer = useContext(WorkspaceRendererContext)
+  const ShadcnButton = useM7SurfacePrimitives()?.Button
+  if (renderer === 'legacy' || !ShadcnButton) return <Button variant={variant} {...props} />
+  return (
+    <ShadcnButton
+      {...props}
+      variant={
+        variant === 'primary'
+          ? 'default'
+          : variant === 'danger'
+            ? 'destructive'
+            : variant === 'ghost' || variant === 'icon'
+              ? 'ghost'
+              : 'secondary'
+      }
+      size={variant === 'icon' ? 'icon' : variant === 'compact' ? 'sm' : 'default'}
+    />
+  )
+}
+
+function WorkspaceInteractive(props: ComponentProps<'button'>) {
+  const renderer = useContext(WorkspaceRendererContext)
+  const ShadcnButton = useM7SurfacePrimitives()?.Button
+  return renderer === 'shadcn' && ShadcnButton ? (
+    <ShadcnButton variant="ghost" {...props} />
+  ) : (
+    <button type="button" {...props} />
+  )
+}
+
+function WorkspaceBadge(props: ComponentProps<'span'>) {
+  const renderer = useContext(WorkspaceRendererContext)
+  const ShadcnBadge = useM7SurfacePrimitives()?.Badge
+  return renderer === 'shadcn' && ShadcnBadge ? (
+    <ShadcnBadge variant="secondary" {...props} />
+  ) : (
+    <span {...props} />
+  )
+}
 
 async function openSourceLink(href: string): Promise<boolean> {
   if (!isDesktopApp) return false
@@ -73,6 +124,7 @@ export function Workspace({
   onSelectDocument,
   onFocusGraphNode,
   onRetry,
+  renderer = 'legacy',
 }: {
   query: string
   answer: AnswerResponse | null
@@ -95,7 +147,13 @@ export function Workspace({
   onSelectDocument: (id: string) => void
   onFocusGraphNode?: (node: BrainGraphNode) => void
   onRetry: () => void
+  renderer?: 'legacy' | 'shadcn'
 }) {
+  const primitives = useM7SurfacePrimitives()
+  const ShadcnBadge = primitives?.Badge
+  const ShadcnTabs = primitives?.Tabs
+  const ShadcnTabsList = primitives?.TabsList
+  const ShadcnTabsTrigger = primitives?.TabsTrigger
   const active = evidence[selected] ?? null
   const hasResults = answer !== null || reflection !== null || evidence.length > 0
   const selectEvidenceByChunkId = (chunkId: string) => {
@@ -120,86 +178,130 @@ export function Workspace({
     if (!loading && !hasResults && resultGatedTabs.has(tab)) onTabChange('document')
   }, [hasResults, loading, onTabChange, tab])
 
+  const availableTabs = tabs.filter(({ id }) => id === 'document' || hasResults)
   return (
-    <main id="main-content" className="workspace">
-      {tab !== 'graph' && (
-        <div className="workspace-tabs" role="tablist" aria-label="Result views">
-          {tabs
-            .filter(({ id }) => id === 'document' || hasResults)
-            .map(({ id, label, icon: Icon }) => (
-              <button
-                type="button"
-                key={id}
-                role="tab"
-                aria-selected={tab === id}
-                className={tab === id ? 'active' : ''}
-                onClick={() => onTabChange(id)}
-              >
-                <Icon size={15} />
-                {label}
-                {id === 'document' && document && <span className="count-pill">1</span>}
-                {id === 'sources' && evidence.length > 0 && (
-                  <span className="count-pill">{evidence.length}</span>
-                )}
-              </button>
-            ))}
-        </div>
-      )}
-      {documentLoading ? (
-        <EmptyState title="Opening document" detail="Loading the canonical indexed content…" />
-      ) : tab === 'document' && document ? (
-        <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
-      ) : tab === 'graph' ? (
-        <GraphView
-          graph={graph}
-          graphLoading={graphLoading}
-          graphAppendLoading={graphAppendLoading}
-          graphError={graphError}
-          onLoadMore={onLoadMoreGraph}
-          onRetry={onRetryGraph}
-          evidence={evidence}
-          onSelect={selectEvidenceByChunkId}
-          onSelectDocument={onSelectDocument}
-          onFocusGraphNode={onFocusGraphNode}
-        />
-      ) : error ? (
-        <EmptyState
-          title="Cortana could not reach the brain"
-          detail={`${error}. Start the Rust API or add ?demo=1 to preview the workspace.`}
-          action={onRetry}
-        />
-      ) : tab === 'document' ? (
-        <EmptyState
-          title="Choose a document"
-          detail="Open a workspace and source in the sidebar, then select any indexed document."
-        />
-      ) : loading && evidence.length === 0 ? (
-        <EmptyState
-          title="Searching your brain"
-          detail="Fusing semantic and exact-term evidence…"
-        />
-      ) : evidence.length === 0 && !hasResults ? (
-        <EmptyState title="No evidence found" detail="Try a broader phrase or another source." />
-      ) : tab === 'timeline' ? (
-        <TimelineView evidence={evidence} onSelect={selectEvidenceByChunkId} />
-      ) : tab === 'answer' ? (
-        reflection ? (
-          <ReflectionView response={reflection} />
-        ) : (
-          <AnswerView
-            query={query}
-            response={answer}
-            evidence={evidence}
-            onSelect={(index) => {
-              onSelect(index)
-              onTabChange('sources')
-            }}
+    <WorkspaceRendererContext.Provider value={renderer}>
+      <main
+        id="main-content"
+        className={renderer === 'shadcn' ? 'workspace m7-knowledge-workspace' : 'workspace'}
+        data-m7-knowledge-workspace={renderer === 'shadcn' ? '' : undefined}
+      >
+        {tab !== 'graph' &&
+          (renderer === 'shadcn' &&
+          ShadcnBadge &&
+          ShadcnTabs &&
+          ShadcnTabsList &&
+          ShadcnTabsTrigger ? (
+            <ShadcnTabs
+              className="shrink-0 border-b px-3 pt-2"
+              value={tab}
+              onValueChange={(value) => onTabChange(value as WorkspaceTab)}
+            >
+              <ShadcnTabsList variant="line" aria-label="Result views">
+                {availableTabs.map(({ id, label, icon: Icon }) => (
+                  <ShadcnTabsTrigger key={id} value={id}>
+                    <Icon size={15} />
+                    {label}
+                    {id === 'document' && document && (
+                      <ShadcnBadge variant="secondary">1</ShadcnBadge>
+                    )}
+                    {id === 'sources' && evidence.length > 0 && (
+                      <ShadcnBadge variant="secondary">{evidence.length}</ShadcnBadge>
+                    )}
+                  </ShadcnTabsTrigger>
+                ))}
+              </ShadcnTabsList>
+            </ShadcnTabs>
+          ) : (
+            <div className="workspace-tabs" role="tablist" aria-label="Result views">
+              {availableTabs.map(({ id, label, icon: Icon }) => (
+                <button
+                  type="button"
+                  key={id}
+                  role="tab"
+                  aria-selected={tab === id}
+                  className={tab === id ? 'active' : ''}
+                  onClick={() => onTabChange(id)}
+                >
+                  <Icon size={15} />
+                  {label}
+                  {id === 'document' && document && <span className="count-pill">1</span>}
+                  {id === 'sources' && evidence.length > 0 && (
+                    <span className="count-pill">{evidence.length}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ))}
+        {documentLoading ? (
+          <EmptyState
+            title="Opening document"
+            detail="Loading the canonical indexed content…"
+            renderer={renderer}
+            busy
           />
-        )
-      ) : (
-        active && <DocumentView active={active} evidence={evidence} onSelect={onSelect} />
-      )}
-    </main>
+        ) : tab === 'document' && document ? (
+          <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
+        ) : tab === 'graph' ? (
+          <GraphView
+            graph={graph}
+            graphLoading={graphLoading}
+            graphAppendLoading={graphAppendLoading}
+            graphError={graphError}
+            onLoadMore={onLoadMoreGraph}
+            onRetry={onRetryGraph}
+            evidence={evidence}
+            onSelect={selectEvidenceByChunkId}
+            onSelectDocument={onSelectDocument}
+            onFocusGraphNode={onFocusGraphNode}
+          />
+        ) : error ? (
+          <EmptyState
+            title="Cortana could not reach the brain"
+            detail={`${error}. Start the Rust API or add ?demo=1 to preview the workspace.`}
+            action={onRetry}
+            renderer={renderer}
+          />
+        ) : tab === 'document' ? (
+          <EmptyState
+            title="Choose a document"
+            detail="Open a workspace and source in the sidebar, then select any indexed document."
+            renderer={renderer}
+          />
+        ) : loading && evidence.length === 0 ? (
+          <EmptyState
+            title="Searching your brain"
+            detail="Fusing semantic and exact-term evidence…"
+            renderer={renderer}
+            busy
+          />
+        ) : evidence.length === 0 && !hasResults ? (
+          <EmptyState
+            title="No evidence found"
+            detail="Try a broader phrase or another source."
+            renderer={renderer}
+          />
+        ) : tab === 'timeline' ? (
+          <TimelineView evidence={evidence} onSelect={selectEvidenceByChunkId} />
+        ) : tab === 'answer' ? (
+          reflection ? (
+            <ReflectionView response={reflection} />
+          ) : (
+            <AnswerView
+              query={query}
+              response={answer}
+              evidence={evidence}
+              onSelect={(index) => {
+                onSelect(index)
+                onTabChange('sources')
+              }}
+            />
+          )
+        ) : (
+          active && <DocumentView active={active} evidence={evidence} onSelect={onSelect} />
+        )}
+      </main>
+    </WorkspaceRendererContext.Provider>
   )
 }
 
@@ -224,7 +326,7 @@ function BrainDocumentView({
         <span>Brain</span> / <span>{document.project}</span> / <span>{document.source}</span> /{' '}
         <strong>{document.title}</strong>
         <div>
-          <button
+          <WorkspaceInteractive
             type="button"
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
@@ -233,7 +335,7 @@ function BrainDocumentView({
             onClick={() => setFavorite(toggleFavoriteDocument(document.id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
-          </button>
+          </WorkspaceInteractive>
           {sourceHref && (
             <a
               href={sourceHref}
@@ -295,7 +397,7 @@ function BrainDocumentView({
                 <section>
                   <h2>Backlinks</h2>
                   {document.backlinks.map((related) => (
-                    <button
+                    <WorkspaceInteractive
                       type="button"
                       key={related.id}
                       onClick={() => onSelectDocument(related.id)}
@@ -303,7 +405,7 @@ function BrainDocumentView({
                       <Link2 size={14} />
                       <span>{related.title}</span>
                       <small>{related.source}</small>
-                    </button>
+                    </WorkspaceInteractive>
                   ))}
                 </section>
               )}
@@ -311,7 +413,7 @@ function BrainDocumentView({
                 <section>
                   <h2>Surrounding documents</h2>
                   {document.surrounding.map((related) => (
-                    <button
+                    <WorkspaceInteractive
                       type="button"
                       key={related.id}
                       onClick={() => onSelectDocument(related.id)}
@@ -319,7 +421,7 @@ function BrainDocumentView({
                       <FileText size={14} />
                       <span>{related.title}</span>
                       <small>{new Date(related.updated_at).toLocaleDateString()}</small>
-                    </button>
+                    </WorkspaceInteractive>
                   ))}
                 </section>
               )}
@@ -383,7 +485,7 @@ function DocumentView({
       <div className="breadcrumbs">
         <span>Brain</span> / <span>{active.source}</span> / <strong>{active.title}</strong>
         <div>
-          <button
+          <WorkspaceInteractive
             type="button"
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
@@ -392,7 +494,7 @@ function DocumentView({
             onClick={() => setFavorite(toggleFavoriteDocument(active.chunk_id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
-          </button>
+          </WorkspaceInteractive>
           {sourceHref && (
             <a
               href={sourceHref}
@@ -430,9 +532,13 @@ function DocumentView({
           <div id="related" className="evidence-footer">
             <h2>Related evidence</h2>
             {evidence.slice(0, 6).map((item, index) => (
-              <button type="button" key={item.chunk_id} onClick={() => onSelect(index)}>
+              <WorkspaceInteractive
+                type="button"
+                key={item.chunk_id}
+                onClick={() => onSelect(index)}
+              >
                 <span>{index + 1}</span> {item.title}
-              </button>
+              </WorkspaceInteractive>
             ))}
           </div>
         </div>
@@ -540,17 +646,19 @@ function AnswerView({
       <h1>{query}</h1>
       {response && (
         <div className="answer-meta">
-          <span>{response.mode}</span>
-          <span>
+          <WorkspaceBadge>{response.mode}</WorkspaceBadge>
+          <WorkspaceBadge>
             {response.retrieval_degraded
               ? 'lexical fallback'
               : response.retrieval_mode || 'hybrid retrieval'}
-          </span>
-          <span>{response.cached ? 'cache hit' : `${response.latency_ms} ms`}</span>
-          <span>
+          </WorkspaceBadge>
+          <WorkspaceBadge>
+            {response.cached ? 'cache hit' : `${response.latency_ms} ms`}
+          </WorkspaceBadge>
+          <WorkspaceBadge>
             {response.plan.queries.length}{' '}
             {response.plan.queries.length === 1 ? 'retrieval' : 'retrievals'}
-          </span>
+          </WorkspaceBadge>
         </div>
       )}
       <div className="answer-copy">
@@ -602,7 +710,7 @@ function AnswerView({
         </section>
       )}
       {evidence.slice(0, 4).map((item, index) => (
-        <button
+        <WorkspaceInteractive
           type="button"
           className="answer-source"
           key={item.chunk_id}
@@ -613,7 +721,7 @@ function AnswerView({
             <h2>{item.title}</h2>
             <p>{item.content}</p>
           </div>
-        </button>
+        </WorkspaceInteractive>
       ))}
       <p className="answer-note">
         {response?.mode === 'synthesized'
@@ -647,6 +755,10 @@ function GraphView({
   onSelectDocument: (id: string) => void
   onFocusGraphNode?: (node: BrainGraphNode) => void
 }) {
+  const renderer = useContext(WorkspaceRendererContext)
+  const primitives = useM7SurfacePrimitives()
+  const ShadcnInput = primitives?.Input
+  const ShadcnToggle = primitives?.Toggle
   const [visibleCount, setVisibleCount] = useState(12)
   const [filter, setFilter] = useState('')
   const [kindFilter, setKindFilter] = useState<BrainGraphNode['kind'] | 'all'>('all')
@@ -713,9 +825,9 @@ function GraphView({
         <Search size={24} aria-hidden="true" />
         <h1>No matching graph nodes</h1>
         <p>Try a workspace, source, or document name.</p>
-        <Button variant="secondary" onClick={() => setFilter('')}>
+        <WorkspaceButton variant="secondary" onClick={() => setFilter('')}>
           Clear filter
-        </Button>
+        </WorkspaceButton>
       </div>
     )
   }
@@ -748,43 +860,71 @@ function GraphView({
       </div>
       <div className="graph-toolbar" role="search">
         <Search size={14} aria-hidden="true" />
-        <input
-          type="search"
-          aria-label="Filter graph nodes"
-          placeholder="Filter nodes…"
-          value={filter}
-          onChange={(event) => setFilter(event.target.value)}
-        />
+        {renderer === 'shadcn' && ShadcnInput ? (
+          <ShadcnInput
+            type="search"
+            aria-label="Filter graph nodes"
+            placeholder="Filter nodes…"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+          />
+        ) : (
+          <input
+            type="search"
+            aria-label="Filter graph nodes"
+            placeholder="Filter nodes…"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+          />
+        )}
         {filter && (
-          <Button
+          <WorkspaceButton
             variant="ghost"
             type="button"
             className="link-button"
             onClick={() => setFilter('')}
           >
             Clear
-          </Button>
+          </WorkspaceButton>
         )}
       </div>
       {graph && !usingEvidenceFallback && (
         <div className="graph-kind-filter" role="group" aria-label="Filter graph node types">
-          {(['all', 'workspace', 'source', 'document'] as const).map((kind) => (
-            <button
-              type="button"
-              key={kind}
-              className={kindFilter === kind ? 'active' : ''}
-              aria-pressed={kindFilter === kind}
-              onClick={() => setKindFilter(kind)}
-            >
-              {kind === 'all'
-                ? 'All'
-                : kind === 'workspace'
-                  ? 'Workspaces'
-                  : kind === 'source'
-                    ? 'Sources'
-                    : 'Documents'}
-            </button>
-          ))}
+          {(['all', 'workspace', 'source', 'document'] as const).map((kind) =>
+            renderer === 'shadcn' && ShadcnToggle ? (
+              <ShadcnToggle
+                key={kind}
+                size="sm"
+                variant="outline"
+                pressed={kindFilter === kind}
+                onPressedChange={(pressed) => pressed && setKindFilter(kind)}
+              >
+                {kind === 'all'
+                  ? 'All'
+                  : kind === 'workspace'
+                    ? 'Workspaces'
+                    : kind === 'source'
+                      ? 'Sources'
+                      : 'Documents'}
+              </ShadcnToggle>
+            ) : (
+              <button
+                type="button"
+                key={kind}
+                className={kindFilter === kind ? 'active' : ''}
+                aria-pressed={kindFilter === kind}
+                onClick={() => setKindFilter(kind)}
+              >
+                {kind === 'all'
+                  ? 'All'
+                  : kind === 'workspace'
+                    ? 'Workspaces'
+                    : kind === 'source'
+                      ? 'Sources'
+                      : 'Documents'}
+              </button>
+            )
+          )}
         </div>
       )}
       <div className="graph-summary" role="status">
@@ -801,27 +941,27 @@ function GraphView({
       </div>
       {graphError && onRetry && (
         <div className="graph-actions">
-          <Button variant="ghost" type="button" className="link-button" onClick={onRetry}>
+          <WorkspaceButton variant="ghost" type="button" className="link-button" onClick={onRetry}>
             Retry graph
-          </Button>
+          </WorkspaceButton>
         </div>
       )}
       {graph?.next_cursor && onLoadMore && (
         <div className="graph-pagination">
-          <Button variant="secondary" onClick={onLoadMore} disabled={graphAppendLoading}>
+          <WorkspaceButton variant="secondary" onClick={onLoadMore} disabled={graphAppendLoading}>
             {graphAppendLoading ? 'Loading more nodes…' : 'Load more nodes'}
-          </Button>
+          </WorkspaceButton>
           <span>More nodes remain outside this bounded view.</span>
         </div>
       )}
       {!graph?.next_cursor && filteredNodes.length > visibleCount && (
         <div className="graph-pagination">
-          <Button
+          <WorkspaceButton
             variant="secondary"
             onClick={() => setVisibleCount((count) => Math.min(count + 12, filteredNodes.length))}
           >
             Show more nodes
-          </Button>
+          </WorkspaceButton>
           <span>Showing a bounded window for responsive rendering.</span>
         </div>
       )}
@@ -893,9 +1033,12 @@ function GraphView({
             </ul>
           )}
           {selectedNode.document_id && (
-            <Button variant="secondary" onClick={() => onSelectDocument(selectedNode.document_id!)}>
+            <WorkspaceButton
+              variant="secondary"
+              onClick={() => onSelectDocument(selectedNode.document_id!)}
+            >
               Open document
-            </Button>
+            </WorkspaceButton>
           )}
         </aside>
       )}
@@ -917,7 +1060,7 @@ function TimelineView({
         .map((item) => item)
         .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
         .map((item) => (
-          <button
+          <WorkspaceInteractive
             type="button"
             key={item.chunk_id}
             aria-label={`Timeline evidence: ${item.title}`}
@@ -929,7 +1072,7 @@ function TimelineView({
               <strong>{item.title}</strong>
               <span>{item.source}</span>
             </div>
-          </button>
+          </WorkspaceInteractive>
         ))}
     </div>
   )
@@ -939,20 +1082,62 @@ function EmptyState({
   title,
   detail,
   action,
+  renderer,
+  busy = false,
 }: {
   title: string
   detail: string
   action?: () => void
+  renderer?: 'legacy' | 'shadcn'
+  busy?: boolean
 }) {
+  const activeRenderer = renderer ?? useContext(WorkspaceRendererContext)
+  const primitives = useM7SurfacePrimitives()
+  const ShadcnButton = primitives?.Button
+  const ShadcnEmpty = primitives?.Empty
+  const ShadcnEmptyContent = primitives?.EmptyContent
+  const ShadcnEmptyDescription = primitives?.EmptyDescription
+  const ShadcnEmptyHeader = primitives?.EmptyHeader
+  const ShadcnEmptyMedia = primitives?.EmptyMedia
+  const ShadcnEmptyTitle = primitives?.EmptyTitle
+  const ShadcnSpinner = primitives?.Spinner
+  if (
+    activeRenderer === 'shadcn' &&
+    ShadcnButton &&
+    ShadcnEmpty &&
+    ShadcnEmptyContent &&
+    ShadcnEmptyDescription &&
+    ShadcnEmptyHeader &&
+    ShadcnEmptyMedia &&
+    ShadcnEmptyTitle &&
+    ShadcnSpinner
+  ) {
+    return (
+      <ShadcnEmpty className="m-4 min-h-64 border">
+        <ShadcnEmptyHeader>
+          <ShadcnEmptyMedia variant="icon">
+            {busy ? <ShadcnSpinner aria-label="Loading" /> : <Search aria-hidden="true" />}
+          </ShadcnEmptyMedia>
+          <ShadcnEmptyTitle>{title}</ShadcnEmptyTitle>
+          <ShadcnEmptyDescription>{detail}</ShadcnEmptyDescription>
+        </ShadcnEmptyHeader>
+        {action && (
+          <ShadcnEmptyContent>
+            <ShadcnButton onClick={action}>Try again</ShadcnButton>
+          </ShadcnEmptyContent>
+        )}
+      </ShadcnEmpty>
+    )
+  }
   return (
     <div className="empty-state">
       <AppIcon size={28} />
       <h1>{title}</h1>
       <p>{detail}</p>
       {action && (
-        <Button variant="primary" onClick={action}>
+        <WorkspaceButton variant="primary" onClick={action}>
           Try again
-        </Button>
+        </WorkspaceButton>
       )}
     </div>
   )

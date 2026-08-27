@@ -3,6 +3,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { BrainDocumentSummary } from '../types'
 import { virtualRange } from '../virtualization'
+import { useM7SurfacePrimitives } from './m7/M7SurfacePrimitives'
 
 const ROW_HEIGHT = 32
 
@@ -13,6 +14,7 @@ export function VirtualDocumentList({
   hasMore,
   onSelect,
   onLoadMore,
+  renderer = 'legacy',
 }: {
   documents: BrainDocumentSummary[]
   selectedDocument: string
@@ -20,7 +22,9 @@ export function VirtualDocumentList({
   hasMore: boolean
   onSelect: (id: string) => void
   onLoadMore: () => void
+  renderer?: 'legacy' | 'shadcn'
 }) {
+  const ShadcnButton = useM7SurfacePrimitives()?.Button
   const viewportRef = useRef<HTMLDivElement>(null)
   const loadRequested = useRef(false)
   const [scrollTop, setScrollTop] = useState(0)
@@ -106,30 +110,44 @@ export function VirtualDocumentList({
         <div style={{ transform: `translateY(${range.offsetTop}px)` }}>
           {documents.slice(range.start, range.end).map((document, offset) => {
             const index = range.start + offset
-            return (
-              <button
-                key={document.id}
-                id={`document-option-${document.id}`}
-                type="button"
-                role="option"
-                tabIndex={-1}
-                aria-selected={selectedDocument === document.id}
-                className={[
-                  'document-node',
-                  selectedDocument === document.id ? 'selected-document' : '',
-                  activeIndex === index ? 'keyboard-active' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                style={{ height: ROW_HEIGHT }}
-                onMouseEnter={() => setActiveIndex(index)}
-                onFocus={() => setActiveIndex(index)}
-                onClick={() => onSelect(document.id)}
-                title={`${document.title} · ${document.source}`}
-              >
+            const content = (
+              <>
                 <FileText size={14} />
                 <span>{document.title}</span>
                 <small>{document.source}</small>
+              </>
+            )
+            const sharedProps = {
+              id: `document-option-${document.id}`,
+              role: 'option',
+              tabIndex: -1,
+              'aria-selected': selectedDocument === document.id,
+              className: [
+                'document-node',
+                selectedDocument === document.id ? 'selected-document' : '',
+                activeIndex === index ? 'keyboard-active' : '',
+              ]
+                .filter(Boolean)
+                .join(' '),
+              style: { height: ROW_HEIGHT },
+              onMouseEnter: () => setActiveIndex(index),
+              onFocus: () => setActiveIndex(index),
+              onClick: () => onSelect(document.id),
+              title: `${document.title} · ${document.source}`,
+            } as const
+            return renderer === 'shadcn' && ShadcnButton ? (
+              <ShadcnButton
+                key={document.id}
+                {...sharedProps}
+                variant="ghost"
+                size="sm"
+                data-m7-document-row=""
+              >
+                {content}
+              </ShadcnButton>
+            ) : (
+              <button key={document.id} {...sharedProps} type="button">
+                {content}
               </button>
             )
           })}

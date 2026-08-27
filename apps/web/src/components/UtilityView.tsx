@@ -17,7 +17,7 @@ import {
   Sparkles,
   TerminalSquare,
 } from 'lucide-react'
-import { useState } from 'react'
+import { createContext, type ComponentProps, useContext, useState } from 'react'
 
 import { openDesktopUrl } from '../api'
 import type {
@@ -31,7 +31,8 @@ import { describeSourceJobProgress, recentCompletedJobs } from '../sourceJobs'
 import { describeSyncRunProgress } from '../operations'
 import { shortcutLabel } from '../shortcuts'
 import { useClipboardCopy } from '../useClipboardCopy'
-import { Button } from './ui/Button'
+import { useM7SurfacePrimitives } from './m7/M7SurfacePrimitives'
+import { Button as LegacyButton, type ButtonProps } from './ui/Button'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
@@ -63,6 +64,37 @@ const TITLES: Record<UtilityKind, { eyebrow: string; title: string; description:
   },
 }
 
+const UtilityRendererContext = createContext<'legacy' | 'shadcn'>('legacy')
+
+function Button({ variant = 'secondary', ...props }: ButtonProps) {
+  const renderer = useContext(UtilityRendererContext)
+  const ShadcnButton = useM7SurfacePrimitives()?.Button
+  if (renderer === 'legacy' || !ShadcnButton) {
+    return <LegacyButton variant={variant} {...props} />
+  }
+  return (
+    <ShadcnButton
+      {...props}
+      variant={
+        variant === 'primary'
+          ? 'default'
+          : variant === 'danger'
+            ? 'destructive'
+            : variant === 'ghost' || variant === 'icon'
+              ? 'ghost'
+              : 'secondary'
+      }
+      size={variant === 'icon' ? 'icon' : variant === 'compact' ? 'sm' : 'default'}
+    />
+  )
+}
+
+function UtilityCard(props: ComponentProps<'div'>) {
+  const renderer = useContext(UtilityRendererContext)
+  const ShadcnCard = useM7SurfacePrimitives()?.Card
+  return renderer === 'shadcn' && ShadcnCard ? <ShadcnCard {...props} /> : <div {...props} />
+}
+
 export function UtilityView({
   kind,
   status,
@@ -86,6 +118,7 @@ export function UtilityView({
   onOpenSettings,
   onOpenProject,
   onCancelSourceJob,
+  renderer = 'legacy',
 }: {
   kind: UtilityKind
   status: BrainStatus | null
@@ -109,64 +142,71 @@ export function UtilityView({
   onOpenSettings: () => void
   onOpenProject: () => void | Promise<void>
   onCancelSourceJob?: (id: string) => void
+  renderer?: 'legacy' | 'shadcn'
 }) {
   const { eyebrow, title, description } = TITLES[kind]
   return (
-    <main id="main-content" className="utility-view">
-      <header className="utility-header">
-        <div>
-          <span className="eyebrow">{eyebrow}</span>
-          <h1>{title}</h1>
-          <p>{description}</p>
+    <UtilityRendererContext.Provider value={renderer}>
+      <main
+        id="main-content"
+        className={`utility-view ${renderer === 'shadcn' ? 'm7-utility-view' : ''}`}
+        data-m7-utility-view={renderer === 'shadcn' ? kind : undefined}
+      >
+        <header className="utility-header">
+          <div>
+            <span className="eyebrow">{eyebrow}</span>
+            <h1>{title}</h1>
+            <p>{description}</p>
+          </div>
+        </header>
+        <div className="utility-body">
+          {kind === 'inbox' && (
+            <InboxView
+              status={status}
+              statusError={statusError}
+              sourceJobs={sourceJobs}
+              sourceJobError={sourceJobError}
+              onRetrySourceJobs={onRetrySourceJobs}
+              onOpenSettings={onOpenSettings}
+              onRetryStatus={onRetryStatus}
+              onCancelSourceJob={onCancelSourceJob}
+            />
+          )}
+          {kind === 'conversations' && (
+            <ConversationsView
+              query={query}
+              answer={answer}
+              evidence={evidence}
+              loading={loading}
+              error={error}
+              onSearchFocus={onSearchFocus}
+            />
+          )}
+          {kind === 'agent-tools' && (
+            <AgentToolsView
+              query={query}
+              evidence={evidence}
+              contextBundle={contextBundle}
+              contextLoading={contextLoading}
+              contextError={contextError}
+              contextTokens={contextTokens}
+              onRetrieveContext={onRetrieveContext}
+            />
+          )}
+          {kind === 'index' && (
+            <IndexView
+              status={status}
+              statusError={statusError}
+              onOpenSettings={onOpenSettings}
+              onRetryStatus={onRetryStatus}
+            />
+          )}
+          {kind === 'help' && (
+            <HelpView desktopAvailable={desktopAvailable} onOpenProject={onOpenProject} />
+          )}
         </div>
-      </header>
-      <div className="utility-body">
-        {kind === 'inbox' && (
-          <InboxView
-            status={status}
-            statusError={statusError}
-            sourceJobs={sourceJobs}
-            sourceJobError={sourceJobError}
-            onRetrySourceJobs={onRetrySourceJobs}
-            onOpenSettings={onOpenSettings}
-            onRetryStatus={onRetryStatus}
-            onCancelSourceJob={onCancelSourceJob}
-          />
-        )}
-        {kind === 'conversations' && (
-          <ConversationsView
-            query={query}
-            answer={answer}
-            evidence={evidence}
-            loading={loading}
-            error={error}
-            onSearchFocus={onSearchFocus}
-          />
-        )}
-        {kind === 'agent-tools' && (
-          <AgentToolsView
-            query={query}
-            evidence={evidence}
-            contextBundle={contextBundle}
-            contextLoading={contextLoading}
-            contextError={contextError}
-            contextTokens={contextTokens}
-            onRetrieveContext={onRetrieveContext}
-          />
-        )}
-        {kind === 'index' && (
-          <IndexView
-            status={status}
-            statusError={statusError}
-            onOpenSettings={onOpenSettings}
-            onRetryStatus={onRetryStatus}
-          />
-        )}
-        {kind === 'help' && (
-          <HelpView desktopAvailable={desktopAvailable} onOpenProject={onOpenProject} />
-        )}
-      </div>
-    </main>
+      </main>
+    </UtilityRendererContext.Provider>
   )
 }
 
@@ -420,7 +460,7 @@ function ConversationsView({
     <>
       <section className="utility-section">
         <h2>Current conversation</h2>
-        <div className="utility-card">
+        <UtilityCard className="utility-card">
           <span className="utility-card-eyebrow">
             <Sparkles size={14} /> Query
           </span>
@@ -445,7 +485,7 @@ function ConversationsView({
               {warning}
             </p>
           ))}
-        </div>
+        </UtilityCard>
       </section>
       {evidence.length > 0 && (
         <section className="utility-section">
@@ -585,7 +625,7 @@ function AgentToolsView({
       </section>
       <section className="utility-section">
         <h2>Agent context window</h2>
-        <div className="utility-card">
+        <UtilityCard className="utility-card">
           <p className="utility-answer">
             ~{contextTokens.toLocaleString()} tokens assembled from the active query and{' '}
             {evidence.length} cited {evidence.length === 1 ? 'passage' : 'passages'}.
@@ -594,7 +634,7 @@ function AgentToolsView({
             The window is rebuilt locally from the current session state and never leaves this
             machine.
           </p>
-        </div>
+        </UtilityCard>
       </section>
     </>
   )
@@ -674,7 +714,7 @@ function IndexView({
       </section>
       <section className="utility-section">
         <h2>Configuration</h2>
-        <div className="utility-card">
+        <UtilityCard className="utility-card">
           <div className="utility-line">
             <span>Embedding</span>
             <strong>{status.embedding_fingerprint ?? '—'}</strong>
@@ -694,7 +734,7 @@ function IndexView({
             <span>Workspaces</span>
             <strong>{status.workspaces.length}</strong>
           </div>
-        </div>
+        </UtilityCard>
       </section>
       <div className="utility-actions">
         <Button variant="secondary" onClick={onOpenSettings}>

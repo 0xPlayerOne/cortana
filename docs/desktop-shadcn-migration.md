@@ -42,20 +42,29 @@ bun scripts/capture-m7-visuals.mjs \
   --renderer legacy \
   --base-url http://127.0.0.1:4173 \
   --output artifacts/m7-shadcn/before
+VITE_CORTANA_RENDERER=shadcn bun run build
+bun run --cwd apps/web preview -- --host 127.0.0.1 --port 4174
 bun scripts/capture-m7-visuals.mjs \
   --renderer shadcn \
-  --base-url http://127.0.0.1:4173 \
+  --base-url http://127.0.0.1:4174 \
   --output artifacts/m7-shadcn/production-shell
 ```
+
+The preview command is the production-shell evidence source and bundles Geist locally. The pull
+request workflow may use Vite development mode because its clean Linux install resolves font assets
+inside the checkout; local Bun cache symlinks on macOS can otherwise produce a dev-only font 403 that
+does not exist in the production build.
 
 Install the matching browser once with `bunx playwright install chromium` when Playwright reports
 that it is missing. The capture fails on browser console errors. The legacy run records 56 images:
 all primary wide-screen destinations; the default and accessibility themes at 320, 768, 1024,
 and 1440 CSS pixels; Forest and Plum at compact and desktop widths; command, source-sheet,
-settings, and graph states. The production-shell run records 23 images: the real data-backed shell
+settings, and graph states. The production-shell run records 31 images: the real data-backed shell
 at all four widths in all four themes, mobile navigation, tablet source/context panels, command and
-workspace overlays, Inbox, and Settings. Exceptional workspace states remain part of #2165 and
-#2166 rather than being represented by the retired static prototype.
+workspace overlays, Inbox, Settings, and populated answer, conversations, evidence, timeline,
+canonical-document, and bounded-graph views, with populated conversations at mobile and desktop
+widths. Exceptional native settings states remain part of #2166 rather than being
+represented by the retired static prototype.
 
 `.github/workflows/m7-visual-evidence.yml` runs the same capture on the exact pull-request revision,
 audits every production-shell theme/width against WCAG 2.2 AA automation, and uploads the complete
@@ -110,10 +119,11 @@ beyond the mode resolver, and 210,000 bytes for its complete CSS graph. The earl
 slice measured 40.55 kB for the prototype renderer entry and 322.59 kB for its complete incremental
 graph; recursive graph measurement continues to prevent manual chunking from hiding imported
 JavaScript. The first real production-shell build replaces the static
-prototype entry while preserving the legacy default at 460.613 kB JavaScript and 72.299 kB CSS.
-Its 575-byte lazy entry reaches a 558.290 kB incremental static graph containing the complete real
-application plus the shadcn shell, and its combined legacy-content plus semantic-shell CSS graph is
-199.726 kB. The reviewed transition caps are therefore 650,000 bytes for that production graph and
+prototype entry while preserving the legacy default. After the #2165 knowledge-workspace slice, the
+legacy default is 468.449 kB JavaScript and 72.299 kB CSS. Its 1.149 kB lazy entry reaches a
+621.839 kB incremental static graph containing the complete real application plus the injected
+shadcn surface primitives, and its combined legacy-content plus semantic-shell CSS graph is
+206.680 kB. The reviewed transition caps are therefore 650,000 bytes for that production graph and
 210,000 bytes for its CSS; #2165 through #2167 must reduce those numbers as legacy surfaces and
 styles leave the graph. The final migration replaces all transition budgets rather than silently
 carrying them forward.
@@ -180,3 +190,18 @@ The graph canvas, virtualized document list, native title-bar integration, and n
 launch points remain explicit renderer exceptions. Their controls, surrounding surfaces, status,
 focus, and theme behavior still use shared shadcn composition. No M7 work changes Tauri capabilities,
 native commands, source approval, credential handling, retrieval behavior, or stored data.
+
+## Knowledge workspace migration
+
+Issue #2165 keeps retrieval, ACL, pagination, cancellation, virtualization, and graph traversal in
+the existing data owners while replacing their presentation boundary in the shadcn renderer. The
+live renderer now uses shared Tabs, Button, Input, Select, Toggle, Card, Badge, Empty, ScrollArea,
+and Textarea primitives across workspace navigation and feedback, source and document navigation,
+the context inspector, bounded graph controls, and native-memory review. The legacy renderer still
+receives its original markup and styles through the renderer flag until #2167 removes the rollback
+path.
+
+The canonical document body, radial graph canvas, and virtualized list math remain purpose-built.
+Their interactive rows, filters, pagination, status, selected-node inspector, theme colors, and
+responsive boundaries are shadcn-owned. This preserves stable document provenance and bounded graph
+loading without disguising custom renderers as ordinary component primitives.

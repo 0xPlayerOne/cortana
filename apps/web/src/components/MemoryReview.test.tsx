@@ -2,6 +2,8 @@ import { afterEach, expect, mock, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { MemoryReview, type MemoryReviewClient } from './MemoryReview'
+import { m7SurfacePrimitives } from './m7/M7SurfacePrimitives.shadcn'
+import { M7SurfacePrimitivesProvider } from './m7/M7SurfacePrimitives'
 
 afterEach(cleanup)
 
@@ -105,6 +107,24 @@ function client(): MemoryReviewClient & { actions: string[] } {
     getConsolidationState: () => Promise.resolve({ paused: false, canControl: true }),
   }
 }
+
+test('shadcn renderer composes memory review controls from shared primitives', async () => {
+  render(
+    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
+      <MemoryReview renderer="shadcn" client={client()} />
+    </M7SurfacePrimitivesProvider>
+  )
+
+  expect(document.querySelector('[data-m7-memory-review]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="input"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="button"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="toggle"]')).toBeTruthy()
+  expect(
+    (await screen.findByRole('checkbox', { name: /Select Release preference/ })).getAttribute(
+      'data-slot'
+    )
+  ).toBe('checkbox')
+})
 
 test('renders a bounded searchable queue with inspectable policy and provenance', async () => {
   const api = client()

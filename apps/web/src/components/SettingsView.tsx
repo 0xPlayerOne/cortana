@@ -222,6 +222,7 @@ export function SettingsView({
   onDesktopInfo,
   serviceActivity,
   onServiceActivity,
+  renderer = 'legacy',
 }: {
   /** Shell-owned settings snapshot. Standalone renders fetch their own copy. */
   desktopSettings?: DesktopSettings
@@ -262,6 +263,7 @@ export function SettingsView({
   /** Shell-owned service action status shared across Settings mounts. */
   serviceActivity?: DesktopServiceActivity | null
   onServiceActivity?: (activity: DesktopServiceActivity | null) => void
+  renderer?: 'legacy' | 'shadcn'
 }) {
   const [settings, setSettings] = useState<DesktopSettings | null>(externalSettings ?? null)
   const [section, setSection] = useState<Section>(initialSection)
@@ -796,7 +798,9 @@ export function SettingsView({
               onRefreshModels={() => void refreshProviderModels('query')}
             />
           )}
-          {section === 'memory' && <NativeMemorySection settings={settings} update={update} />}
+          {section === 'memory' && (
+            <NativeMemorySection settings={settings} update={update} renderer={renderer} />
+          )}
           {section === 'ingestion' && <IngestionSection settings={settings} update={update} />}
           {section === 'advanced' && (
             <AdvancedSection settings={settings} update={update} dirty={dirty} />
@@ -1768,7 +1772,11 @@ function UpdatesSection({
 function NativeMemorySection({
   settings,
   update,
-}: SettingsSectionProps & { settings: DesktopSettings }) {
+  renderer,
+}: SettingsSectionProps & {
+  settings: DesktopSettings
+  renderer: 'legacy' | 'shadcn'
+}) {
   const change = (patch: Partial<DesktopSettings['memory']>) =>
     update((current) => ({ ...current, memory: { ...current.memory, ...patch } }))
   return (
@@ -1811,7 +1819,7 @@ function NativeMemorySection({
           />
         </Field>
       </div>
-      <MemoryReview maxActive={settings.memory.max_active} />
+      <MemoryReview renderer={renderer} maxActive={settings.memory.max_active} />
     </SettingsSection>
   )
 }

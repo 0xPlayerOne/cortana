@@ -57,7 +57,7 @@ jobs:
           bun scripts/capture-m7-visuals.mjs
           --renderer shadcn
           --base-url http://127.0.0.1:4173
-          --output artifacts/m7-shadcn/prototype
+          --output artifacts/m7-shadcn/production-shell
       - name: Stop deterministic renderer
         if: always()
         run: kill "$VITE_PID" 2>/dev/null || true
