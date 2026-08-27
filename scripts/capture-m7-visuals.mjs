@@ -80,8 +80,38 @@ if (renderer === 'shadcn') {
       await auditAccessibility(page, `${theme}/${width} production shell`)
 
       if (theme === 'blue' && width === 320) {
+        const mobileSearch = page.getByRole('textbox', { name: 'Search your knowledge' })
+        await mobileSearch.fill('How do releases work?')
+        await mobileSearch.press('Enter')
+        await page.getByRole('heading', { name: 'How do releases work?', level: 1 }).waitFor()
+        await auditAccessibility(page, 'mobile populated knowledge answer')
+        await screenshot(page, 'knowledge-answer-blue-320')
+
         const navigationTrigger = page.getByRole('button', { name: 'Toggle navigation' })
-        await navigationTrigger.focus()
+        await navigationTrigger.click()
+        await page.locator('[data-mobile="true"]').waitFor()
+        await page.getByRole('button', { name: 'Conversations', exact: true }).click()
+        await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
+        await page.getByRole('heading', { name: 'Conversations', level: 1 }).waitFor()
+        await auditAccessibility(page, 'mobile populated conversations')
+        await screenshot(page, 'conversations-blue-320')
+        await navigationTrigger.click()
+        await page.locator('[data-mobile="true"]').waitFor()
+        await page.getByRole('button', { name: 'Search', exact: true }).click()
+        await page.getByRole('heading', { name: 'How do releases work?', level: 1 }).waitFor()
+
+        await page.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        })
+        for (let index = 0; index < 40; index += 1) {
+          await page.keyboard.press('Tab')
+          if (await navigationTrigger.evaluate((element) => element === document.activeElement)) {
+            break
+          }
+        }
+        if (!(await navigationTrigger.evaluate((element) => element === document.activeElement))) {
+          throw new Error('Mobile navigation trigger was not reachable by keyboard')
+        }
         const focusStyle = await navigationTrigger.evaluate((element) => {
           const style = getComputedStyle(element)
           return { boxShadow: style.boxShadow, outlineStyle: style.outlineStyle }
@@ -133,6 +163,40 @@ if (renderer === 'shadcn') {
       }
 
       if (theme === 'blue' && width === 1440) {
+        const knowledgeSearch = page.getByRole('textbox', { name: 'Search your knowledge' })
+        await knowledgeSearch.fill('How do releases work?')
+        await knowledgeSearch.press('Enter')
+        await page.getByRole('heading', { name: 'How do releases work?', level: 1 }).waitFor()
+        await auditAccessibility(page, 'populated knowledge answer')
+        await screenshot(page, 'knowledge-answer-blue-1440')
+
+        await page.getByRole('button', { name: 'Conversations', exact: true }).click()
+        await page.getByRole('heading', { name: 'Conversations', level: 1 }).waitFor()
+        await auditAccessibility(page, 'populated conversations')
+        await screenshot(page, 'conversations-blue-1440')
+        await page.getByRole('button', { name: 'Knowledge', exact: true }).click()
+
+        await page.getByRole('tab', { name: /Evidence/ }).click()
+        await page.getByRole('heading', { name: 'How do releases work?', level: 1 }).waitFor()
+        await screenshot(page, 'knowledge-evidence-blue-1440')
+
+        await page.getByRole('tab', { name: 'Timeline' }).click()
+        await page.locator('.timeline-view').waitFor()
+        await screenshot(page, 'knowledge-timeline-blue-1440')
+
+        await page.getByRole('option').first().click()
+        await page.locator('.canonical-document').waitFor()
+        await screenshot(page, 'knowledge-document-blue-1440')
+
+        await page.getByRole('button', { name: 'Graph', exact: true }).click()
+        await page.locator('.graph-view').waitFor()
+        await auditAccessibility(page, 'bounded knowledge graph')
+        await screenshot(page, 'knowledge-graph-blue-1440')
+
+        await page.getByRole('button', { name: 'Knowledge', exact: true }).click()
+        await page.evaluate(() => {
+          if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+        })
         await page.keyboard.press('Control+p')
         await page.getByRole('dialog', { name: 'Cortana command palette' }).waitFor()
         await page.waitForTimeout(300)

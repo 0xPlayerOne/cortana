@@ -2,6 +2,8 @@ import { afterEach, expect, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { Workspace } from './components/Workspace'
+import { m7SurfacePrimitives } from './components/m7/M7SurfacePrimitives.shadcn'
+import { M7SurfacePrimitivesProvider } from './components/m7/M7SurfacePrimitives'
 import { safeSourceLink } from './sourceLinks'
 import { canonicalDocument } from './test/fixtures'
 
@@ -64,6 +66,63 @@ test('unsafe document links are not rendered into the web shell', () => {
 
   expect(screen.getByRole('heading', { name: unsafe.title })).toBeTruthy()
   expect(screen.queryByRole('link', { name: 'Open original source' })).toBeNull()
+})
+
+test('shadcn renderer composes workspace navigation and empty states from shared primitives', () => {
+  render(
+    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
+      <Workspace {...props} renderer="shadcn" />
+    </M7SurfacePrimitivesProvider>
+  )
+
+  expect(document.querySelector('[data-m7-knowledge-workspace]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="tabs"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="tabs-list"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="tabs-trigger"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="empty"]')).toBeTruthy()
+  expect(screen.getByText('Choose a document')).toBeTruthy()
+})
+
+test('shadcn workspace names revoked, loading, and malformed-content states without widening scope', () => {
+  let retries = 0
+  render(
+    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
+      <Workspace
+        {...props}
+        renderer="shadcn"
+        error="Workspace access revoked"
+        onRetry={() => {
+          retries += 1
+        }}
+      />
+    </M7SurfacePrimitivesProvider>
+  )
+  expect(screen.getByText(/Workspace access revoked/)).toBeTruthy()
+  const retry = screen.getByRole('button', { name: 'Try again' })
+  expect(retry.getAttribute('data-slot')).toBe('button')
+  fireEvent.click(retry)
+  expect(retries).toBe(1)
+
+  cleanup()
+  render(
+    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
+      <Workspace {...props} renderer="shadcn" tab="answer" loading />
+    </M7SurfacePrimitivesProvider>
+  )
+  expect(screen.getByText('Searching your brain')).toBeTruthy()
+
+  cleanup()
+  const malformed = {
+    ...canonicalDocument,
+    content: '<script>window.location="https://example.test"</script>',
+  }
+  render(
+    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
+      <Workspace {...props} renderer="shadcn" document={malformed} />
+    </M7SurfacePrimitivesProvider>
+  )
+  expect(screen.getByText(malformed.content)).toBeTruthy()
+  expect(document.querySelector('.canonical-content script')).toBeNull()
 })
 
 test('unsafe retrieved-evidence links are not rendered into the web shell', () => {

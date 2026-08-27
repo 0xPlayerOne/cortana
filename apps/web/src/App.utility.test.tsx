@@ -106,6 +106,8 @@ mock.module('./api', () => ({
 
 const { App } = await import('./App')
 const { UtilityView } = await import('./components/UtilityView')
+const { M7SurfacePrimitivesProvider } = await import('./components/m7/M7SurfacePrimitives')
+const { m7SurfacePrimitives } = await import('./components/m7/M7SurfacePrimitives.shadcn')
 
 const RAIL_LABELS = [
   'Search',
@@ -701,6 +703,39 @@ test('utility actions use the shared token-backed button primitive', () => {
   const openProject = screen.getByRole('button', { name: 'Open project page' })
   expect(openProject.className).toContain('cortana-button')
   expect(openProject.className).toContain('cortana-button--secondary')
+})
+
+test('shadcn conversations compose cards and actions from the generated primitives', () => {
+  render(
+    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
+      <UtilityView
+        renderer="shadcn"
+        kind="conversations"
+        status={demoStatus}
+        sourceJobs={[]}
+        query={answerResponse.query}
+        answer={answerResponse}
+        evidence={demoEvidence}
+        loading={false}
+        error=""
+        contextBundle={null}
+        contextLoading={false}
+        contextError=""
+        contextTokens={0}
+        desktopAvailable
+        onSearchFocus={() => {}}
+        onRetrieveContext={() => {}}
+        onOpenSettings={() => {}}
+        onOpenProject={() => {}}
+      />
+    </M7SurfacePrimitivesProvider>
+  )
+
+  expect(document.querySelector('[data-m7-utility-view="conversations"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="card"]')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Search the brain' }).getAttribute('data-slot')).toBe(
+    'button'
+  )
 })
 
 test('search history arrows navigate previous and next queries', async () => {

@@ -232,8 +232,274 @@
 /* The legacy surface styles use --muted as a text color, while shadcn uses
      it as a background role. Keep that compatibility alias scoped to the
      not-yet-migrated content panes so semantic overlays retain their contract. */
-.m7-production-shell :is(.source-panel, .workspace, .context-panel, .settings-view, .utility-view) {
+.m7-production-shell :is(.source-panel, .settings-view, .utility-view) {
   --muted: var(--muted-foreground);
+}
+
+/* M7 knowledge surfaces own their shadcn semantic colors. The retained
+   document and graph renderers consume the aliases below until the legacy
+   stylesheet removal gate, but the surrounding navigation and state UI is
+   composed from generated primitives. */
+.m7-production-shell .m7-knowledge-workspace {
+  --paper: var(--background);
+  --paper-ink: var(--foreground);
+  --surface-elevated: var(--card);
+  --theme-content-text: var(--foreground);
+  --theme-content-subtle: var(--muted-foreground);
+  --theme-text-primary: var(--foreground);
+  --theme-text-secondary: var(--muted-foreground);
+  --theme-control-bg: var(--secondary);
+  --theme-content-surface: var(--card);
+  --theme-content-border: var(--border);
+  --amber: var(--primary);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.m7-knowledge-workspace > [data-slot='tabs'] {
+  min-height: 42px;
+  background: var(--card);
+}
+
+.m7-knowledge-workspace > [data-slot='empty'] {
+  align-self: stretch;
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--card) 58%, transparent);
+}
+
+.m7-knowledge-workspace .graph-toolbar [data-slot='input'] {
+  min-width: 12rem;
+  background: var(--background);
+}
+
+.m7-knowledge-workspace .graph-kind-filter [data-slot='toggle'] {
+  text-transform: capitalize;
+}
+
+.m7-knowledge-workspace .graph-view {
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--border) 72%, transparent) 1px,
+    transparent 1px
+  );
+}
+
+.m7-knowledge-workspace .graph-links line {
+  stroke: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.m7-knowledge-workspace .graph-center {
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.m7-knowledge-workspace .graph-summary {
+  top: 104px;
+  color: var(--muted-foreground);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+}
+
+.m7-knowledge-workspace .graph-view > button {
+  --distance: clamp(110px, 20vw, 300px);
+  color: var(--card-foreground);
+  border-color: var(--border);
+  background: var(--card);
+  box-shadow: 0 8px 28px var(--overlay);
+}
+
+.m7-knowledge-workspace .graph-view > button:is(:hover, :focus-visible) {
+  z-index: 2;
+  border-color: var(--primary);
+  background: var(--accent);
+}
+
+.m7-knowledge-workspace :is(.document-body h1, .answer-view h1),
+.m7-knowledge-workspace :is(.answer-copy p, .answer-source p, .answer-memory-entry p) {
+  font-family: var(--font-sans);
+}
+
+.m7-knowledge-workspace .answer-source {
+  height: auto;
+  min-height: 0;
+  justify-content: stretch;
+  border-radius: 0;
+  border-color: var(--border);
+  white-space: normal;
+}
+
+.m7-knowledge-workspace .answer-source > span {
+  color: var(--primary);
+}
+
+.m7-knowledge-workspace
+  :is(.breadcrumbs, .document-relations, .evidence-footer, .timeline-view)
+  [data-slot='button'] {
+  height: auto;
+  min-height: 0;
+  white-space: normal;
+}
+
+.m7-knowledge-workspace .timeline-view {
+  color: var(--foreground);
+}
+
+.m7-knowledge-workspace .timeline-view h1 {
+  font-family: var(--font-sans);
+}
+
+.m7-knowledge-workspace .timeline-view [data-slot='button'] {
+  color: var(--foreground);
+  border-radius: var(--radius-md);
+}
+
+.m7-knowledge-workspace .timeline-view [data-slot='button']:is(:hover, :focus-visible) {
+  background: var(--accent);
+}
+
+.m7-knowledge-workspace .timeline-view time,
+.m7-knowledge-workspace .timeline-view span {
+  color: var(--muted-foreground);
+}
+
+.m7-knowledge-workspace .timeline-view i {
+  border-left-color: var(--border);
+}
+
+.m7-knowledge-workspace .timeline-view [data-slot='button'] > div {
+  border-bottom-color: var(--border);
+}
+
+.m7-knowledge-workspace :is(.answer-warning, .answer-note) {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+  background: color-mix(in srgb, var(--warning) 10%, var(--card));
+}
+
+.m7-source-panel {
+  --muted: var(--muted-foreground);
+  border-right-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.m7-production-shell .m7-utility-view {
+  --muted: var(--muted-foreground);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.m7-utility-view .utility-header {
+  border-bottom-color: var(--border);
+}
+
+.m7-utility-view :is(.utility-list, .utility-metric, .utility-card) {
+  color: var(--card-foreground);
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.m7-utility-view :is(.utility-item, .utility-shortcut) {
+  color: var(--muted-foreground);
+  border-color: var(--border);
+}
+
+.m7-utility-view :is(.utility-item-main strong, .utility-card h3, .utility-answer) {
+  color: var(--foreground);
+}
+
+.m7-utility-view :is(.utility-card h3, .utility-answer) {
+  font-family: var(--font-sans);
+}
+
+.m7-utility-view :is(.utility-item-main span, .utility-card-eyebrow, .utility-meta, .utility-note) {
+  color: var(--muted-foreground);
+}
+
+.m7-source-panel [data-slot='select-trigger'],
+.m7-source-panel [data-slot='input'] {
+  background: var(--background);
+}
+
+.m7-source-panel [data-m7-document-row] {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+.m7-source-panel .source-select[data-slot='button'] {
+  height: auto;
+  min-height: 30px;
+  justify-content: stretch;
+  border-radius: var(--radius-sm);
+}
+
+.m7-context-panel {
+  border-left-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.m7-context-panel [data-slot='scroll-area'] {
+  min-height: 0;
+}
+
+.m7-context-panel [data-slot='card'] {
+  margin: 0.75rem;
+}
+
+.m7-context-panel .context-scroll section {
+  border-bottom-color: var(--border);
+}
+
+.m7-context-panel :is(.query-summary span, .section-title, .section-label),
+.m7-context-panel :is(.evidence-list [data-slot='button'] > span, .evidence-list time),
+.m7-context-panel :is(.retrieval-diagnostics dt, .server-context dt) {
+  color: var(--muted-foreground);
+}
+
+.m7-context-panel :is(.query-summary p, .provenance p, .server-context p),
+.m7-context-panel .retrieval-diagnostics ol {
+  color: var(--foreground);
+}
+
+.m7-context-panel :is(.retrieval-diagnostics dl > div, .server-context dl > div) {
+  background: var(--muted);
+}
+
+.m7-context-panel .evidence-list [data-slot='button'] {
+  height: auto;
+  min-height: 35px;
+  justify-content: stretch;
+  color: var(--foreground);
+  border-radius: var(--radius-sm);
+}
+
+.m7-context-panel .evidence-list [data-slot='button']:is(:hover, :focus-visible) {
+  background: var(--accent);
+}
+
+.m7-context-panel .evidence-list [data-slot='button'].selected {
+  color: var(--accent-foreground);
+  background: var(--accent);
+}
+
+.m7-context-panel .copy-area {
+  border-top-color: var(--border);
+  background: var(--card);
+}
+
+.m7-memory-review[data-m7-memory-review] {
+  border-color: var(--border);
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.m7-memory-review [data-slot='input'],
+.m7-memory-review [data-slot='textarea'] {
+  background: var(--background);
+}
+
+.m7-memory-review [data-slot='card'] {
+  border: 1px solid var(--border);
 }
 
 .m7-skip-link {

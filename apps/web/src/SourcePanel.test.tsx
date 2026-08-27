@@ -10,6 +10,8 @@ import type {
 } from './types'
 import { demoStatus } from './demo'
 import { SourcePanel } from './components/SourcePanel'
+import { m7SurfacePrimitives } from './components/m7/M7SurfacePrimitives.shadcn'
+import { M7SurfacePrimitivesProvider } from './components/m7/M7SurfacePrimitives'
 import { SourceIcon } from './components/sourceIcons'
 import { sourceBrandForKind, sourceIconForKind } from './components/sourceIconData'
 
@@ -35,12 +37,14 @@ function renderPanel(
   sourceJobError = '',
   onRetryStatus?: () => void,
   workspaceId = 'work',
-  hasMoreDocuments = false
+  hasMoreDocuments = false,
+  renderer: 'legacy' | 'shadcn' = 'legacy'
 ) {
   const docs: BrainDocumentSummary[] = []
   const noJobs: DesktopSourceJob[] = []
-  render(
+  const panel = (
     <SourcePanel
+      renderer={renderer}
       open={false}
       status={statusValue}
       statusError={statusError}
@@ -61,11 +65,40 @@ function renderPanel(
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
       onOpenSourcesSettings={() => {}}
+      onToggleSource={() => {}}
       onClose={() => {}}
       jobs={noJobs}
     />
   )
+  render(
+    renderer === 'shadcn' ? (
+      <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>{panel}</M7SurfacePrimitivesProvider>
+    ) : (
+      panel
+    )
+  )
 }
+
+test('shadcn renderer uses shared source navigation and form primitives', () => {
+  renderPanel(demoStatus, '', '', undefined, 'work', true, 'shadcn')
+
+  expect(document.querySelector('[data-m7-source-panel]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="select-trigger"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="input"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="button"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="switch"]')).toBeTruthy()
+})
+
+test('source disclosure keeps keyboard focus when local state rerenders the panel', () => {
+  renderPanel(demoStatus, '', '', undefined, 'work', true, 'shadcn')
+
+  const disclosure = screen.getAllByRole('button', { name: /^Collapse / })[0]
+  disclosure.focus()
+  fireEvent.click(disclosure)
+
+  expect(document.activeElement).toBe(disclosure)
+  expect(disclosure.getAttribute('aria-expanded')).toBe('false')
+})
 
 test('SourcePanel uses the shared secondary action style for pagination', () => {
   renderPanel(demoStatus, '', '', undefined, 'work', true)
