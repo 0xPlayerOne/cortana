@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.52.0](https://github.com/0xPlayerOne/cortana/compare/v0.51.0...v0.52.0) (2026-08-27)
+
+
+### Features
+
+* **web:** migrate knowledge workspace to shadcn ([#2194](https://github.com/0xPlayerOne/cortana/issues/2194)) ([0e99140](https://github.com/0xPlayerOne/cortana/commit/0e991408bae57609a249cc09a897ba007735a9f4))
+
 ## [0.51.0](https://github.com/0xPlayerOne/cortana/compare/v0.50.0...v0.51.0) (2026-08-26)
 
 
