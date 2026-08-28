@@ -1,16 +1,23 @@
-export type ThemeMode = 'blue' | 'accessible' | 'forest' | 'plum'
+export type ThemeMode = 'blue' | 'accessible' | 'forest' | 'plum' | 'sand'
 
 const THEME_KEY = 'cortana.theme.v1'
 
 export const SUPPORTED_THEMES: ReadonlyArray<{ id: ThemeMode; label: string }> = [
-  { id: 'blue', label: 'Blue' },
-  { id: 'accessible', label: 'Accessible' },
+  { id: 'blue', label: 'Navy' },
+  { id: 'accessible', label: 'Blue' },
   { id: 'forest', label: 'Forest' },
   { id: 'plum', label: 'Plum' },
+  { id: 'sand', label: 'Sand' },
 ]
 
 function isThemeMode(value: string | null): value is ThemeMode {
-  return value === 'blue' || value === 'accessible' || value === 'forest' || value === 'plum'
+  return (
+    value === 'blue' ||
+    value === 'accessible' ||
+    value === 'forest' ||
+    value === 'plum' ||
+    value === 'sand'
+  )
 }
 
 export function readThemePreference(): ThemeMode {

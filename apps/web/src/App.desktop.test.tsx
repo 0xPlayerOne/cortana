@@ -1396,6 +1396,9 @@ test('adding files and code opens the native picker before creating a populated 
 
     await waitFor(() => expect(state.pathPickerCalls).toEqual(['directory']))
     expect(await screen.findByText('/Users/you/Developer/example-repo')).toBeTruthy()
+    expect(
+      screen.getByRole('switch', { name: /Enable example-repo/ }).getAttribute('aria-checked')
+    ).toBe('true')
     fireEvent.click(screen.getByRole('button', { name: /Advanced source settings/ }))
     expect((screen.getByLabelText('Source name') as HTMLInputElement).value).toBe('example-repo')
   } finally {
@@ -1519,6 +1522,22 @@ test('workspace cards show display name and advanced details', async () => {
   } finally {
     state.settings = originalSettings
   }
+})
+
+test('new workspace display names keep focus while typing', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Add workspace (2/4)' }))
+  const displayName = screen.getAllByLabelText('Display name').at(-1) as HTMLInputElement
+
+  displayName.focus()
+  fireEvent.change(displayName, { target: { value: 'N' } })
+  expect(document.activeElement).toBe(displayName)
+  fireEvent.change(displayName, { target: { value: 'New workspace' } })
+  expect(document.activeElement).toBe(displayName)
 })
 
 test('settings warns before discarding dirty changes', async () => {
@@ -1706,6 +1725,23 @@ test('source settings opens the Sources section directly', async () => {
   expect(sources.className).toContain('active')
 })
 
+test('Inbox and Index settings actions open their relevant settings sections', async () => {
+  render(<App />)
+  await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Inbox' }))
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Inbox' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Manage ingestion in settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  expect(screen.getByRole('button', { name: 'Sources' }).className).toContain('active')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Index' }))
+  await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Index' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Open settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  expect(screen.getByRole('button', { name: 'Readiness' }).className).toContain('active')
+})
+
 test('source settings use workspace tabs without repeating assigned workspace controls', async () => {
   const originalSettings = state.settings
   state.settings = {
@@ -1740,7 +1776,7 @@ test('source settings use workspace tabs without repeating assigned workspace co
     expect(summary.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByLabelText('Source label')).toBeTruthy()
 
-    for (const label of ['Validate', 'Trial sync', 'Initial sync']) {
+    for (const label of ['Test connection', 'Initial sync']) {
       const action = screen.getByRole('button', { name: label })
       expect(action.getAttribute('data-slot')).toBe('tooltip-trigger')
     }
@@ -1816,7 +1852,7 @@ test('source settings quarantine legacy scopes and offer workspace assignment', 
     expect(assignmentAlert.textContent).toContain('uses the legacy community scope')
     expect(assignmentAlert.className).toContain('source-unassigned-note')
     expect(screen.getByRole('switch').getAttribute('aria-disabled')).toBe('true')
-    expect(screen.queryByRole('button', { name: 'Validate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Test connection' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Initial sync' })).toBeNull()
 
     const workspace = screen.getByRole('combobox', {
@@ -1949,7 +1985,7 @@ test('settings theme control updates and persists', async () => {
   const themeSelect = await screen.findByRole('combobox', { name: 'Theme' })
   expect(themeSelect).toBeTruthy()
   await user.click(themeSelect)
-  await user.click(await screen.findByRole('option', { name: 'Accessible' }))
+  await user.click(await screen.findByRole('option', { name: 'Blue' }))
 
   await waitFor(() => {
     expect(window.localStorage.getItem('cortana.theme.v1')).toBe('accessible')
@@ -3055,7 +3091,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     expect(screen.getByText('Duration limit (seconds)')).toBeTruthy()
     expect(screen.getByText('Document labels')).toBeTruthy()
     expect(screen.getByText('Document ACL labels')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
     await waitFor(() => expect(screen.getByText('work-code · validation · running')).toBeTruthy())
 
     // Leaving the settings view must not hide the running job: the status
@@ -3095,8 +3131,10 @@ test('completed source jobs refresh source health without waiting for the status
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Validate' })).toBeTruthy())
-    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
     await waitFor(() => expect(state.sourceJob?.status).toBe('running'))
 
     state.sourceJob = {

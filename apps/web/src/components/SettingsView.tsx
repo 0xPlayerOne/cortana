@@ -2506,7 +2506,7 @@ function ReadinessSection({
                 readiness.core.checks.some(
                   (check) =>
                     !check.passed &&
-                    /api|service|server|embedding/i.test(`${check.name} ${check.detail}`)
+                    /api|service|server|embedding|backup/i.test(`${check.name} ${check.detail}`)
                 ) && (
                   <Button variant="secondary" onClick={onOpenServices}>
                     Check Services
@@ -2555,16 +2555,20 @@ function WorkspaceSection({
 }) {
   const confirm = useSettingsConfirm()
   const [logoError, setLogoError] = useState('')
+  const [logoLoading, setLogoLoading] = useState<string | null>(null)
   const hasWorkspaceSources = (workspaceId: string) =>
     settings.sources.some((source) => source.project === workspaceId)
 
   const updateLogo = async (workspaceId: string, file: File | undefined) => {
     if (!file) return
+    setLogoLoading(workspaceId)
     try {
       writeWorkspaceLogo(workspaceId, await readWorkspaceLogoFile(file))
       setLogoError('')
     } catch (caught) {
       setLogoError(caught instanceof Error ? caught.message : 'Workspace logo could not be saved.')
+    } finally {
+      setLogoLoading(null)
     }
   }
 
@@ -2629,21 +2633,34 @@ function WorkspaceSection({
       title="Workspaces"
       description="Create up to four isolated query scopes. Sources and accounts can be assigned to one scope. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
     >
-      <div className="workspace-settings-grid">
+      <div
+        className={`workspace-settings-grid workspace-settings-grid--${settings.workspaces.length}`}
+      >
         {settings.workspaces.map((workspace, index) => (
-          <SettingsCard className="workspace-card" key={`${workspace.id}:${index}`}>
+          <SettingsCard className="workspace-card" key={`workspace-${index}`}>
             <div className="workspace-card-heading">
               <WorkspaceLogo workspace={workspace} size="large" />
               <div className="workspace-card-title">
                 <strong>{workspace.name || 'New workspace'}</strong>
                 <small>Workspace identity</small>
               </div>
-              <label className="workspace-logo-upload " title="Upload workspace logo">
-                <Upload size={14} />
+              <label
+                className={`workspace-logo-upload ${logoLoading === workspace.id ? 'is-loading' : ''}`}
+                title={
+                  logoLoading === workspace.id ? 'Saving workspace logo' : 'Upload workspace logo'
+                }
+                aria-busy={logoLoading === workspace.id}
+              >
+                {logoLoading === workspace.id ? (
+                  <LoaderCircle className="spin" size={14} aria-label="Saving workspace logo" />
+                ) : (
+                  <Upload size={14} />
+                )}
                 <span className="visually-hidden">Upload logo for {workspace.name}</span>
                 <Input
                   type="file"
                   accept="image/*"
+                  disabled={logoLoading === workspace.id}
                   onChange={(event) => {
                     void updateLogo(workspace.id, event.target.files?.[0])
                     event.currentTarget.value = ''
@@ -3099,6 +3116,7 @@ function ProviderSection<T extends ProviderValue>({
         <SettingsCombobox
           id={modelFieldId}
           aria-label="Model catalog"
+          className="settings-model-control"
           value={modelMode === 'catalog' ? provider.model : 'custom'}
           choices={[...activeCatalog, { value: 'custom', label: 'Custom' }]}
           onValueChange={(selected) => {
@@ -3128,6 +3146,7 @@ function ProviderSection<T extends ProviderValue>({
       <Select
         id={modelFieldId}
         aria-label="Model catalog"
+        className="settings-model-control"
         value={provider.model}
         required
         onChange={(event) => update({ ...provider, model: event.target.value })}
@@ -3180,6 +3199,7 @@ function ProviderSection<T extends ProviderValue>({
       <SettingsFieldGroup className="form-grid">
         <Field label="Provider">
           <Select
+            className="settings-provider-control"
             value={provider.provider}
             onChange={(event) => {
               const nextProvider = event.target.value as 'local' | 'cloud'

@@ -32,7 +32,7 @@ export function SettingsSurfaceProvider({ children }: { children: ReactNode }) {
 }
 
 type SettingsButtonProps = Omit<ComponentProps<typeof Button>, 'variant' | 'size'> & {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon' | 'compact'
+  variant?: 'primary' | 'secondary' | 'outline' | 'danger' | 'ghost' | 'icon' | 'compact'
 }
 
 export function SettingsButton({ variant = 'secondary', ...props }: SettingsButtonProps) {
@@ -42,11 +42,13 @@ export function SettingsButton({ variant = 'secondary', ...props }: SettingsButt
       variant={
         variant === 'primary'
           ? 'default'
-          : variant === 'danger'
-            ? 'destructive'
-            : variant === 'ghost' || variant === 'icon'
-              ? 'ghost'
-              : 'secondary'
+          : variant === 'outline'
+            ? 'outline'
+            : variant === 'danger'
+              ? 'destructive'
+              : variant === 'ghost' || variant === 'icon'
+                ? 'ghost'
+                : 'secondary'
       }
       size={variant === 'icon' ? 'icon' : variant === 'compact' ? 'sm' : 'default'}
     />

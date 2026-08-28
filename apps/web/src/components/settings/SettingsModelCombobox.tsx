@@ -21,7 +21,13 @@ export function SettingsModelCombobox({
 }) {
   return (
     <Combobox value={value} onValueChange={(next) => next && onValueChange(String(next))}>
-      <ComboboxInput {...props} value={value} />
+      <ComboboxInput
+        {...props}
+        className={['border-border bg-background shadow-xs', props.className]
+          .filter(Boolean)
+          .join(' ')}
+        value={value}
+      />
       <ComboboxContent>
         <ComboboxEmpty>No matching models.</ComboboxEmpty>
         <ComboboxList>
