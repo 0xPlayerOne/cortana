@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.2](https://github.com/0xPlayerOne/cortana/compare/v0.53.1...v0.53.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* **desktop-ui:** finish M7 usability follow-up ([#2201](https://github.com/0xPlayerOne/cortana/issues/2201)) ([cf51e42](https://github.com/0xPlayerOne/cortana/commit/cf51e42465639c769057caf359314459feb92649))
+
 ## [0.53.1](https://github.com/0xPlayerOne/cortana/compare/v0.53.0...v0.53.1) (2026-08-28)
 
 
