@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.0](https://github.com/0xPlayerOne/cortana/compare/v0.52.0...v0.53.0) (2026-08-28)
+
+
+### Features
+
+* **desktop-ui:** migrate settings and responsive workflows ([#2197](https://github.com/0xPlayerOne/cortana/issues/2197)) ([4995b98](https://github.com/0xPlayerOne/cortana/commit/4995b98bc5779cbe55e35923af8761be5d16a7de))
+
 ## [0.52.0](https://github.com/0xPlayerOne/cortana/compare/v0.51.0...v0.52.0) (2026-08-27)
 
 
