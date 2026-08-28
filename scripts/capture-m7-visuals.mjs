@@ -58,6 +58,16 @@ async function openSettings(page, width) {
   await page.getByRole('heading', { name: 'Settings', exact: true }).waitFor()
 }
 
+async function openDestination(page, width, destination) {
+  if (width <= 768) {
+    await page.getByRole('button', { name: 'Toggle navigation' }).click()
+    await page.locator('[data-mobile="true"]').waitFor()
+  }
+  await page.getByRole('button', { name: destination, exact: true }).click()
+  if (width <= 768) await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
+  await page.getByRole('heading', { name: destination, level: 1 }).waitFor()
+}
+
 async function screenshot(page, name) {
   await page.screenshot({
     path: resolve(output, `${name}.png`),
@@ -104,8 +114,6 @@ if (renderer === 'shadcn') {
         await page.getByRole('button', { name: 'Conversations', exact: true }).click()
         await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
         await page.getByRole('heading', { name: 'Conversations', level: 1 }).waitFor()
-        await auditAccessibility(page, 'mobile populated conversations')
-        await screenshot(page, 'conversations-blue-320')
         await navigationTrigger.click()
         await page.locator('[data-mobile="true"]').waitFor()
         await page.getByRole('button', { name: 'Knowledge', exact: true }).click()
@@ -138,11 +146,6 @@ if (renderer === 'shadcn') {
         await screenshot(page, 'mobile-navigation-blue-320')
         await page.getByRole('button', { name: 'Knowledge', exact: true }).click()
         await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
-        await navigationTrigger.click()
-        await page.locator('[data-mobile="true"]').waitFor()
-        await page.getByRole('button', { name: 'Inbox', exact: true }).click()
-        await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
-        await page.getByRole('heading', { name: 'Inbox' }).waitFor()
       }
 
       if (theme === 'blue' && width === 768) {
@@ -171,6 +174,50 @@ if (renderer === 'shadcn') {
       }
 
       if (theme === 'blue' && width === 1440) {
+        const collapsedMetrics = await page.evaluate(() => {
+          const sidebar = document.querySelector('[data-slot="sidebar-container"]')
+          const destination = Array.from(
+            document.querySelectorAll(
+              '[data-slot="sidebar"][data-state="collapsed"] [data-sidebar="menu-button"]'
+            )
+          ).find((element) => element.textContent?.trim() === 'Knowledge')
+          const icon = destination?.querySelector('svg')
+          const logo = document.querySelector('[aria-label="Switch workspace"] .workspace-logo')
+          const labels = document.querySelector('[data-workspace-labels]')
+          return {
+            sidebarWidth: sidebar?.getBoundingClientRect().width ?? 0,
+            targetWidth: destination?.getBoundingClientRect().width ?? 0,
+            iconWidth: icon?.getBoundingClientRect().width ?? 0,
+            logoWidth: logo?.getBoundingClientRect().width ?? 0,
+            labelsDisplay: labels ? getComputedStyle(labels).display : 'missing',
+          }
+        })
+        if (
+          Math.abs(collapsedMetrics.sidebarWidth - 72) > 1 ||
+          Math.abs(collapsedMetrics.targetWidth - 48) > 1 ||
+          Math.abs(collapsedMetrics.iconWidth - 20) > 1 ||
+          Math.abs(collapsedMetrics.logoWidth - 48) > 1 ||
+          collapsedMetrics.labelsDisplay !== 'none'
+        ) {
+          throw new Error(
+            `Collapsed sidebar proportions regressed: ${JSON.stringify(collapsedMetrics)}`
+          )
+        }
+
+        await page.getByRole('button', { name: 'Toggle navigation' }).click()
+        await page.locator('[data-slot="sidebar"][data-state="expanded"]').waitFor()
+        await page.waitForTimeout(300)
+        const expandedLogoWidth = await page
+          .locator('[aria-label="Switch workspace"] .workspace-logo')
+          .evaluate((element) => element.getBoundingClientRect().width)
+        if (Math.abs(expandedLogoWidth - 48) > 1) {
+          throw new Error(`Expanded workspace logo regressed to ${expandedLogoWidth}px`)
+        }
+        await auditAccessibility(page, 'expanded desktop navigation')
+        await screenshot(page, 'sidebar-expanded-blue-1440')
+        await page.getByRole('button', { name: 'Toggle navigation' }).click()
+        await page.locator('[data-slot="sidebar"][data-state="collapsed"]').waitFor()
+
         const knowledgeSearch = page.getByRole('textbox', { name: 'Search your knowledge' })
         await knowledgeSearch.fill('How do releases work?')
         await knowledgeSearch.press('Enter')
@@ -227,18 +274,6 @@ if (renderer === 'shadcn') {
         await auditAccessibility(page, 'production workspace switcher')
         await screenshot(page, 'workspace-menu-blue-1440')
         await page.keyboard.press('Escape')
-
-        await page.getByRole('button', { name: 'Inbox', exact: true }).click()
-        await page.locator('[data-m7-activity-inbox] h1').waitFor()
-        await screenshot(page, 'inbox-blue-1440')
-
-        await page.getByRole('button', { name: 'Agent tools', exact: true }).click()
-        await page.getByRole('heading', { name: 'Agent tools', level: 1 }).waitFor()
-        await screenshot(page, 'agent-tools-blue-1440')
-
-        await page.getByRole('button', { name: 'Index', exact: true }).click()
-        await page.getByRole('heading', { name: 'Index', level: 1 }).waitFor()
-        await screenshot(page, 'index-blue-1440')
 
         await page.getByRole('button', { name: 'Settings', exact: true }).click()
         await page.locator('.settings-view').waitFor()
@@ -333,21 +368,27 @@ if (renderer === 'shadcn') {
         }
       }
 
-      if (theme === 'blue' && width === 1920) {
-        const wideSearch = page.getByRole('textbox', { name: 'Search your knowledge' })
-        await wideSearch.fill('How do releases work?')
-        await wideSearch.press('Enter')
-        await page.getByRole('heading', { name: 'How do releases work?', level: 1 }).waitFor()
-
-        for (const destination of ['Inbox', 'Conversations', 'Agent tools', 'Index', 'Help']) {
-          await page.getByRole('button', { name: destination, exact: true }).click()
-          await page.getByRole('heading', { name: destination, level: 1 }).waitFor()
-          await auditAccessibility(page, `wide ${destination}`)
-          await screenshot(page, `${destination.toLowerCase().replaceAll(' ', '-')}-blue-1920`)
-        }
-      }
       await context.close()
     }
+  }
+
+  for (const width of widths) {
+    const { context, page } = await openPage('blue', width)
+    const search = page.getByRole('textbox', { name: 'Search your knowledge' })
+    await search.fill('How do releases work?')
+    await search.press('Enter')
+    await page.getByRole('heading', { name: 'How do releases work?', level: 1 }).waitFor()
+
+    for (const destination of ['Inbox', 'Conversations', 'Agent tools', 'Index', 'Help']) {
+      await openDestination(page, width, destination)
+      await auditAccessibility(page, `${destination} at ${width}px`)
+      const horizontalOverflow = await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+      )
+      if (horizontalOverflow) throw new Error(`${destination} overflows horizontally at ${width}px`)
+      await screenshot(page, `${destination.toLowerCase().replaceAll(' ', '-')}-blue-${width}`)
+    }
+    await context.close()
   }
 
   for (const theme of themes) {

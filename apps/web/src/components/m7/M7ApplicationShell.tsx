@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
   type RefObject,
@@ -420,28 +421,32 @@ export function M7ApplicationNavigation({
       aria-label="Primary navigation"
       className="m7-application-sidebar"
     >
-      <SidebarHeader>
+      <SidebarHeader className="p-3">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <SidebarMenuButton
                 size="lg"
+                className="h-12 p-0 group-data-[collapsible=icon]:size-12!"
                 tooltip={`Workspace: ${activeWorkspace?.name ?? 'Choose workspace'}`}
                 aria-label="Switch workspace"
               />
             }
           >
             {activeWorkspace ? (
-              <WorkspaceLogo workspace={activeWorkspace} size="small" />
+              <WorkspaceLogo workspace={activeWorkspace} size="large" />
             ) : (
               <span
-                className="workspace-logo workspace-logo--small workspace-picker-mark"
+                className="workspace-logo workspace-logo--large workspace-picker-mark"
                 aria-hidden="true"
               >
                 ?
               </span>
             )}
-            <span className="min-w-0 flex-1 text-left">
+            <span
+              data-workspace-labels
+              className="min-w-0 flex-1 pr-2 text-left group-data-[collapsible=icon]:hidden"
+            >
               <span className="block truncate text-sm font-medium">
                 {activeWorkspace?.name ?? 'Choose workspace'}
               </span>
@@ -468,17 +473,26 @@ export function M7ApplicationNavigation({
       </SidebarHeader>
       <SidebarSeparator />
       <SidebarContent>
-        <SidebarGroup>
+        <SidebarGroup className="p-3">
           <SidebarGroupLabel>Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
+            <SidebarMenu className="gap-0.5">
               {navigationItems.map(({ view, label, icon: Icon }) => (
                 <Fragment key={view}>
                   <SidebarMenuItem>
                     <SidebarMenuButton
+                      size="lg"
                       tooltip={label}
-                      isActive={navigation.view === view}
-                      aria-current={navigation.view === view ? 'page' : undefined}
+                      isActive={
+                        navigation.view === view &&
+                        (view !== 'knowledge' || navigation.workspaceTab !== 'graph')
+                      }
+                      aria-current={
+                        navigation.view === view &&
+                        (view !== 'knowledge' || navigation.workspaceTab !== 'graph')
+                          ? 'page'
+                          : undefined
+                      }
                       onClick={() => runNavigation(() => navigation.onNavigate(view))}
                     >
                       <Icon aria-hidden="true" />
@@ -488,6 +502,7 @@ export function M7ApplicationNavigation({
                   {view === 'knowledge' && (
                     <SidebarMenuItem>
                       <SidebarMenuButton
+                        size="lg"
                         tooltip="Graph"
                         isActive={
                           navigation.view === 'knowledge' && navigation.workspaceTab === 'graph'
@@ -510,10 +525,11 @@ export function M7ApplicationNavigation({
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>
+      <SidebarFooter className="p-3">
+        <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>
             <SidebarMenuButton
+              size="lg"
               tooltip="Settings"
               isActive={navigation.view === 'settings'}
               aria-current={navigation.view === 'settings' ? 'page' : undefined}
@@ -525,6 +541,7 @@ export function M7ApplicationNavigation({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              size="lg"
               tooltip="Help"
               isActive={navigation.view === 'help'}
               aria-current={navigation.view === 'help' ? 'page' : undefined}
@@ -544,7 +561,11 @@ export function M7ShellProvider({ enabled, children }: { enabled: boolean; child
   if (!enabled) return children
   return (
     <TooltipProvider delay={250}>
-      <SidebarProvider defaultOpen={false} className="m7-shell-provider min-h-0 overflow-hidden">
+      <SidebarProvider
+        defaultOpen={false}
+        className="m7-shell-provider min-h-0 overflow-hidden"
+        style={{ '--sidebar-width-icon': '4.5rem' } as CSSProperties}
+      >
         {children}
       </SidebarProvider>
     </TooltipProvider>

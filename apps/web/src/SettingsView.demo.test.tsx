@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { desktopSettings } from './test/fixtures'
 
@@ -22,4 +22,11 @@ test('browser settings adopt a demo fixture that arrives after the view mounts',
 
   expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Services' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Readiness' }).getAttribute('aria-current')).toBe(
+    'page'
+  )
+
+  fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+  expect(screen.getByRole('button', { name: 'Sources' }).getAttribute('aria-current')).toBe('page')
+  expect(screen.getByRole('button', { name: 'Readiness' }).hasAttribute('aria-current')).toBe(false)
 })

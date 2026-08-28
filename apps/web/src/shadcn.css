@@ -628,7 +628,21 @@
   }
 
   .m7-production-shell .settings-nav > button {
+    width: auto;
     flex: 0 0 auto;
+  }
+
+  .m7-production-shell .settings-nav-divider {
+    align-self: stretch;
+    width: 1px;
+    margin: 4px 6px;
+    flex: 0 0 1px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .m7-production-shell .settings-nav-item.active {
+    box-shadow: inset 0 -2px var(--amber);
   }
 
   .m7-production-shell .settings-form {
@@ -658,6 +672,18 @@
 
   .m7-production-shell .mobile-close {
     display: grid !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .m7-production-shell .settings-header {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .m7-production-shell .settings-header-actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -245,6 +245,7 @@ function SettingsViewContent({
   const setInstallerJob = onInstallerJob ?? setLocalInstallerJob
   const componentMounted = useRef(true)
   const settingsRef = useRef(settings)
+  const settingsNavRef = useRef<HTMLElement>(null)
   // Track the last shell snapshot actually adopted by this draft. The shell
   // can deliver the same prop again while a save is settling; re-applying it
   // whenever `dirty` changes would overwrite a just-saved draft with that
@@ -367,6 +368,14 @@ function SettingsViewContent({
   }, [externalSettings, dirty, onLoaded])
 
   useEffect(() => setSection(initialSection), [initialSection])
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    if (!window.matchMedia('(max-width: 799px)').matches) return
+    const navigation = settingsNavRef.current
+    const active = navigation?.querySelector<HTMLElement>('.settings-nav-item.active')
+    if (navigation && active) navigation.scrollLeft = Math.max(0, active.offsetLeft - 10)
+  }, [section])
 
   useEffect(() => {
     onDirtyChange?.(dirty)
@@ -619,13 +628,14 @@ function SettingsViewContent({
           />
         )}
         <div className="settings-layout">
-          <nav className="settings-nav" aria-label="Settings sections">
+          <nav ref={settingsNavRef} className="settings-nav" aria-label="Settings sections">
             {SETTINGS_NAV_PRIMARY_SECTIONS.map((item) => (
               <Button
                 variant="ghost"
                 type="button"
                 key={item}
                 className={`settings-nav-item ${section === item ? 'active' : ''}`}
+                aria-current={section === item ? 'page' : undefined}
                 onClick={() => setSection(item)}
               >
                 {item[0].toUpperCase() + item.slice(1)}
@@ -638,6 +648,7 @@ function SettingsViewContent({
                 type="button"
                 key={item}
                 className={`settings-nav-item ${section === item ? 'active' : ''}`}
+                aria-current={section === item ? 'page' : undefined}
                 onClick={() => setSection(item)}
               >
                 {item[0].toUpperCase() + item.slice(1)}
@@ -647,6 +658,7 @@ function SettingsViewContent({
               variant="ghost"
               type="button"
               className={`settings-nav-item ${section === 'memory' ? 'active' : ''}`}
+              aria-current={section === 'memory' ? 'page' : undefined}
               onClick={() => setSection('memory')}
             >
               Memory

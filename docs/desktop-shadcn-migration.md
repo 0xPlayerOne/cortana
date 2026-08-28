@@ -59,10 +59,12 @@ Install the matching browser once with `bunx playwright install chromium` when P
 that it is missing. The capture fails on browser console errors. The legacy run records 56 images:
 all primary wide-screen destinations; the default and accessibility themes at 320, 768, 1024,
 and 1440 CSS pixels; Forest and Plum at compact and desktop widths; command, source-sheet,
-settings, and graph states. The production-shell run records 78 images: the real data-backed shell
+settings, and graph states. The production-shell run records 95 images: the real data-backed shell
 at five widths from 320 through 1920 CSS pixels in all four themes, mobile navigation, tablet
 source/context panels, command and
-workspace overlays, Inbox, responsive Conversations, Agent tools, Index, Settings, and populated
+workspace overlays, collapsed and expanded desktop navigation, Inbox, Conversations, Agent tools,
+Index, and Help at every target width,
+Settings at every target width, and populated
 answer, evidence, timeline, canonical-document, and bounded-graph views, with populated
 conversations at mobile and desktop widths. Its non-secret typed Desktop fixture also records
 readiness, services/recovery, source-type selection, a configured source, a destructive AlertDialog,
@@ -243,5 +245,5 @@ The deterministic Desktop settings fixture in `apps/web/src/demoDesktop.ts` exis
 identities, `example.test` URLs, masked `/example` paths, configuration metadata, and configured
 secret indicators without secret values. It lets the visual evidence job exercise real Settings
 composition in a browser without adding Tauri capabilities, invoking native commands, or exposing
-host state. The issue #2166 evidence set contains 78 screenshots covering the configured matrix and
+host state. The issue #2166 evidence set contains 95 screenshots covering the configured matrix and
 explicit setup, busy, success, warning, failure, cancelled, retry, and recovery states.
