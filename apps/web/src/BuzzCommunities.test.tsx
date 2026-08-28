@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { desktopInfo, desktopSettings } from './test/fixtures'
 import type {
@@ -132,10 +133,11 @@ async function renderBuzzSettings() {
       }}
     />
   )
+  fireEvent.click(await screen.findByRole('button', { name: /Advanced source settings/ }))
   await screen.findByLabelText(/^Source name/)
   return {
     view,
-    rerender: () =>
+    rerender: () => {
       view.rerender(
         <SettingsView
           initialSection="sources"
@@ -144,11 +146,13 @@ async function renderBuzzSettings() {
             state.saved = next
           }}
         />
-      ),
+      )
+    },
   }
 }
 
 test('buzz community chooser discovers the identity file and persists per-workspace assignment', async () => {
+  const user = userEvent.setup()
   const { rerender } = await renderBuzzSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover communities/ }))
@@ -164,8 +168,8 @@ test('buzz community chooser discovers the identity file and persists per-worksp
   // source belongs to exactly one workspace, so the chooser is scoped to the
   // selected workspace). Unlike Slack's single-team contract, multiple
   // communities can be assigned.
-  fireEvent.click(screen.getByRole('checkbox', { name: /Welcome Team/ }))
-  fireEvent.click(screen.getByRole('checkbox', { name: /Research/ }))
+  await user.click(screen.getByRole('checkbox', { name: /Welcome Team/ }))
+  await user.click(screen.getByRole('checkbox', { name: /Research/ }))
 
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
@@ -182,7 +186,7 @@ test('buzz community chooser discovers the identity file and persists per-worksp
   rerender()
 
   // Unchecking one community removes exactly that id and its aligned name.
-  fireEvent.click(screen.getByRole('checkbox', { name: /Research/ }))
+  await user.click(screen.getByRole('checkbox', { name: /Research/ }))
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(2))
   expect(state.savedUpdates[1].sources[0].communities).toEqual(['builtin-team:welcome'])
@@ -212,7 +216,11 @@ test('buzz community chooser refuses to discover unsaved changes and surfaces fa
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
   fireEvent.click(screen.getByRole('button', { name: /Discover communities/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('found no identity file')
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) => alert.textContent?.includes('found no identity file'))
+    ).toBe(true)
   )
 })
 
@@ -222,9 +230,15 @@ test('buzz community chooser warns when discovery is truncated at 100 communitie
 
   fireEvent.click(screen.getByRole('button', { name: /Discover communities/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Buzz returned more than 100 communities; select from the first 100.'
-    )
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) =>
+          alert.textContent?.includes(
+            'Buzz returned more than 100 communities; select from the first 100.'
+          )
+        )
+    ).toBe(true)
   )
 })
 
@@ -247,6 +261,7 @@ test('buzz community chooser is scoped to the selected workspace', async () => {
   )
 
   fireEvent.click(screen.getByRole('tab', { name: /Personal/ }))
+  fireEvent.click(await screen.findByRole('button', { name: /Advanced source settings/ }))
   await waitFor(() =>
     expect(screen.getByRole('button', { name: /Discover communities/ })).toBeTruthy()
   )

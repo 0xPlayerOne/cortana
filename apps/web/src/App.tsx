@@ -1,9 +1,8 @@
-import { FileText, LoaderCircle, Search, Sparkles } from 'lucide-react'
+import { FileText, LoaderCircle } from 'lucide-react'
 import {
   type CSSProperties,
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
   lazy,
   Suspense,
   useCallback,
@@ -37,16 +36,23 @@ import {
   startDesktopSourceAuthorization,
 } from './api'
 import { ContextPanel } from './components/ContextPanel'
-import type { M7PanelBoundaryProps, M7ShellComponents } from './components/m7/M7ApplicationShell'
-import { type AppView, Navigation, TitleActions } from './components/Navigation'
+import { AppErrorBoundary } from './components/AppErrorBoundary'
+import { M7ActivityInbox } from './components/m7/M7ActivityInbox'
+import {
+  M7ApplicationHeader,
+  M7ApplicationNavigation,
+  type AppView,
+  M7CommandPalette,
+  M7PanelBoundary,
+  M7ShellProvider,
+  M7StatusBar,
+} from './components/m7/M7ApplicationShell'
 import { SourcePanel } from './components/SourcePanel'
 import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
-import { Button } from './components/ui/Button'
+import { TooltipButton as Button } from './components/cortana/TooltipButton'
 import { buildAgentContext, estimateTokens } from './context'
 import { embeddingLabel } from './operations'
-import { shortcutLabel } from './shortcuts'
-import type { RendererMode } from './rendererMode'
 import {
   readSourceSelectionPreference,
   readWorkspacePreference,
@@ -80,6 +86,7 @@ import type {
   Evidence,
   ReflectResponse,
 } from './types'
+import './shadcn.css'
 
 const SettingsView = lazy(() =>
   import('./components/SettingsView').then((module) => ({ default: module.SettingsView }))
@@ -90,30 +97,15 @@ const INSTALLER_POLL_MS = 1_000
 const MAX_DOCUMENT_QUERY_BYTES = 256
 const textEncoder = new TextEncoder()
 
-function LegacyShellProvider({ children }: { enabled: boolean; children: ReactNode }) {
-  return children
+export function App() {
+  return (
+    <AppErrorBoundary>
+      <CortanaApplication />
+    </AppErrorBoundary>
+  )
 }
 
-function LegacyPanelBoundary({ children }: M7PanelBoundaryProps) {
-  return children
-}
-
-export function App({
-  renderer = 'legacy',
-  shadcnShell,
-}: {
-  renderer?: RendererMode
-  shadcnShell?: M7ShellComponents
-}) {
-  const M7ApplicationHeader = shadcnShell?.ApplicationHeader
-  const M7ApplicationNavigation = shadcnShell?.ApplicationNavigation
-  const M7ActivityInbox = shadcnShell?.ActivityInbox
-  const M7CommandPalette = shadcnShell?.CommandPalette
-  const M7PanelBoundary = shadcnShell?.PanelBoundary
-  const M7ShellProvider = shadcnShell?.ShellProvider
-  const M7StatusBar = shadcnShell?.StatusBar
-  const ShellProvider = M7ShellProvider ?? LegacyShellProvider
-  const PanelBoundary = M7PanelBoundary ?? LegacyPanelBoundary
+function CortanaApplication() {
   const [query, setQuery] = useState('How do releases work?')
   const [activeQuery, setActiveQuery] = useState(query)
   const [status, setStatus] = useState<BrainStatus | null>(null)
@@ -1488,15 +1480,6 @@ export function App({
     setGraphRetryNonce((current) => current + 1)
   }
 
-  function openTimeline() {
-    if (!canLeaveSettings()) return
-    setView('knowledge')
-    // The Timeline view is result-only: without a current answer/evidence
-    // result the shortcut falls back to the primary Document view instead of
-    // selecting an empty timeline.
-    setWorkspaceTab(answer !== null || evidence.length > 0 ? 'timeline' : 'document')
-  }
-
   function maximumPaneWidth(side: 'source' | 'context') {
     if (window.innerWidth <= 1280) return 520
     return Math.max(
@@ -1582,11 +1565,10 @@ export function App({
   const graphFullScreen = view === 'knowledge' && workspaceTab === 'graph'
 
   return (
-    <ShellProvider enabled={renderer === 'shadcn'}>
+    <M7ShellProvider>
       <div
-        className={`shell ${renderer === 'shadcn' ? 'm7-production-shell' : ''} ${graphFullScreen ? 'graph-fullscreen' : ''}`}
-        data-renderer={renderer}
-        data-m7-production-shell-ready={renderer === 'shadcn' ? '' : undefined}
+        className={`shell ${'m7-production-shell'} ${graphFullScreen ? 'graph-fullscreen' : ''}`}
+        data-m7-production-shell-ready={''}
         style={
           {
             '--source-width': graphFullScreen ? '0px' : `${sourceWidth}px`,
@@ -1594,10 +1576,10 @@ export function App({
           } as CSSProperties
         }
       >
-        <a className={renderer === 'shadcn' ? 'm7-skip-link' : 'skip-link'} href="#main-content">
+        <a className={'m7-skip-link'} href="#main-content">
           Skip to main content
         </a>
-        {renderer === 'shadcn' && M7ApplicationHeader ? (
+        {
           <M7ApplicationHeader
             query={query}
             loading={loading}
@@ -1643,68 +1625,8 @@ export function App({
                   : view[0].toUpperCase() + view.slice(1)
             }
           />
-        ) : (
-          <header className="titlebar">
-            <TitleActions
-              onOpenSources={() => {
-                setLeftOpen(true)
-                // The source panel is hidden while the graph is full-screen;
-                // leave the graph so the panel is reachable again.
-                if (workspaceTab === 'graph') setWorkspaceTab('document')
-              }}
-              canGoBack={queryHistoryIndex > 0}
-              canGoForward={queryHistoryIndex >= 0 && queryHistoryIndex < queryHistory.length - 1}
-              onHistoryBack={() => {
-                const nextIndex = queryHistoryIndex - 1
-                if (nextIndex < 0) return
-                const next = queryHistory[nextIndex]
-                setQueryHistoryIndex(nextIndex)
-                setQuery(next)
-                void runSearch(next, source, effectiveWorkspace, false)
-              }}
-              onHistoryForward={() => {
-                const nextIndex = queryHistoryIndex + 1
-                if (nextIndex >= queryHistory.length) return
-                const next = queryHistory[nextIndex]
-                setQueryHistoryIndex(nextIndex)
-                setQuery(next)
-                void runSearch(next, source, effectiveWorkspace, false)
-              }}
-            />
-            <form className="search-form" onSubmit={submit}>
-              <Search size={18} />
-              <input
-                ref={searchRef}
-                aria-label="Search your knowledge"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              {loading ? (
-                <LoaderCircle className="spin" size={16} />
-              ) : (
-                <kbd>{shortcutLabel('MOD K')}</kbd>
-              )}
-              <Button
-                type="button"
-                variant="ghost"
-                aria-label="Reflect on this objective"
-                title="Reflect on active memory and scoped evidence"
-                onClick={() => void runReflection()}
-                disabled={loading || !query.trim()}
-              >
-                <Sparkles size={15} />
-                Reflect
-              </Button>
-            </form>
-            <TitleActions
-              context
-              onOpenContext={() => setRightOpen(true)}
-              onOpenFilters={focusDocumentFilter}
-              onOpenHistory={() => navigate('conversations')}
-            />
-          </header>
-        )}
-        {renderer === 'shadcn' && M7ApplicationNavigation ? (
+        }
+        {
           <M7ApplicationNavigation
             navigation={{
               view,
@@ -1716,17 +1638,7 @@ export function App({
             workspace={effectiveWorkspace}
             onWorkspaceChange={chooseWorkspace}
           />
-        ) : (
-          <Navigation
-            view={view}
-            workspaceTab={workspaceTab}
-            resultAvailable={answer !== null || reflection !== null || evidence.length > 0}
-            onNavigate={navigate}
-            onSearch={focusSearch}
-            onOpenGraph={openGraph}
-            onOpenTimeline={openTimeline}
-          />
-        )}
+        }
         {view === 'settings' ? (
           <Suspense
             fallback={
@@ -1738,7 +1650,6 @@ export function App({
             }
           >
             <SettingsView
-              renderer={renderer}
               desktopSettings={desktopSettings ?? undefined}
               onLoaded={applyDesktopSettings}
               initialSection={settingsSection}
@@ -1832,8 +1743,7 @@ export function App({
         ) : view === 'knowledge' ? (
           <>
             {!graphFullScreen && (
-              <PanelBoundary
-                enabled={renderer === 'shadcn'}
+              <M7PanelBoundary
                 side="left"
                 breakpoint={800}
                 open={leftOpen}
@@ -1843,7 +1753,6 @@ export function App({
                 onOpenChange={setLeftOpen}
               >
                 <SourcePanel
-                  renderer={renderer}
                   open={leftOpen}
                   status={status}
                   workspace={effectiveWorkspace}
@@ -1860,7 +1769,6 @@ export function App({
                   sourceJobError={sourceJobsError}
                   onRetrySourceJobs={sourceJobsRetry}
                   onSelect={chooseSource}
-                  onSelectWorkspace={chooseWorkspace}
                   onDocumentQueryChange={setDocumentQuery}
                   onSelectDocument={(id) => void chooseDocument(id)}
                   onLoadMoreDocuments={() => void loadMoreDocuments()}
@@ -1896,7 +1804,7 @@ export function App({
                   onCancelSourceJob={cancelSourceJob}
                   jobs={sourceJobs.jobs}
                 />
-              </PanelBoundary>
+              </M7PanelBoundary>
             )}
             {!graphFullScreen && (
               <div
@@ -1920,7 +1828,6 @@ export function App({
               />
             )}
             <Workspace
-              renderer={renderer}
               query={activeQuery}
               answer={answer}
               reflection={reflection}
@@ -1944,8 +1851,7 @@ export function App({
               onRetry={() => void runSearch(query)}
             />
             {!graphFullScreen && (
-              <PanelBoundary
-                enabled={renderer === 'shadcn'}
+              <M7PanelBoundary
                 side="right"
                 breakpoint={1281}
                 open={rightOpen}
@@ -1955,7 +1861,6 @@ export function App({
                 onOpenChange={setRightOpen}
               >
                 <ContextPanel
-                  renderer={renderer}
                   open={rightOpen}
                   query={activeQuery}
                   evidence={evidence}
@@ -1971,7 +1876,7 @@ export function App({
                   onSelect={setSelected}
                   onClose={() => setRightOpen(false)}
                 />
-              </PanelBoundary>
+              </M7PanelBoundary>
             )}
             {!graphFullScreen && (
               <div
@@ -1995,7 +1900,7 @@ export function App({
               />
             )}
           </>
-        ) : renderer === 'shadcn' && view === 'inbox' && M7ActivityInbox ? (
+        ) : view === 'inbox' ? (
           <M7ActivityInbox
             status={status}
             statusError={statusError}
@@ -2009,7 +1914,6 @@ export function App({
         ) : (
           <UtilityView
             kind={view}
-            renderer={renderer}
             status={status}
             statusError={statusError}
             onRetryStatus={retryStatus}
@@ -2033,7 +1937,7 @@ export function App({
             onCancelSourceJob={cancelSourceJob}
           />
         )}
-        {renderer === 'shadcn' && M7CommandPalette ? (
+        {
           <M7CommandPalette
             open={commandPaletteOpen}
             finalFocus={commandPaletteOriginRef}
@@ -2047,81 +1951,8 @@ export function App({
             }}
             onOpenSettings={() => setView('settings')}
           />
-        ) : (
-          commandPaletteOpen && (
-            <div
-              className="command-palette-backdrop"
-              role="presentation"
-              onMouseDown={() => setCommandPaletteOpen(false)}
-            >
-              <div
-                className="command-palette"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Command palette"
-                onMouseDown={(event) => event.stopPropagation()}
-              >
-                <strong>Commands</strong>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  autoFocus
-                  onClick={() => {
-                    setCommandPaletteOpen(false)
-                    focusSearch()
-                  }}
-                >
-                  Search the brain <kbd>{shortcutLabel('MOD K')}</kbd>
-                </Button>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => {
-                    setCommandPaletteOpen(false)
-                    focusDocumentFilter()
-                  }}
-                >
-                  Filter documents <kbd>{shortcutLabel('MOD ⇧ F')}</kbd>
-                </Button>
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => {
-                    setCommandPaletteOpen(false)
-                    chooseWorkspace(workspaces[0]?.id ?? '')
-                    setDocumentQuery('')
-                  }}
-                >
-                  Reset to primary workspace
-                </Button>
-                {workspaces.map((item) => (
-                  <Button
-                    variant="ghost"
-                    type="button"
-                    key={item.id}
-                    onClick={() => {
-                      chooseWorkspace(item.id)
-                      setCommandPaletteOpen(false)
-                    }}
-                  >
-                    Switch to {item.name}
-                  </Button>
-                ))}
-                <Button
-                  variant="ghost"
-                  type="button"
-                  onClick={() => {
-                    setCommandPaletteOpen(false)
-                    setView('settings')
-                  }}
-                >
-                  Open settings
-                </Button>
-              </div>
-            </div>
-          )
-        )}
-        {renderer === 'shadcn' && M7StatusBar ? (
+        }
+        {
           <M7StatusBar demo={isDemoMode}>
             <span className={statusError ? 'text-destructive' : 'text-foreground'}>
               Index {statusError ? 'offline' : status ? 'online' : 'checking'}
@@ -2206,96 +2037,9 @@ export function App({
               </Button>
             ) : null}
           </M7StatusBar>
-        ) : (
-          <footer className="statusbar">
-            <span className={statusError ? 'health error' : 'health'}>
-              <i /> Index {statusError ? 'offline' : status ? 'online' : 'checking'}
-            </span>
-            <span title={status?.embedding_fingerprint ?? undefined}>
-              Embedding: {embeddingLabel(status?.embedding_fingerprint)}
-            </span>
-            <span>Query: {status?.query.mode ?? '—'}</span>
-            <span>
-              <FileText size={13} /> Docs: {status ? status.documents.toLocaleString() : '—'}
-            </span>
-            <IngestionIndicator status={status} />
-            <ActiveSourceJobs
-              jobs={sourceJobs.jobs}
-              onOpen={() => {
-                if (!canLeaveSettings()) return
-                setView('inbox')
-              }}
-            />
-            <SourceJobsErrorIndicator
-              error={sourceJobsError}
-              onOpen={() => {
-                if (!canLeaveSettings()) return
-                setView('inbox')
-              }}
-            />
-            <SourceJobAttentionIndicator
-              jobs={sourceJobs.jobs}
-              onOpen={() => {
-                if (!canLeaveSettings()) return
-                setView('inbox')
-              }}
-            />
-            <InstallerIndicator
-              job={installerJob}
-              onOpen={() => {
-                if (!canLeaveSettings()) return
-                setSettingsSection('readiness')
-                setView('settings')
-              }}
-            />
-            <ServiceActivityIndicator
-              activity={serviceActivity}
-              onOpen={() => {
-                if (!canLeaveSettings()) return
-                setSettingsSection('services')
-                setView('settings')
-              }}
-            />
-            <ReadinessActivityIndicator
-              activity={readinessActivity}
-              onOpen={() => {
-                if (!canLeaveSettings()) return
-                setSettingsSection('readiness')
-                setView('settings')
-              }}
-            />
-            <ServiceHealthIndicator
-              report={desktopServices}
-              error={desktopServicesError}
-              embeddingRequired={desktopSettings?.embedding.provider !== 'cloud'}
-              onOpen={() => {
-                if (!canLeaveSettings()) return
-                setSettingsSection('services')
-                setView('settings')
-              }}
-            />
-            <span className="status-spacer" />
-            {isDemoMode && <span className="demo-badge">Demo data</span>}
-            {isDesktopApp && (
-              <Button
-                variant="ghost"
-                type="button"
-                className="status-link quick-tooltip quick-tooltip--above"
-                data-tooltip={`Open the Updates section (Cortana ${desktopInfo?.desktop_version || '—'})`}
-                onClick={() => {
-                  if (!canLeaveSettings()) return
-                  setSettingsSection('updates')
-                  setView('settings')
-                }}
-              >
-                Cortana {desktopInfo?.desktop_version || '—'} · Updates
-                {desktopUpdateStatusSuffix(desktopUpdate)}
-              </Button>
-            )}
-          </footer>
-        )}
+        }
       </div>
-    </ShellProvider>
+    </M7ShellProvider>
   )
 }
 
@@ -2346,9 +2090,9 @@ function ActiveSourceJobs({ jobs, onOpen }: { jobs: DesktopSourceJob[]; onOpen: 
     <Button
       variant="ghost"
       type="button"
-      className="source-jobs status-link quick-tooltip quick-tooltip--above"
+      className="source-jobs status-link"
       aria-label="Open active source jobs"
-      data-tooltip={`${detail}. Open the activity inbox.`}
+      tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
       <LoaderCircle className="spin" size={13} /> {active.length} active source job
@@ -2365,9 +2109,9 @@ function SourceJobsErrorIndicator({ error, onOpen }: { error: string; onOpen: ()
     <Button
       variant="ghost"
       type="button"
-      className="source-jobs status-link attention quick-tooltip quick-tooltip--above"
+      className="source-jobs status-link attention"
       aria-label="Open source job status"
-      data-tooltip={`${detail}. Open the activity inbox.`}
+      tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
       <i /> Source jobs: {label}
@@ -2389,9 +2133,9 @@ function SourceJobAttentionIndicator({
     <Button
       variant="ghost"
       type="button"
-      className="source-jobs status-link attention quick-tooltip quick-tooltip--above"
+      className="source-jobs status-link attention"
       aria-label="Open source job attention"
-      data-tooltip={`${detail}. Open the activity inbox.`}
+      tooltip={`${detail}. Open the activity inbox.`}
       onClick={onOpen}
     >
       <i /> {attention.length} source job{attention.length === 1 ? '' : 's'} need attention
@@ -2422,9 +2166,9 @@ function InstallerIndicator({
     <Button
       variant="ghost"
       type="button"
-      className={`installer-health ${state} quick-tooltip quick-tooltip--above`}
+      className={`installer-health ${state}  `}
       aria-label={`Open installer status for ${job.tool}`}
-      data-tooltip={`${job.summary}. Open readiness for details.`}
+      tooltip={`${job.summary}. Open readiness for details.`}
       onClick={onOpen}
     >
       <i /> {label}
@@ -2447,9 +2191,9 @@ function ServiceActivityIndicator({
     <Button
       variant="ghost"
       type="button"
-      className={`service-activity-health ${state} quick-tooltip quick-tooltip--above`}
+      className={`service-activity-health ${state}  `}
       aria-label="Open service activity"
-      data-tooltip={`${action} ${activity.target}${activity.detail ? `: ${activity.detail}` : ''}. Open services for details.`}
+      tooltip={`${action} ${activity.target}${activity.detail ? `: ${activity.detail}` : ''}. Open services for details.`}
       onClick={onOpen}
     >
       {active && <LoaderCircle className="spin" size={13} />}
@@ -2474,9 +2218,9 @@ function ReadinessActivityIndicator({
     <Button
       variant="ghost"
       type="button"
-      className={`readiness-activity-health ${state} quick-tooltip quick-tooltip--above`}
+      className={`readiness-activity-health ${state}  `}
       aria-label="Open readiness activity"
-      data-tooltip={`${activity.detail || (active ? 'System readiness scan is running.' : 'System readiness scan completed.')}`}
+      tooltip={`${activity.detail || (active ? 'System readiness scan is running.' : 'System readiness scan completed.')}`}
       onClick={onOpen}
     >
       {active && <LoaderCircle className="spin" size={13} />}
@@ -2502,9 +2246,9 @@ export function ServiceHealthIndicator({
       <Button
         variant="ghost"
         type="button"
-        className="service-activity-health warning quick-tooltip quick-tooltip--above"
+        className="service-activity-health warning"
         aria-label="Open service health"
-        data-tooltip={`${error}. Open Services for details.`}
+        tooltip={`${error}. Open Services for details.`}
         onClick={onOpen}
       >
         <i /> Services: unavailable
@@ -2536,9 +2280,9 @@ export function ServiceHealthIndicator({
     <Button
       variant="ghost"
       type="button"
-      className={`service-activity-health ${state} quick-tooltip quick-tooltip--above`}
+      className={`service-activity-health ${state}  `}
       aria-label="Open service health"
-      data-tooltip={`${detail}. Open Services for controls.`}
+      tooltip={`${detail}. Open Services for controls.`}
       onClick={onOpen}
     >
       <i /> {label}

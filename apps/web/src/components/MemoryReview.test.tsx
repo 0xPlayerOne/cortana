@@ -2,8 +2,6 @@ import { afterEach, expect, mock, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import { MemoryReview, type MemoryReviewClient } from './MemoryReview'
-import { m7SurfacePrimitives } from './m7/M7SurfacePrimitives.shadcn'
-import { M7SurfacePrimitivesProvider } from './m7/M7SurfacePrimitives'
 
 afterEach(cleanup)
 
@@ -109,11 +107,7 @@ function client(): MemoryReviewClient & { actions: string[] } {
 }
 
 test('shadcn renderer composes memory review controls from shared primitives', async () => {
-  render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <MemoryReview renderer="shadcn" client={client()} />
-    </M7SurfacePrimitivesProvider>
-  )
+  render(<MemoryReview client={client()} />)
 
   expect(document.querySelector('[data-m7-memory-review]')).toBeTruthy()
   expect(document.querySelector('[data-slot="input"]')).toBeTruthy()

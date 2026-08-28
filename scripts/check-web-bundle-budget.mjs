@@ -40,35 +40,21 @@ export function staticImportKeys(manifest, roots) {
 
 export function verifyWebBundleBudget() {
   const manifest = JSON.parse(readFileSync(resolve(dist, '.vite/manifest.json'), 'utf8'))
-  const entries = Object.values(manifest)
-  const renderer = entries.find((entry) => entry.isEntry)
-  const legacy = entries.find((entry) => entry.name === 'LegacyRenderer')
-  const shadcn = entries.find(
-    (entry) => entry.src?.endsWith('/ShadcnRenderer.tsx') || entry.name === 'ShadcnRenderer'
+  const entryKey = Object.entries(manifest).find(([, entry]) => entry.isEntry)?.[0]
+  const appKey = Object.keys(manifest).find((key) => key.startsWith('_App-'))
+  if (!entryKey || !appKey) throw new Error('Vite manifest is missing the application entry')
+
+  const initialKeys = staticImportKeys(manifest, [entryKey, appKey])
+  const productionKeys = new Set(
+    Object.keys(manifest).filter(
+      (key) => key !== 'src/demoDesktop.ts' && manifest[key]?.file?.endsWith('.js')
+    )
   )
 
-  if (!renderer || !legacy || !shadcn) {
-    throw new Error('Vite manifest is missing the renderer, legacy, or production shadcn assets')
-  }
-
-  const rendererKey = Object.entries(manifest).find(([, entry]) => entry === renderer)?.[0]
-  const legacyKey = Object.entries(manifest).find(([, entry]) => entry === legacy)?.[0]
-  const shadcnKey = Object.entries(manifest).find(([, entry]) => entry === shadcn)?.[0]
-  const initialRendererKeys = staticImportKeys(manifest, [rendererKey])
-  const initialLegacyKeys = staticImportKeys(manifest, [rendererKey, legacyKey])
-  const shadcnKeys = staticImportKeys(manifest, [rendererKey, shadcnKey])
-  const incrementalShadcnKeys = [...shadcnKeys].filter((key) => !initialRendererKeys.has(key))
-
   const measurements = [
-    ['legacy-default initial JavaScript', uniqueAssetBytes(manifest, initialLegacyKeys), 475_000],
-    ['legacy-default renderer CSS', uniqueCssBytes(manifest, initialLegacyKeys), 80_000],
-    ['lazy production shadcn entry', size(shadcn.file), 50_000],
-    [
-      'production shadcn incremental JavaScript graph',
-      uniqueAssetBytes(manifest, incrementalShadcnKeys),
-      650_000,
-    ],
-    ['production shadcn CSS graph', uniqueCssBytes(manifest, shadcnKeys), 210_000],
+    ['initial application JavaScript graph', uniqueAssetBytes(manifest, initialKeys), 800_000],
+    ['complete production JavaScript graph', uniqueAssetBytes(manifest, productionKeys), 950_000],
+    ['application CSS graph', uniqueCssBytes(manifest, productionKeys), 210_000],
   ]
 
   for (const [label, bytes, budget] of measurements) {

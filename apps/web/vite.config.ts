@@ -26,7 +26,6 @@ export default defineConfig({
       output: {
         onlyExplicitManualChunks: true,
         manualChunks(id) {
-          if (id.endsWith('/M7NavigationOverlays.tsx')) return 'm7-navigation-overlays'
           if (
             id.endsWith('/M7ApplicationShell.tsx') ||
             id.endsWith('/M7ActivityInbox.tsx') ||

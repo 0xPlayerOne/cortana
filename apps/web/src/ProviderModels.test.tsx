@@ -136,12 +136,17 @@ function renderEmbeddingSettings() {
   )
 }
 
-function modelSelect(): HTMLSelectElement {
-  return screen.getByLabelText('Model catalog') as HTMLSelectElement
+function modelCatalog(): HTMLElement {
+  return screen.getByRole('combobox', { name: 'Model catalog' })
 }
 
 function modelInput(): HTMLInputElement {
   return screen.getByLabelText('Model') as HTMLInputElement
+}
+
+async function openEmbeddingCatalog() {
+  await screen.findByRole('combobox', { name: 'Model catalog' })
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle options' }))
 }
 
 test('refresh exposes provider-advertised models without stale cloud presets', async () => {
@@ -156,11 +161,9 @@ test('refresh exposes provider-advertised models without stale cloud presets', a
 
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
 
-  await waitFor(() => {
-    const values = Array.from(modelSelect().options).map((option) => option.value)
-    expect(values).toContain('text-embedding-3-small')
-    expect(values).toContain('text-embedding-3-large')
-  })
+  await openEmbeddingCatalog()
+  expect(await screen.findByRole('option', { name: 'text-embedding-3-small' })).toBeTruthy()
+  expect(screen.getByRole('option', { name: 'text-embedding-3-large' })).toBeTruthy()
   expect(state.refreshCalls).toEqual(['embedding'])
   expect(screen.getByText(/2 models advertised by the provider/)).toBeTruthy()
 })
@@ -184,14 +187,10 @@ test('selecting an advertised model updates the provider settings', async () => 
   state.settings.embedding.model = 'text-embedding-3-small'
   renderEmbeddingSettings()
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
-  await waitFor(() => {
-    expect(Array.from(modelSelect().options).map((option) => option.value)).toContain(
-      'text-embedding-3-large'
-    )
-  })
+  await openEmbeddingCatalog()
 
-  fireEvent.change(modelSelect(), { target: { value: 'text-embedding-3-large' } })
-  expect(modelSelect().value).toBe('text-embedding-3-large')
+  fireEvent.click(screen.getByRole('option', { name: 'text-embedding-3-large' }))
+  expect((modelCatalog() as HTMLInputElement).value).toBe('text-embedding-3-large')
 
   fireEvent.click(screen.getByRole('button', { name: /Save/ }))
   await waitFor(() => {
@@ -216,11 +215,9 @@ test('changing the endpoint invalidates the advertised catalog', async () => {
   state.settings.embedding.model = 'text-embedding-3-small'
   renderEmbeddingSettings()
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
-  await waitFor(() => {
-    expect(Array.from(modelSelect().options).map((option) => option.value)).toContain(
-      'text-embedding-3-large'
-    )
-  })
+  await openEmbeddingCatalog()
+  expect(screen.getByRole('option', { name: 'text-embedding-3-large' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('option', { name: 'text-embedding-3-small' }))
 
   // The user edits the endpoint; the stale advertised list must not apply to
   // the new provider.
@@ -268,11 +265,10 @@ test('query section refreshes the query provider separately', async () => {
 
   fireEvent.click(screen.getByRole('button', { name: /Refresh Query and answer model models/ }))
 
-  await waitFor(() => {
-    const values = Array.from(modelSelect().options).map((option) => option.value)
-    expect(values).toContain('o3-mini')
-    expect(values).toContain('provider-chat-large')
-  })
+  const catalog = await screen.findByRole('combobox', { name: 'Model catalog' })
+  fireEvent.click(catalog)
+  expect(await screen.findByRole('option', { name: 'o3-mini' })).toBeTruthy()
+  expect(screen.getByRole('option', { name: 'provider-chat-large' })).toBeTruthy()
   expect(state.refreshCalls).toEqual(['query'])
   expect(screen.getByText(/first 512 shown/)).toBeTruthy()
 })

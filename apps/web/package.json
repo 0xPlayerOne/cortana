@@ -4,7 +4,7 @@
   "version": "0.53.0",
   "type": "module",
   "scripts": {
-    "build": "tsc -b && vite build && bun ../../scripts/check-web-bundle-budget.mjs",
+    "build": "tsc -b && bun ../../scripts/check-web-ui-contract.mjs && vite build && bun ../../scripts/check-web-bundle-budget.mjs",
     "dev": "vite",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false"

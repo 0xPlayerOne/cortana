@@ -198,6 +198,7 @@ function SourceJobCard({
             variant="outline"
             size="sm"
             disabled={job.status === 'cancelling'}
+            aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
             onClick={() => onCancel(job.id)}
           >
             <CircleStop aria-hidden="true" /> Cancel
@@ -279,7 +280,7 @@ export function M7ActivityInbox({
                 <h2 id="m7-sync-attention" className="font-heading text-base font-medium">
                   Sync attention
                 </h2>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div className="activity-card-grid">
                   {attention.map((run) => (
                     <SyncActivityCard
                       key={`${run.project}:${run.source}:${run.started_at}`}
@@ -294,7 +295,7 @@ export function M7ActivityInbox({
                 <h2 id="m7-active-source-jobs" className="font-heading text-base font-medium">
                   Active source jobs
                 </h2>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div className="activity-card-grid">
                   {activeJobs.map((job) => (
                     <SourceJobCard key={job.id} job={job} onCancel={onCancelSourceJob} />
                   ))}
@@ -306,7 +307,7 @@ export function M7ActivityInbox({
                 <h2 id="m7-recent-source-jobs" className="font-heading text-base font-medium">
                   Recent source jobs
                 </h2>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div className="activity-card-grid">
                   {completedJobs.map((job) => (
                     <SourceJobCard key={job.id} job={job} />
                   ))}

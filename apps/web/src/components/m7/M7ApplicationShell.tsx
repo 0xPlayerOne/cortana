@@ -24,7 +24,6 @@ import {
   TerminalSquare,
 } from 'lucide-react'
 
-import type { AppView } from '@/components/Navigation'
 import { Badge } from '@/components/shadcn/badge'
 import { Button } from '@/components/shadcn/button'
 import {
@@ -91,6 +90,9 @@ import type { M7ActivityInbox } from '@/components/m7/M7ActivityInbox'
 import { WorkspaceLogo } from '@/workspaceLogos'
 
 type WorkspaceOption = { id: string; name: string; color: string | null }
+
+export type AppView =
+  'knowledge' | 'settings' | 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
 export type M7NavigationProps = {
   view: AppView
@@ -323,7 +325,6 @@ export function M7CommandPalette({
 export type M7StatusBarProps = { children: ReactNode; demo: boolean }
 
 export type M7PanelBoundaryProps = {
-  enabled: boolean
   side: 'left' | 'right'
   breakpoint: number
   open: boolean
@@ -335,7 +336,6 @@ export type M7PanelBoundaryProps = {
 }
 
 export function M7PanelBoundary({
-  enabled,
   side,
   breakpoint,
   open,
@@ -348,15 +348,14 @@ export function M7PanelBoundary({
   const [compact, setCompact] = useState(false)
 
   useEffect(() => {
-    if (!enabled) return
     const query = window.matchMedia(`(max-width: ${breakpoint - 1}px)`)
     const update = () => setCompact(query.matches)
     update()
     query.addEventListener('change', update)
     return () => query.removeEventListener('change', update)
-  }, [breakpoint, enabled])
+  }, [breakpoint])
 
-  if (!enabled || !compact) return children
+  if (!compact) return children
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -557,8 +556,7 @@ export function M7ApplicationNavigation({
   )
 }
 
-export function M7ShellProvider({ enabled, children }: { enabled: boolean; children: ReactNode }) {
-  if (!enabled) return children
+export function M7ShellProvider({ children }: { children: ReactNode }) {
   return (
     <TooltipProvider delay={250}>
       <SidebarProvider
@@ -572,7 +570,7 @@ export function M7ShellProvider({ enabled, children }: { enabled: boolean; child
   )
 }
 
-export type M7ShellProviderProps = { enabled: boolean; children: ReactNode }
+export type M7ShellProviderProps = { children: ReactNode }
 
 export type M7ShellComponents = {
   ActivityInbox: typeof M7ActivityInbox

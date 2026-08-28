@@ -107,25 +107,26 @@ mock.module('./api', () => ({
 const { App } = await import('./App')
 const { UtilityView } = await import('./components/UtilityView')
 const { M7ActivityInbox } = await import('./components/m7/M7ActivityInbox')
-const { M7SurfacePrimitivesProvider } = await import('./components/m7/M7SurfacePrimitives')
-const { m7SurfacePrimitives } = await import('./components/m7/M7SurfacePrimitives.shadcn')
 
 const RAIL_LABELS = [
-  'Search',
   'Knowledge',
   'Graph',
   'Inbox',
   'Conversations',
   'Agent tools',
-  'Timeline',
   'Index',
   'Settings',
   'Help',
 ]
 
 function railButton(label: string) {
-  const rail = screen.getByRole('navigation', { name: 'Primary' })
+  const rail = screen.getByRole('navigation', { name: 'Primary navigation' })
   return within(rail).getByRole('button', { name: label })
+}
+
+async function selectHeaderAction(label: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Actions' }))
+  fireEvent.click(await screen.findByRole('menuitem', { name: label }))
 }
 
 async function renderApp() {
@@ -133,43 +134,28 @@ async function renderApp() {
   await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
 }
 
-test('every rail button is enabled and Search focuses the query input', async () => {
+test('every sidebar destination is enabled and the persistent search remains available', async () => {
   await renderApp()
 
   for (const label of RAIL_LABELS) {
-    if (label === 'Timeline') continue
     const button = railButton(label)
     expect(button.hasAttribute('disabled')).toBe(false)
-    expect(button.getAttribute('title')).toBeNull()
-    expect(button.getAttribute('data-tooltip')).toBe(label)
+    expect(button.getAttribute('data-slot')).toBe('sidebar-menu-button')
   }
-
-  // Timeline is result-only: without a search answer/evidence it stays
-  // disabled with an honest tooltip instead of opening an empty timeline.
-  const timeline = railButton('Timeline')
-  expect(timeline.hasAttribute('disabled')).toBe(true)
-  expect(timeline.getAttribute('title')).toBeNull()
-  expect(timeline.getAttribute('data-tooltip')).toBe(
-    'Timeline: available once a search returns evidence'
-  )
-
-  fireEvent.click(railButton('Search'))
-  await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByLabelText('Search your knowledge'))
-  )
+  expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 })
 
 test('titlebar controls perform real navigation actions', async () => {
   state.answer = () => Promise.resolve(answerResponse)
   await renderApp()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Filter documents' }))
+  await selectHeaderAction('Filter documents')
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
   })
   expect(document.activeElement).toBe(screen.getByRole('textbox', { name: 'Filter documents' }))
 
-  fireEvent.click(screen.getByRole('button', { name: 'Open conversations' }))
+  await selectHeaderAction('Open conversations')
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'Conversations' })).toBeTruthy()
   )
@@ -178,20 +164,17 @@ test('titlebar controls perform real navigation actions', async () => {
 test('navigation and source-header actions use the shared icon-button primitive', async () => {
   await renderApp()
 
-  for (const label of [
-    'Search',
-    'Filter documents',
-    'Open sources',
-    'Add source',
-    'Source settings',
-  ]) {
-    expect(screen.getByRole('button', { name: label }).className).toContain(
-      'cortana-button cortana-button--icon'
+  for (const label of ['Add source', 'Source settings']) {
+    expect(screen.getByRole('button', { name: label }).getAttribute('data-slot')).toBe(
+      'tooltip-trigger'
     )
   }
+  expect(screen.getByRole('button', { name: 'Actions' }).getAttribute('data-slot')).toBe(
+    'dropdown-menu-trigger'
+  )
 })
 
-test('Graph is a full-screen rail view and Timeline is result-only', async () => {
+test('Graph is a separate full-screen sidebar view and Timeline remains result-only', async () => {
   await renderApp()
 
   // Graph routes to a full-screen workspace view without a duplicate top tab.
@@ -200,15 +183,12 @@ test('Graph is a full-screen rail view and Timeline is result-only', async () =>
     expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
   )
   expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
-  expect(railButton('Graph').className).toContain('active')
+  expect(railButton('Graph').hasAttribute('data-active')).toBe(true)
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 
   // Without a search result the Timeline rail stays disabled and cannot
   // select the result-only timeline tab.
-  expect(railButton('Timeline').hasAttribute('disabled')).toBe(true)
-  fireEvent.click(railButton('Timeline'))
   expect(screen.queryByRole('tab', { name: 'Timeline' })).toBeNull()
-  expect(railButton('Timeline').className).not.toContain('active')
 
   // A search result unlocks Timeline, which routes to the workspace Timeline
   // tab and unselects Graph.
@@ -219,13 +199,11 @@ test('Graph is a full-screen rail view and Timeline is result-only', async () =>
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'release cadence' })).toBeTruthy()
   )
-  expect(railButton('Timeline').hasAttribute('disabled')).toBe(false)
-  fireEvent.click(railButton('Timeline'))
+  fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')
   )
-  expect(railButton('Timeline').className).toContain('active')
-  expect(railButton('Graph').className).not.toContain('active')
+  expect(railButton('Graph').hasAttribute('data-active')).toBe(false)
   expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
 
   // Knowledge returns the workspace to its default tab.
@@ -239,9 +217,9 @@ test('Graph is a full-screen rail view and Timeline is result-only', async () =>
 test('Graph expands to full width and hides the source and context panels', async () => {
   await renderApp()
 
-  // The document layout shows the workspace selector and the context panel.
-  expect(screen.getByRole('combobox', { name: 'Workspace' })).toBeTruthy()
-  expect(screen.getByText('Agent context')).toBeTruthy()
+  // The tablet document layout keeps sources inline and context in its Sheet.
+  expect(document.querySelector('.source-panel')).toBeTruthy()
+  expect(screen.queryByText('Agent context')).toBeNull()
 
   fireEvent.click(railButton('Graph'))
   await waitFor(() =>
@@ -250,15 +228,15 @@ test('Graph expands to full width and hides the source and context panels', asyn
 
   // Full-screen graph: no source panel, no context panel, no workspace tabs,
   // and the shell marks the layout so the graph spans the full width.
-  expect(screen.queryByRole('combobox', { name: 'Workspace' })).toBeNull()
+  expect(document.querySelector('.source-panel')).toBeNull()
   expect(screen.queryByText('Agent context')).toBeNull()
   expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
 
   // The title-bar source action leaves the full-screen graph so the panel
   // becomes reachable again instead of silently doing nothing.
-  fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
-  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Workspace' })).toBeTruthy())
+  await selectHeaderAction('Open sources')
+  await waitFor(() => expect(document.querySelector('.source-panel')).toBeTruthy())
   expect(screen.getByRole('tab', { name: 'Document' }).getAttribute('aria-selected')).toBe('true')
 
   // Re-entering the graph hides the panels again; Knowledge restores them.
@@ -266,10 +244,10 @@ test('Graph expands to full width and hides the source and context panels', asyn
   await waitFor(() =>
     expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
   )
-  expect(screen.queryByRole('combobox', { name: 'Workspace' })).toBeNull()
+  expect(document.querySelector('.source-panel')).toBeNull()
   fireEvent.click(railButton('Knowledge'))
-  await waitFor(() => expect(screen.getByRole('combobox', { name: 'Workspace' })).toBeTruthy())
-  expect(screen.getByText('Agent context')).toBeTruthy()
+  await waitFor(() => expect(document.querySelector('.source-panel')).toBeTruthy())
+  expect(screen.queryByText('Agent context')).toBeNull()
 })
 
 test('graph and timeline evidence actions open the selected source', async () => {
@@ -282,11 +260,9 @@ test('graph and timeline evidence actions open the selected source', async () =>
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'release cadence' })).toBeTruthy()
   )
-  await waitFor(() => expect(railButton('Timeline').hasAttribute('disabled')).toBe(false))
-
-  for (const rail of ['Graph', 'Timeline']) {
-    fireEvent.click(railButton(rail))
-    if (rail === 'Graph') {
+  for (const surface of ['Graph', 'Timeline']) {
+    if (surface === 'Graph') {
+      fireEvent.click(railButton('Graph'))
       await waitFor(() =>
         expect(
           screen.getByRole('button', { name: 'Open evidence: Deployment playbook' })
@@ -294,15 +270,18 @@ test('graph and timeline evidence actions open the selected source', async () =>
       )
       expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
     } else {
+      fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
       await waitFor(() =>
-        expect(screen.getByRole('tab', { name: rail }).getAttribute('aria-selected')).toBe('true')
+        expect(screen.getByRole('tab', { name: surface }).getAttribute('aria-selected')).toBe(
+          'true'
+        )
       )
     }
     const evidenceButton = screen.getByRole('button', {
       name:
-        rail === 'Graph'
+        surface === 'Graph'
           ? 'Open evidence: Deployment playbook'
-          : new RegExp(`${rail} evidence: Deployment playbook`),
+          : new RegExp(`${surface} evidence: Deployment playbook`),
     })
     fireEvent.click(evidenceButton)
     await waitFor(() =>
@@ -397,8 +376,7 @@ test('timeline order controls navigate to the selected evidence entry', async ()
     expect(screen.getByRole('heading', { level: 1, name: 'timeline sort' })).toBeTruthy()
   )
 
-  await waitFor(() => expect(railButton('Timeline').hasAttribute('disabled')).toBe(false))
-  fireEvent.click(railButton('Timeline'))
+  fireEvent.click(screen.getByRole('tab', { name: 'Timeline' }))
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: 'Timeline' }).getAttribute('aria-selected')).toBe('true')
   )
@@ -712,34 +690,31 @@ test('utility actions use the shared token-backed button primitive', () => {
   )
 
   const openProject = screen.getByRole('button', { name: 'Open project page' })
-  expect(openProject.className).toContain('cortana-button')
-  expect(openProject.className).toContain('cortana-button--secondary')
+  expect(openProject.getAttribute('data-slot')).toBe('button')
+  expect(openProject.className).toContain('bg-secondary')
 })
 
 test('shadcn conversations compose cards and actions from the generated primitives', () => {
   render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <UtilityView
-        renderer="shadcn"
-        kind="conversations"
-        status={demoStatus}
-        sourceJobs={[]}
-        query={answerResponse.query}
-        answer={answerResponse}
-        evidence={demoEvidence}
-        loading={false}
-        error=""
-        contextBundle={null}
-        contextLoading={false}
-        contextError=""
-        contextTokens={0}
-        desktopAvailable
-        onSearchFocus={() => {}}
-        onRetrieveContext={() => {}}
-        onOpenSettings={() => {}}
-        onOpenProject={() => {}}
-      />
-    </M7SurfacePrimitivesProvider>
+    <UtilityView
+      kind="conversations"
+      status={demoStatus}
+      sourceJobs={[]}
+      query={answerResponse.query}
+      answer={answerResponse}
+      evidence={demoEvidence}
+      loading={false}
+      error=""
+      contextBundle={null}
+      contextLoading={false}
+      contextError=""
+      contextTokens={0}
+      desktopAvailable
+      onSearchFocus={() => {}}
+      onRetrieveContext={() => {}}
+      onOpenSettings={() => {}}
+      onOpenProject={() => {}}
+    />
   )
 
   expect(document.querySelector('[data-m7-utility-view="conversations"]')).toBeTruthy()

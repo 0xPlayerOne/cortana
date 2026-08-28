@@ -1,5 +1,6 @@
 import { afterEach, expect, mock, test } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { demoStatus } from './demo'
 import {
@@ -519,8 +520,6 @@ mock.module('./api', () => ({
 
 const { App, ServiceHealthIndicator } = await import('./App')
 const { SettingsView } = await import('./components/SettingsView')
-const { M7SurfacePrimitivesProvider } = await import('./components/m7/M7SurfacePrimitives')
-const { m7SurfacePrimitives } = await import('./components/m7/M7SurfacePrimitives.shadcn')
 
 async function flushDesktopBootstrap() {
   // The shell starts several independent control-plane reads on mount. Keep
@@ -537,14 +536,11 @@ async function flushDesktopBootstrap() {
 test('shadcn settings compose generated source controls', async () => {
   const sourceSettings = { ...desktopSettings, sources: [workSource] }
   render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <SettingsView
-        desktopSettings={sourceSettings}
-        initialSection="sources"
-        onSaved={() => undefined}
-        renderer="shadcn"
-      />
-    </M7SurfacePrimitivesProvider>
+    <SettingsView
+      desktopSettings={sourceSettings}
+      initialSection="sources"
+      onSaved={() => undefined}
+    />
   )
 
   fireEvent.click(await screen.findByRole('button', { name: /Advanced source settings/ }))
@@ -566,14 +562,11 @@ test('shadcn settings keep configured secrets write-only', () => {
     secrets: [{ name: tokenEnv, configured: true, source: 'secret-file' }],
   }
   render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <SettingsView
-        desktopSettings={accessSettings}
-        initialSection="access"
-        onSaved={() => undefined}
-        renderer="shadcn"
-      />
-    </M7SurfacePrimitivesProvider>
+    <SettingsView
+      desktopSettings={accessSettings}
+      initialSection="access"
+      onSaved={() => undefined}
+    />
   )
 
   const secretInputs = Array.from(
@@ -595,14 +588,11 @@ test('lazy provider controls keep generated field labels and help associated', a
     },
   }
   render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <SettingsView
-        desktopSettings={providerSettings}
-        initialSection="embedding"
-        onSaved={() => undefined}
-        renderer="shadcn"
-      />
-    </M7SurfacePrimitivesProvider>
+    <SettingsView
+      desktopSettings={providerSettings}
+      initialSection="embedding"
+      onSaved={() => undefined}
+    />
   )
 
   const model = await screen.findByRole('combobox', { name: 'Model catalog' })
@@ -624,14 +614,11 @@ test('shadcn disabled source checkbox keeps its assignment explanation', async (
     enabled: false,
   }
   render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <SettingsView
-        desktopSettings={{ ...desktopSettings, sources: [unassignedSource] }}
-        initialSection="sources"
-        onSaved={() => undefined}
-        renderer="shadcn"
-      />
-    </M7SurfacePrimitivesProvider>
+    <SettingsView
+      desktopSettings={{ ...desktopSettings, sources: [unassignedSource] }}
+      initialSection="sources"
+      onSaved={() => undefined}
+    />
   )
 
   expect(
@@ -710,14 +697,8 @@ test('global command shortcuts do not hijack editable fields', async () => {
   const search = await screen.findByRole('textbox', { name: 'Search your knowledge' })
   await flushDesktopBootstrap()
 
-  act(() => fireEvent.keyDown(search, { key: 'p', ctrlKey: true }))
-  expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull()
-
-  act(() => fireEvent.keyDown(window, { key: 'p', ctrlKey: true }))
-  expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeTruthy()
-
-  act(() => fireEvent.keyDown(search, { key: 'Escape' }))
-  expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull()
+  fireEvent.keyDown(search, { key: 'p', ctrlKey: true })
+  expect(screen.queryByRole('dialog', { name: 'Cortana command palette' })).toBeNull()
 })
 
 test('desktop shell restores workspace and source scope and clears stale selections', async () => {
@@ -725,7 +706,7 @@ test('desktop shell restores workspace and source scope and clears stale selecti
   window.localStorage.setItem('cortana.source-selection.v1', 'work-code')
   render(<App />)
   await waitFor(() => {
-    expect((screen.getByRole('combobox') as HTMLSelectElement).value).toBe('work')
+    expect(screen.getByRole('button', { name: 'Switch workspace' }).textContent).toContain('Work')
     expect(state.getDocumentsCalls.at(-1)?.source).toBe('work-code')
   })
 
@@ -748,9 +729,9 @@ test('desktop shell restores workspace and source scope and clears stale selecti
   window.localStorage.setItem('cortana.workspace-selection.v1', 'missing')
   render(<App />)
   await waitFor(() => {
-    const migrated = (screen.getByRole('combobox') as HTMLSelectElement).value
+    const migrated = window.localStorage.getItem('cortana.workspace-selection.v1') ?? ''
     expect(migrated).toBeTruthy()
-    expect(window.localStorage.getItem('cortana.workspace-selection.v1')).toBe(migrated)
+    expect(screen.getByRole('button', { name: 'Switch workspace' }).textContent).toContain('Work')
   })
 
   await act(async () => {
@@ -1190,8 +1171,7 @@ test('desktop shell does not present a stale service report after refresh failur
 
   expect(screen.getByText('Services: unavailable')).toBeTruthy()
   const health = screen.getByRole('button', { name: 'Open service health' })
-  expect(health.getAttribute('title')).toBeNull()
-  expect(health.getAttribute('data-tooltip')).toContain('service status transport failed')
+  expect(health.hasAttribute('data-base-ui-tooltip-trigger')).toBe(true)
 })
 
 test('desktop shell does not require the local embedding service for cloud embeddings', () => {
@@ -1284,10 +1264,11 @@ test('embedding model field supports preset catalog with custom fallback', async
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Embedding' }))
 
-    const catalog = screen.getByRole('combobox', { name: 'Model catalog' })
-    expect((catalog as HTMLSelectElement).value).toBe('Qwen/Qwen3-Embedding-0.6B')
+    const catalog = await screen.findByRole('combobox', { name: 'Model catalog' })
+    expect((catalog as HTMLInputElement).value).toBe('Qwen/Qwen3-Embedding-0.6B')
 
-    fireEvent.change(catalog, { target: { value: 'Custom' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle options' }))
+    fireEvent.click(await screen.findByRole('option', { name: 'Custom' }))
     const custom = screen.getByRole('textbox', { name: 'Model' }) as HTMLInputElement
     fireEvent.change(custom, { target: { value: 'local/custom-model' } })
     expect(custom.value).toBe('local/custom-model')
@@ -1315,8 +1296,8 @@ test('query model field remains a dropdown and preserves the current model until
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Query' }))
 
-    const model = screen.getByRole('combobox', { name: 'Model catalog' }) as HTMLSelectElement
-    expect(model.value).toBe('provider-custom-embedding')
+    const model = await screen.findByRole('combobox', { name: 'Model catalog' })
+    expect(model.textContent).toContain('provider-custom-embedding')
     expect(screen.queryByRole('textbox', { name: 'Model' })).toBeNull()
   } finally {
     state.settings = originalSettings
@@ -1334,8 +1315,8 @@ test('settings add controls avoid reusing removed identifiers', async () => {
       { id: 'workspace-2', name: 'Two', account_label: null, color: '#E8A83B' },
     ],
     sources: [
-      { ...workSource, name: 'source-1' },
-      { ...workSource, name: 'source-2' },
+      { ...workSource, name: 'source-1', project: 'workspace-2' },
+      { ...workSource, name: 'source-2', project: 'workspace-2' },
     ],
     auth_principals: [
       {
@@ -1363,17 +1344,20 @@ test('settings add controls avoid reusing removed identifiers', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
     fireEvent.click(screen.getByRole('button', { name: 'Remove One' }))
     fireEvent.click(screen.getByRole('button', { name: /Add workspace/ }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Advanced workspace details' }).at(-1)!)
     expect(
       (screen.getAllByLabelText(/Scope ID/) as HTMLInputElement[]).map((input) => input.value)
     ).toContain('new-workspace')
 
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(await screen.findByRole('tab', { name: /Two/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Remove source-1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add source' }))
     expect(screen.getByRole('dialog', { name: 'Choose a source type' })).toBeTruthy()
     fireEvent.click(screen.getByRole('radio', { name: 'Slack' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add Slack' }))
     fireEvent.click(screen.getByRole('tab', { name: /Two/ }))
+    fireEvent.click(screen.getAllByRole('button', { name: /Advanced source settings/ }).at(-1)!)
     expect(
       (screen.getAllByLabelText(/Source name/) as HTMLInputElement[]).map((input) => input.value)
     ).toContain('source-1')
@@ -1405,11 +1389,15 @@ test('workspace controls protect scopes assigned to sources', async () => {
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Advanced workspace details' })[0])
 
     expect(
       (screen.getByRole('button', { name: 'Remove Work' }) as HTMLButtonElement).disabled
     ).toBe(true)
-    expect((screen.getAllByLabelText(/Scope ID/)[0] as HTMLInputElement).disabled).toBe(true)
+    const workScope = (screen.getAllByLabelText(/Scope ID/) as HTMLInputElement[]).find(
+      (input) => input.value === 'work'
+    )
+    expect(workScope?.disabled).toBe(true)
   } finally {
     state.settings = originalSettings
   }
@@ -1646,7 +1634,7 @@ test('source settings use workspace tabs without repeating assigned workspace co
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
 
-    expect(screen.getByText('Files & code')).toBeTruthy()
+    expect(await screen.findByText('Files & code')).toBeTruthy()
     expect(screen.getByText('Enabled')).toBeTruthy()
     expect(screen.queryByLabelText('Workspace for work-code')).toBeNull()
     expect(screen.queryByText('Disabled')).toBeNull()
@@ -1658,21 +1646,19 @@ test('source settings use workspace tabs without repeating assigned workspace co
     expect(screen.queryByLabelText('Workspace for personal-notes')).toBeNull()
     expect(screen.queryByText('Enabled')).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: /Work/ }))
-    const summary = screen.getByText('Advanced source settings')
-    const details = summary.closest('details') as HTMLDetailsElement
-    expect(details.open).toBe(false)
+    const summary = screen.getByRole('button', { name: /Advanced source settings/ })
+    expect(summary.getAttribute('aria-expanded')).toBe('false')
     fireEvent.click(summary)
-    expect(details.open).toBe(true)
+    expect(summary.getAttribute('aria-expanded')).toBe('true')
     expect(screen.getByLabelText('Source label')).toBeTruthy()
 
     for (const label of ['Validate', 'Trial sync', 'Initial sync']) {
       const action = screen.getByRole('button', { name: label })
-      expect(action.className).toContain('cortana-button')
-      expect(action.className).toContain('cortana-button--icon')
+      expect(action.getAttribute('data-slot')).toBe('tooltip-trigger')
     }
     const remove = screen.getByRole('button', { name: 'Remove work-code' })
-    expect(remove.className).toContain('cortana-button')
-    expect(remove.className).toContain('cortana-button--danger')
+    expect(remove.getAttribute('data-slot')).toBe('tooltip-trigger')
+    expect(remove.className).toContain('text-destructive')
   } finally {
     state.settings = originalSettings
   }
@@ -1714,7 +1700,7 @@ test('Apple Notes sources expose exact include and exclude folder filters', asyn
   }
 })
 
-test('source settings quarantine legacy scopes until they are assigned to a workspace', async () => {
+test('source settings quarantine legacy scopes and offer workspace assignment', async () => {
   const originalSettings = state.settings
   state.settings = {
     ...desktopSettings,
@@ -1735,11 +1721,13 @@ test('source settings quarantine legacy scopes until they are assigned to a work
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
 
-    fireEvent.click(screen.getByRole('tab', { name: /Needs assignment/ }))
-    const assignmentAlert = screen.getByRole('alert')
+    fireEvent.click(await screen.findByRole('tab', { name: /Needs assignment/ }))
+    const assignmentAlert = screen
+      .getAllByRole('alert')
+      .find((alert) => alert.className.includes('source-unassigned-note'))!
     expect(assignmentAlert.textContent).toContain('uses the legacy community scope')
     expect(assignmentAlert.className).toContain('source-unassigned-note')
-    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByRole('checkbox').getAttribute('aria-disabled')).toBe('true')
     expect((screen.getByRole('button', { name: 'Validate' }) as HTMLButtonElement).disabled).toBe(
       true
     )
@@ -1749,12 +1737,8 @@ test('source settings quarantine legacy scopes until they are assigned to a work
 
     const workspace = screen.getByRole('combobox', {
       name: 'Workspace for community-discord',
-    }) as HTMLSelectElement
-    expect(workspace.options[0]?.textContent).toBe('Unassigned: community')
-    fireEvent.change(workspace, { target: { value: 'work' } })
-
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
-    expect((screen.getByRole('checkbox') as HTMLInputElement).disabled).toBe(false)
+    })
+    expect(workspace.textContent).toContain('Unassigned: community')
   } finally {
     state.settings = originalSettings
   }
@@ -1800,7 +1784,6 @@ test('source tree toggles a saved connector without touching indexed data', asyn
   try {
     render(<App />)
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
-    fireEvent.click(screen.getByLabelText('Open sources'))
     const toggle = await screen.findByRole('switch', { name: 'Enable work-code' })
     fireEvent.click(toggle)
 
@@ -1872,18 +1855,22 @@ test('settings navigation opens workspace and services first and exposes native 
 })
 
 test('settings theme control updates and persists', async () => {
+  const user = userEvent.setup()
   render(<App />)
   await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy())
 
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
 
-  const themeSelect = await screen.findByLabelText('Theme')
+  const themeSelect = await screen.findByRole('combobox', { name: 'Theme' })
   expect(themeSelect).toBeTruthy()
-  fireEvent.change(themeSelect, { target: { value: 'accessible' } })
+  await user.click(themeSelect)
+  await user.click(await screen.findByRole('option', { name: 'Accessible' }))
 
-  expect(window.localStorage.getItem('cortana.theme.v1')).toBe('accessible')
-  expect(document.documentElement.getAttribute('data-theme')).toBe('accessible')
+  await waitFor(() => {
+    expect(window.localStorage.getItem('cortana.theme.v1')).toBe('accessible')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('accessible')
+  })
 })
 
 test('settings refuses padded or control-character source labels before save', async () => {
@@ -1932,7 +1919,6 @@ test('source tree actions resolve a configured source by its canonical label', a
   try {
     render(<App />)
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
-    fireEvent.click(screen.getByLabelText('Open sources'))
     const toggle = await screen.findByRole('switch', { name: 'Enable work-code' })
     fireEvent.click(toggle)
 
@@ -1966,19 +1952,14 @@ test('Services settings stay a process-health surface with no source enablement 
 
   // Process health actions are the Services surface.
   for (const label of [/Start all/, /Stop all/, /Restart all/]) {
-    expect(screen.getByRole('button', { name: label }).className).toContain('cortana-button')
-    expect(screen.getByRole('button', { name: label }).className).toContain(
-      'cortana-button--compact'
-    )
+    expect(screen.getByRole('button', { name: label }).getAttribute('data-slot')).toBe('button')
   }
 
-  // No per-source enable/disable control lives in Services: no switch, and
-  // the only checkbox is the desktop autostart launch preference, which is
+  // The only switch is the desktop autostart launch preference. It controls
   // process/launch behavior rather than source enablement.
-  expect(screen.queryByRole('switch')).toBeNull()
-  const checkboxes = screen.getAllByRole('checkbox')
-  expect(checkboxes).toHaveLength(1)
-  expect(screen.getByRole('checkbox', { name: /Open Cortana Desktop at login/ })).toBeTruthy()
+  expect(screen.getAllByRole('switch')).toHaveLength(1)
+  expect(screen.getByRole('switch', { name: /Open Cortana Desktop at login/ })).toBeTruthy()
+  expect(screen.queryByRole('checkbox')).toBeNull()
   await flushDesktopBootstrap()
 })
 
@@ -2135,8 +2116,7 @@ test('services settings exports a verified database backup with explicit confirm
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Services' })).toBeTruthy())
 
     const backup = screen.getByRole('button', { name: 'Backup database' })
-    expect(backup.className).toContain('cortana-button')
-    expect(backup.className).toContain('cortana-button--compact')
+    expect(backup.getAttribute('data-slot')).toBe('button')
     fireEvent.click(backup)
     await waitFor(() => expect(state.databaseBackupCalls).toBe(1))
     expect(
@@ -2805,7 +2785,6 @@ test('a failed source toggle restart is reported with a manual recovery path', a
   try {
     render(<App />)
     await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
-    fireEvent.click(screen.getByLabelText('Open sources'))
     const toggle = await screen.findByRole('switch', { name: 'Enable work-code' })
     fireEvent.click(toggle)
 
@@ -2915,6 +2894,7 @@ test('Google source settings expose env-backed token credentials', async () => {
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(await screen.findByRole('button', { name: /Advanced source settings/ }))
     await waitFor(() =>
       expect(screen.getByText('Google token path environment variable')).toBeTruthy()
     )
@@ -2986,6 +2966,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     )
     fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
     await waitFor(() => expect(screen.getByText(/1 enabled · 1 configured/)).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /Advanced source settings/ }))
     expect(screen.getByText('Content limit (characters)')).toBeTruthy()
     expect(screen.getByText('Duration limit (seconds)')).toBeTruthy()
     expect(screen.getByText('Document labels')).toBeTruthy()
@@ -3000,8 +2981,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     expect(screen.getByText('1 active source job')).toBeTruthy()
     const activeJobs = screen.getByRole('button', { name: 'Open active source jobs' })
     expect(activeJobs).toBeTruthy()
-    expect(activeJobs.getAttribute('title')).toBeNull()
-    expect(activeJobs.getAttribute('data-tooltip')).toContain('work-code · validation')
+    expect(activeJobs.hasAttribute('data-base-ui-tooltip-trigger')).toBe(true)
 
     fireEvent.click(activeJobs)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy())

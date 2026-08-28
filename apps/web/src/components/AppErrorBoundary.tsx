@@ -1,7 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
-import { Button } from './ui/Button'
+import { Button } from './shadcn/button'
 
 type Props = { children: ReactNode }
 type State = { failed: boolean }

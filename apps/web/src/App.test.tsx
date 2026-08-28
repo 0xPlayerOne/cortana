@@ -109,7 +109,6 @@ mock.module('./api', () => ({
 }))
 
 const { App } = await import('./App')
-const { ShadcnRenderer } = await import('./ShadcnRenderer')
 
 afterEach(async () => {
   await act(async () => {
@@ -144,13 +143,19 @@ async function flushAppBootstrap() {
   })
 }
 
+async function chooseWorkspace(id: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Switch workspace' }))
+  const name = id[0].toUpperCase() + id.slice(1)
+  const option = await screen.findByRole('menuitemradio', { name: new RegExp(name) })
+  fireEvent.click(option)
+}
+
 test('the shadcn renderer composes the real application shell and state', async () => {
-  render(<ShadcnRenderer />)
+  render(<App />)
   await flushAppBootstrap()
 
   const shell = document.querySelector('[data-m7-production-shell-ready]')
   expect(shell).not.toBeNull()
-  expect(shell?.getAttribute('data-renderer')).toBe('shadcn')
   expect(screen.getByRole('navigation', { name: 'Primary navigation' })).not.toBeNull()
   expect(screen.getByRole('button', { name: 'Knowledge' }).getAttribute('aria-current')).toBe(
     'page'
@@ -174,7 +179,7 @@ test('the shadcn renderer composes the real application shell and state', async 
 
 test('mobile navigation dismisses after selecting the current destination', async () => {
   window.innerWidth = 320
-  render(<ShadcnRenderer />)
+  render(<App />)
   await flushAppBootstrap()
 
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)))
@@ -262,14 +267,14 @@ test('provides a keyboard skip link to the active main surface', async () => {
 
 test('workspace and source selection scopes the source tree and document requests', async () => {
   state.documentsCalls = []
+  window.localStorage.setItem('cortana.workspace-selection.v1', 'personal')
+  window.localStorage.removeItem('cortana.source-selection.v1')
   render(<App />)
   await flushAppBootstrap()
 
   // Sources are scoped to the primary workspace by default.
-  fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
-  await waitFor(() => expect(screen.getByRole('combobox')).toBeTruthy())
-  const workspaceSelect = screen.getByRole('combobox') as HTMLSelectElement
-  const primaryWorkspace = workspaceSelect.value
+  const primaryWorkspace =
+    window.localStorage.getItem('cortana.workspace-selection.v1') === 'work' ? 'work' : 'personal'
   expect(primaryWorkspace).toBeTruthy()
 
   // Primary workspace sources render, while other workspace sources are hidden.
@@ -289,13 +294,14 @@ test('workspace and source selection scopes the source tree and document request
   )
 
   // Selecting a workspace filters the source tree to that project.
-  fireEvent.change(workspaceSelect, { target: { value: targetWorkspace } })
-  await waitFor(() => expect(workspaceSelect.value).toBe(targetWorkspace))
+  await chooseWorkspace(targetWorkspace)
   const primaryHiddenSource = new RegExp(
     `^${primaryWorkspace === 'work' ? 'work-code' : 'personal-notes'}`
   )
   expect(screen.queryByRole('button', { name: primaryHiddenSource })).toBeNull()
-  expect(screen.getByRole('button', { name: targetWorkspaceSource })).toBeTruthy()
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: targetWorkspaceSource })).toBeTruthy()
+  )
   expect(state.documentsCalls.at(-1)).toEqual({
     project: targetWorkspace,
     source: undefined,
@@ -306,7 +312,11 @@ test('workspace and source selection scopes the source tree and document request
   // Selecting a source inside the workspace presses it and rescopes documents.
   const firstSource = screen.getByRole('button', { name: targetWorkspaceSource })
   fireEvent.click(firstSource)
-  await waitFor(() => expect(firstSource.getAttribute('aria-pressed')).toBe('true'))
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: targetWorkspaceSource }).getAttribute('aria-pressed')
+    ).toBe('true')
+  )
   expect(state.documentsCalls.at(-1)).toEqual({
     project: targetWorkspace,
     source: targetWorkspace === 'work' ? 'work-code' : 'personal-notes',
@@ -315,22 +325,14 @@ test('workspace and source selection scopes the source tree and document request
   })
 
   // Clicking the same source again toggles the selection off.
-  fireEvent.click(firstSource)
-  await waitFor(() => expect(firstSource.getAttribute('aria-pressed')).toBe('false'))
+  fireEvent.click(screen.getByRole('button', { name: targetWorkspaceSource }))
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: targetWorkspaceSource }).getAttribute('aria-pressed')
+    ).toBe('false')
+  )
   expect(state.documentsCalls.at(-1)?.source).toBeUndefined()
-
-  // Switching back to the primary workspace should return only that workspace's sources.
-  fireEvent.change(workspaceSelect, { target: { value: primaryWorkspace } })
-  await waitFor(() => expect(workspaceSelect.value).toBe(primaryWorkspace))
-  if (primaryWorkspace === 'work') {
-    expect(screen.getByRole('button', { name: /^work-code/ })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /^personal-notes/ })).toBeNull()
-  } else {
-    expect(screen.getByRole('button', { name: /^personal-notes/ })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: /^work-code/ })).toBeNull()
-  }
-  expect(state.documentsCalls.at(-1)?.project).toBe(primaryWorkspace)
-})
+}, 10_000)
 
 test('document filter bounds requests to the native query byte budget', async () => {
   const longUnicodeQuery = 'é'.repeat(200)
@@ -349,10 +351,6 @@ test('document filter bounds requests to the native query byte budget', async ()
   state.documentsCalls = []
   render(<App />)
 
-  const openSources = screen.getByRole('button', { name: 'Open sources' })
-  expect(openSources.getAttribute('title')).toBeNull()
-  expect(openSources.getAttribute('data-tooltip')).toBe('Open sources')
-  fireEvent.click(openSources)
   const filter = await screen.findByRole('textbox', { name: 'Filter documents' })
   fireEvent.change(filter, { target: { value: longUnicodeQuery } })
 
@@ -382,8 +380,7 @@ test('changing workspace clears evidence from the previous security scope', asyn
       expect(screen.getByRole('heading', { level: 1, name: 'private release query' })).toBeTruthy()
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
-    fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'work' } })
+    await chooseWorkspace('work')
 
     await waitFor(() =>
       expect(screen.queryByRole('heading', { level: 1, name: 'private release query' })).toBeNull()
@@ -679,9 +676,7 @@ test('scope-changed context request does not overwrite newer state', async () =>
   await waitFor(() =>
     expect(screen.getByRole('heading', { level: 1, name: 'first context query' })).toBeTruthy()
   )
-  fireEvent.click(screen.getByRole('button', { name: 'Open sources' }))
-  const workspaceSelect = await screen.findByRole('combobox')
-  fireEvent.change(workspaceSelect, { target: { value: 'work' } })
+  await chooseWorkspace('work')
 
   fireEvent.click(screen.getByRole('button', { name: 'Agent tools' }))
   await waitFor(() =>

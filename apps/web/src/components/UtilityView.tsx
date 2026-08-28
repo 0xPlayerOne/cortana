@@ -17,7 +17,7 @@ import {
   Sparkles,
   TerminalSquare,
 } from 'lucide-react'
-import { createContext, type ComponentProps, useContext, useState } from 'react'
+import { type ComponentProps, useState } from 'react'
 
 import { openDesktopUrl } from '../api'
 import type {
@@ -31,8 +31,8 @@ import { describeSourceJobProgress, recentCompletedJobs } from '../sourceJobs'
 import { describeSyncRunProgress } from '../operations'
 import { shortcutLabel } from '../shortcuts'
 import { useClipboardCopy } from '../useClipboardCopy'
-import { useM7SurfacePrimitives } from './m7/M7SurfacePrimitives'
-import { Button as LegacyButton, type ButtonProps } from './ui/Button'
+import { Button as ShadcnButton } from './shadcn/button'
+import { Card } from './shadcn/card'
 
 export type UtilityKind = 'inbox' | 'conversations' | 'agent-tools' | 'index' | 'help'
 
@@ -64,14 +64,11 @@ const TITLES: Record<UtilityKind, { eyebrow: string; title: string; description:
   },
 }
 
-const UtilityRendererContext = createContext<'legacy' | 'shadcn'>('legacy')
+type ButtonProps = Omit<ComponentProps<typeof ShadcnButton>, 'variant' | 'size'> & {
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon' | 'compact'
+}
 
 function Button({ variant = 'secondary', ...props }: ButtonProps) {
-  const renderer = useContext(UtilityRendererContext)
-  const ShadcnButton = useM7SurfacePrimitives()?.Button
-  if (renderer === 'legacy' || !ShadcnButton) {
-    return <LegacyButton variant={variant} {...props} />
-  }
   return (
     <ShadcnButton
       {...props}
@@ -90,9 +87,7 @@ function Button({ variant = 'secondary', ...props }: ButtonProps) {
 }
 
 function UtilityCard(props: ComponentProps<'div'>) {
-  const renderer = useContext(UtilityRendererContext)
-  const ShadcnCard = useM7SurfacePrimitives()?.Card
-  return renderer === 'shadcn' && ShadcnCard ? <ShadcnCard {...props} /> : <div {...props} />
+  return <Card {...props} />
 }
 
 export function UtilityView({
@@ -118,7 +113,6 @@ export function UtilityView({
   onOpenSettings,
   onOpenProject,
   onCancelSourceJob,
-  renderer = 'legacy',
 }: {
   kind: UtilityKind
   status: BrainStatus | null
@@ -142,71 +136,64 @@ export function UtilityView({
   onOpenSettings: () => void
   onOpenProject: () => void | Promise<void>
   onCancelSourceJob?: (id: string) => void
-  renderer?: 'legacy' | 'shadcn'
 }) {
   const { eyebrow, title, description } = TITLES[kind]
   return (
-    <UtilityRendererContext.Provider value={renderer}>
-      <main
-        id="main-content"
-        className={`utility-view ${renderer === 'shadcn' ? 'm7-utility-view' : ''}`}
-        data-m7-utility-view={renderer === 'shadcn' ? kind : undefined}
-      >
-        <header className="utility-header">
-          <div>
-            <span className="eyebrow">{eyebrow}</span>
-            <h1>{title}</h1>
-            <p>{description}</p>
-          </div>
-        </header>
-        <div className="utility-body">
-          {kind === 'inbox' && (
-            <InboxView
-              status={status}
-              statusError={statusError}
-              sourceJobs={sourceJobs}
-              sourceJobError={sourceJobError}
-              onRetrySourceJobs={onRetrySourceJobs}
-              onOpenSettings={onOpenSettings}
-              onRetryStatus={onRetryStatus}
-              onCancelSourceJob={onCancelSourceJob}
-            />
-          )}
-          {kind === 'conversations' && (
-            <ConversationsView
-              query={query}
-              answer={answer}
-              evidence={evidence}
-              loading={loading}
-              error={error}
-              onSearchFocus={onSearchFocus}
-            />
-          )}
-          {kind === 'agent-tools' && (
-            <AgentToolsView
-              query={query}
-              evidence={evidence}
-              contextBundle={contextBundle}
-              contextLoading={contextLoading}
-              contextError={contextError}
-              contextTokens={contextTokens}
-              onRetrieveContext={onRetrieveContext}
-            />
-          )}
-          {kind === 'index' && (
-            <IndexView
-              status={status}
-              statusError={statusError}
-              onOpenSettings={onOpenSettings}
-              onRetryStatus={onRetryStatus}
-            />
-          )}
-          {kind === 'help' && (
-            <HelpView desktopAvailable={desktopAvailable} onOpenProject={onOpenProject} />
-          )}
+    <main id="main-content" className="utility-view m7-utility-view" data-m7-utility-view={kind}>
+      <header className="utility-header">
+        <div>
+          <span className="eyebrow">{eyebrow}</span>
+          <h1>{title}</h1>
+          <p>{description}</p>
         </div>
-      </main>
-    </UtilityRendererContext.Provider>
+      </header>
+      <div className="utility-body">
+        {kind === 'inbox' && (
+          <InboxView
+            status={status}
+            statusError={statusError}
+            sourceJobs={sourceJobs}
+            sourceJobError={sourceJobError}
+            onRetrySourceJobs={onRetrySourceJobs}
+            onOpenSettings={onOpenSettings}
+            onRetryStatus={onRetryStatus}
+            onCancelSourceJob={onCancelSourceJob}
+          />
+        )}
+        {kind === 'conversations' && (
+          <ConversationsView
+            query={query}
+            answer={answer}
+            evidence={evidence}
+            loading={loading}
+            error={error}
+            onSearchFocus={onSearchFocus}
+          />
+        )}
+        {kind === 'agent-tools' && (
+          <AgentToolsView
+            query={query}
+            evidence={evidence}
+            contextBundle={contextBundle}
+            contextLoading={contextLoading}
+            contextError={contextError}
+            contextTokens={contextTokens}
+            onRetrieveContext={onRetrieveContext}
+          />
+        )}
+        {kind === 'index' && (
+          <IndexView
+            status={status}
+            statusError={statusError}
+            onOpenSettings={onOpenSettings}
+            onRetryStatus={onRetryStatus}
+          />
+        )}
+        {kind === 'help' && (
+          <HelpView desktopAvailable={desktopAvailable} onOpenProject={onOpenProject} />
+        )}
+      </div>
+    </main>
   )
 }
 
