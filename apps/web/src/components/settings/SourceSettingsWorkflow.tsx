@@ -2,7 +2,7 @@ import {
   AlertTriangle,
   CircleStop,
   ExternalLink,
-  FlaskConical,
+  File,
   FolderOpen,
   KeyRound,
   LoaderCircle,
@@ -10,7 +10,6 @@ import {
   RefreshCw,
   ShieldCheck,
   Trash2,
-  X,
   Zap,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -778,7 +777,7 @@ export function SourcesSection({
   return (
     <SettingsSection
       title="Ingestion sources"
-      description="Configure local and account-backed sources per workspace. Saving never ingests data; validation, a deliberately small no-reconcile trial sync, and a fixed-budget guided initial sync are separate confirmed actions."
+      description="Configure local and account-backed sources per workspace. Saving never ingests data. Most users only need Test connection followed by Initial sync; Trial sync is reserved for an optional guarded recovery check."
     >
       <div className="source-settings-toolbar">
         <span>
@@ -839,6 +838,7 @@ export function SourcesSection({
                   type="button"
                   onClick={() => void addFilesystemSource('source-file')}
                 >
+                  <File size={15} />
                   Choose file
                 </Button>
                 <Button
@@ -1041,23 +1041,11 @@ export function SourcesSection({
                           variant="icon"
                           type="button"
                           className="source-icon-button "
-                          aria-label="Validate"
-                          tooltip="Validate"
+                          aria-label="Test connection"
+                          tooltip="Test connection"
                           onClick={() => void validateSource(source)}
                         >
                           <ShieldCheck size={14} />
-                        </Button>
-                      )}
-                      {canValidate && !activeJob && source.enabled && workspaceAssigned && (
-                        <Button
-                          variant="icon"
-                          type="button"
-                          className="source-icon-button "
-                          aria-label="Trial sync"
-                          tooltip="Trial sync"
-                          onClick={() => void trialSyncSource(source)}
-                        >
-                          <FlaskConical size={14} />
                         </Button>
                       )}
                       {canValidate && !activeJob && source.enabled && workspaceAssigned && (
@@ -2116,17 +2104,34 @@ export function SourcesSection({
           </div>
 
           {initialSync && initialSyncSource && (
-            <InitialSyncFlow
-              source={initialSyncSource}
-              flow={initialSync}
-              busy={Boolean(activeJob) || !canValidate}
-              onBudget={(budget) => void requestPlan(initialSync.source, budget)}
-              onValidate={() =>
-                void validateInitialSyncBudget(sourceOf(settings, initialSync.source))
-              }
-              onStart={() => void startInitialSync(sourceOf(settings, initialSync.source))}
-              onClose={() => setInitialSync(null)}
-            />
+            <Dialog
+              open
+              onOpenChange={(open) => {
+                if (!open) setInitialSync(null)
+              }}
+            >
+              <DialogContent className="initial-sync-dialog">
+                <DialogHeader>
+                  <DialogTitle>Initial sync</DialogTitle>
+                  <DialogDescription>
+                    <span className="eyebrow">Guided initial sync</span> Review the bounded
+                    first-import plan for {initialSyncSource.name}. Test the connection first, then
+                    start the sync only when the selected budget is covered by a successful
+                    validation.
+                  </DialogDescription>
+                </DialogHeader>
+                <InitialSyncFlow
+                  source={initialSyncSource}
+                  flow={initialSync}
+                  busy={Boolean(activeJob) || !canValidate}
+                  onBudget={(budget) => void requestPlan(initialSync.source, budget)}
+                  onValidate={() =>
+                    void validateInitialSyncBudget(sourceOf(settings, initialSync.source))
+                  }
+                  onStart={() => void startInitialSync(sourceOf(settings, initialSync.source))}
+                />
+              </DialogContent>
+            </Dialog>
           )}
 
           {error && (
@@ -2190,12 +2195,13 @@ export function SourcesSection({
           <details className="source-safety-details">
             <summary>How source sync limits work</summary>
             <p>
-              Source validation checks a bounded snapshot and writes only metadata about the
-              outcome. Trial sync is separately confirmed, requires an exact successful validation,
-              limits work to 25 documents and 5 MiB, and never performs deletion reconciliation.
-              Initial sync is planned first, uses one of three fixed budgets (up to 2,000 documents,
-              128 MiB, 60 minutes), requires validation at equal or larger limits, and never
-              escalates beyond the selected budget.
+              Test connection checks a bounded snapshot and writes only metadata about the outcome.
+              Trial sync is an optional guarded recovery check, requires an exact successful
+              validation, limits work to 25 documents and 5 MiB, and never performs deletion
+              reconciliation. It is not required for the normal first import. Initial sync is
+              planned first, uses one of three fixed budgets (up to 2,000 documents, 128 MiB, 60
+              minutes), requires validation at equal or larger limits, and never escalates beyond
+              the selected budget.
             </p>
           </details>
         </SettingsTabsContent>
@@ -2277,7 +2283,6 @@ function InitialSyncFlow({
   onBudget,
   onValidate,
   onStart,
-  onClose,
 }: {
   source: SourceSettings
   flow: {
@@ -2291,27 +2296,10 @@ function InitialSyncFlow({
   onBudget: (budget: InitialSyncBudget) => void
   onValidate: () => void
   onStart: () => void
-  onClose: () => void
 }) {
   const plan = flow.plan
   return (
     <section className="initial-sync-flow" aria-label={`Initial sync plan for ${source.name}`}>
-      <header>
-        <div>
-          <span className="eyebrow">Guided initial sync</span>
-          <strong>{source.name}</strong>
-        </div>
-        <Button
-          variant="icon"
-          type="button"
-          aria-label="Close initial sync plan"
-          tooltip="Close initial sync plan"
-          className=""
-          onClick={onClose}
-        >
-          <X size={15} />
-        </Button>
-      </header>
       <SettingsRadioGroup
         className="initial-sync-budgets"
         role="radiogroup"
@@ -2393,7 +2381,7 @@ function InitialSyncFlow({
           )}
           <div className="initial-sync-actions">
             <Button
-              variant="primary"
+              variant="outline"
               disabled={
                 !plan.enabled || plan.validation_covers_budget !== true || busy || flow.planning
               }
@@ -2423,7 +2411,7 @@ function newSource(
       settings.sources.map((source) => source.name)
     ),
     kind,
-    enabled: false,
+    enabled: true,
     project: project || settings.workspaces[0]?.id || 'personal',
     root: null,
     source: null,

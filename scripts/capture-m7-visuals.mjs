@@ -14,7 +14,7 @@ for (let index = 2; index < process.argv.length; index += 2) {
 const baseUrl = args.get('--base-url') ?? 'http://127.0.0.1:4173'
 const output = resolve(args.get('--output') ?? 'artifacts/m7-shadcn/final')
 const widths = [320, 768, 1024, 1440, 1920]
-const themes = ['blue', 'accessible', 'forest', 'plum']
+const themes = ['blue', 'accessible', 'forest', 'plum', 'sand']
 const consoleErrors = []
 let screenshotCount = 0
 
@@ -190,7 +190,7 @@ async function auditAccessibility(page, label) {
           Math.abs(collapsedMetrics.sidebarWidth - 72) > 1 ||
           Math.abs(collapsedMetrics.targetWidth - 48) > 1 ||
           Math.abs(collapsedMetrics.iconWidth - 24) > 1 ||
-          Math.abs(collapsedMetrics.logoWidth - 72) > 1 ||
+          Math.abs(collapsedMetrics.logoWidth - 48) > 1 ||
           collapsedMetrics.labelsDisplay !== 'none'
         ) {
           throw new Error(
@@ -204,7 +204,7 @@ async function auditAccessibility(page, label) {
         const expandedLogoWidth = await page
           .locator('[aria-label="Switch workspace"] .workspace-logo')
           .evaluate((element) => element.getBoundingClientRect().width)
-        if (Math.abs(expandedLogoWidth - 72) > 1) {
+        if (Math.abs(expandedLogoWidth - 48) > 1) {
           throw new Error(`Expanded workspace logo regressed to ${expandedLogoWidth}px`)
         }
         await auditAccessibility(page, 'expanded desktop navigation')

@@ -380,10 +380,10 @@ test('a shared active source job locks source actions until it finishes', async 
   render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
 
   await openAdvancedSource()
-  expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy()
+  await waitFor(() => expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: /Cancel/ }))
   await waitFor(() => expect(state.cancelCalls).toEqual(['source-1-1']))
-  for (const label of ['Validate', 'Trial sync', 'Initial sync', 'Remove work-code']) {
+  for (const label of ['Test connection', 'Trial sync', 'Initial sync', 'Remove work-code']) {
     if (label === 'Remove work-code') {
       expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(true)
     } else {
@@ -413,10 +413,12 @@ test('standalone source polling pauses while Settings is backgrounded', async ()
     render(
       <SettingsView onSaved={() => {}} initialSection="sources" desktopSettings={state.settings} />
     )
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Validate' })).toBeTruthy())
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy()
+    )
 
     act(() => setVisibility('hidden'))
-    fireEvent.click(screen.getByRole('button', { name: 'Validate' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
     await waitFor(() => expect(state.validationCalls).toHaveLength(1))
     await new Promise((resolve) => setTimeout(resolve, 800))
     expect(state.pollCount).toBe(0)
@@ -530,6 +532,8 @@ test('editing the selected source invalidates its initial-sync plan', async () =
   await waitFor(() => expect(screen.getByText('Guided initial sync')).toBeTruthy())
   await waitFor(() => expect(screen.getByText('100 documents · 25 MiB · 15 minutes')).toBeTruthy())
 
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+  await waitFor(() => expect(screen.queryByText('Guided initial sync')).toBeNull())
   await openAdvancedSource()
 
   await act(async () => {

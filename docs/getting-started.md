@@ -50,7 +50,7 @@ host-acceptance notes in the [Desktop audit](desktop-ux-audit.md).
    **Exclude Apple Notes folders**; create separate Apple Notes sources when folders belong to
    different workspaces. Credentials stay outside the renderer and are never written into the
    index.
-5. **Validate before syncing.** Select **Validate** with the default small budget. Validation is
+5. **Test the connection before syncing.** Select **Test connection**. This bounded check is
    read-only: it does not embed, index, reconcile, or delete anything.
 6. **Run one bounded initial sync.** After validation succeeds, confirm **Initial sync** with the
    smallest budget. Review the progress and source status, then ask a known question and confirm
@@ -114,8 +114,9 @@ validation as permission for reconciliation or recurring sync.
 - [Operations guide](operations.md) — readiness, backups, recovery, authentication, and service
   management.
 
-The shortest safe success criterion is: the app launches, one source validates, one bounded
-non-reconciling trial completes, and a cited query returns the expected document. GUI OAuth,
+The shortest safe success criterion is: the app launches, one source passes **Test connection**,
+one bounded non-reconciling **Initial sync** completes, and a cited query returns the expected
+document. Trial sync is an optional guarded recovery check, not a required setup step. GUI OAuth,
 native dialogs, tray/autostart, updater installation, and macOS Developer ID/notarization remain
 separate host-acceptance checks even when headless tests and static package verification pass.
 

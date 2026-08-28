@@ -25,7 +25,7 @@ renderer resolver, duplicate renderer entries, and runtime surface adapters have
 `scripts/check-web-ui-contract.mjs` prevents those contracts and ordinary raw form controls from
 returning outside the documented graph, root-failure, and generated-component exceptions.
 
-All four Cortana themes map the same semantic variables. `background`, `foreground`, `card`,
+All five Cortana themes map the same semantic variables. `background`, `foreground`, `card`,
 `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`,
 chart, and sidebar tokens resolve through the existing theme palette. Theme selection changes
 values only; component structure and interaction do not fork.
@@ -58,8 +58,8 @@ Install the matching browser once with `bunx playwright install chromium` when P
 that it is missing. The capture fails on browser console errors. The legacy run records 56 images:
 all primary wide-screen destinations; the default and accessibility themes at 320, 768, 1024,
 and 1440 CSS pixels; Forest and Plum at compact and desktop widths; command, source-sheet,
-settings, and graph states. The final run records 95 images: the real data-backed shell
-at five widths from 320 through 1920 CSS pixels in all four themes, mobile navigation, tablet
+settings, and graph states. The final run records the complete matrix: the real data-backed shell
+at five widths from 320 through 1920 CSS pixels in all five themes, mobile navigation, tablet
 source/context panels, command and
 workspace overlays, collapsed and expanded desktop navigation, Inbox, Conversations, Agent tools,
 Index, and Help at every target width,
@@ -160,7 +160,7 @@ The migration began with this 5,087-line stylesheet contract:
 
 | Owner                   | Lines | Current responsibility                                  | Replacement                                                          |
 | ----------------------- | ----: | ------------------------------------------------------- | -------------------------------------------------------------------- |
-| `styles/tokens.css`     |   354 | Four themes, type, focus, control sizes, reduced motion | semantic variables in `shadcn.css`; #2161 and #2167                  |
+| `styles/tokens.css`     |   354 | Five themes, type, focus, control sizes, reduced motion | semantic variables in `shadcn.css`; #2161 and #2167                  |
 | `styles/buttons.css`    |    97 | temporary `cortana-button` variants                     | generated Button variants; #2162 and #2167                           |
 | `styles/shell.css`      | 1,068 | title bar, rail, panes, status, overlays                | Sidebar, Sheet, Tooltip, Command, shell composition; #2163 and #2164 |
 | `styles/workspace.css`  |   809 | document, answer, graph, timeline, tabs                 | Card, Tabs, ScrollArea, Empty, Skeleton, renderer wrapper; #2165     |

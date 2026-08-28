@@ -159,122 +159,130 @@ export function M7ApplicationHeader({
 }: M7HeaderProps) {
   const actionsRef = useRef<HTMLButtonElement>(null)
   return (
-    <header className="flex min-h-14 shrink-0 items-center gap-2 border-b bg-background/95 px-2 backdrop-blur md:px-4">
-      <SidebarTrigger aria-label="Toggle navigation" />
-      <div className="hidden items-center gap-1 sm:flex" role="group" aria-label="Search history">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Previous search query"
-                disabled={!canGoBack}
-                onClick={onHistoryBack}
-              />
-            }
-          >
-            <ArrowLeft aria-hidden="true" />
-          </TooltipTrigger>
-          <TooltipContent>Previous search query</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Next search query"
-                disabled={!canGoForward}
-                onClick={onHistoryForward}
-              />
-            }
-          >
-            <ArrowRight aria-hidden="true" />
-          </TooltipTrigger>
-          <TooltipContent>Next search query</TooltipContent>
-        </Tooltip>
+    <header className="m7-application-header min-h-14 shrink-0 border-b px-2 backdrop-blur md:px-4">
+      <div className="m7-header-leading flex min-w-0 items-center gap-1">
+        <SidebarTrigger aria-label="Toggle navigation" />
+        <div className="m7-header-context hidden min-w-0 items-center gap-1 sm:flex">
+          <div className="flex items-center gap-1" role="group" aria-label="Search history">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Previous search query"
+                    disabled={!canGoBack}
+                    onClick={onHistoryBack}
+                  />
+                }
+              >
+                <ArrowLeft aria-hidden="true" />
+              </TooltipTrigger>
+              <TooltipContent>Previous search query</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Next search query"
+                    disabled={!canGoForward}
+                    onClick={onHistoryForward}
+                  />
+                }
+              >
+                <ArrowRight aria-hidden="true" />
+              </TooltipTrigger>
+              <TooltipContent>Next search query</TooltipContent>
+            </Tooltip>
+          </div>
+          <Breadcrumb className="hidden min-w-0 lg:block">
+            <BreadcrumbList>
+              <BreadcrumbItem>{workspaceName}</BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{location}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
+        </div>
       </div>
-      <Breadcrumb className="hidden min-w-0 lg:block">
-        <BreadcrumbList>
-          <BreadcrumbItem>{workspaceName}</BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{location}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-      <form className="relative min-w-0 flex-1 lg:ml-auto lg:max-w-xl" onSubmit={onSubmit}>
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          ref={searchRef}
-          aria-label="Search your knowledge"
-          className="h-9 pr-16 pl-9"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-        />
-        <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground">
-          {loading ? (
-            <LoaderCircle className="size-4 animate-spin" aria-label="Searching" />
-          ) : (
-            <kbd>{shortcutLabel('MOD K')}</kbd>
-          )}
-        </span>
-      </form>
-      <Button
-        type="button"
-        size="sm"
-        aria-label="Reflect on this objective"
-        onClick={onReflect}
-        disabled={loading || !query.trim()}
-      >
-        <Sparkles aria-hidden="true" />
-        <span className="hidden md:inline">Reflect</span>
-      </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              ref={actionsRef}
-              variant="outline"
-              size="icon"
-              aria-label="Actions"
-              title="Actions"
-            />
-          }
+      <div className="m7-search-cluster flex min-w-0 items-center justify-center gap-2">
+        <form className="relative min-w-0 flex-1" onSubmit={onSubmit}>
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchRef}
+            aria-label="Search your knowledge"
+            className="h-9 pr-16 pl-9"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+          />
+          <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted-foreground">
+            {loading ? (
+              <LoaderCircle className="size-4 animate-spin" aria-label="Searching" />
+            ) : (
+              <kbd>{shortcutLabel('MOD K')}</kbd>
+            )}
+          </span>
+        </form>
+        <Button
+          type="button"
+          size="sm"
+          aria-label="Reflect on this objective"
+          onClick={onReflect}
+          disabled={loading || !query.trim()}
         >
-          <MoreVertical aria-hidden="true" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => onOpenSources(actionsRef.current)}>
-              Open sources
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onOpenFilters}>Filter documents</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onOpenContext(actionsRef.current)}>
-              Open agent context
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onOpenHistory}>Open conversations</DropdownMenuItem>
-          </DropdownMenuGroup>
-          <DropdownMenuSeparator />
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Search history</DropdownMenuLabel>
-            <DropdownMenuItem disabled={!canGoBack} onClick={onHistoryBack}>
-              Previous query
-            </DropdownMenuItem>
-            <DropdownMenuItem disabled={!canGoForward} onClick={onHistoryForward}>
-              Next query
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onOpenCommands(actionsRef.current)}>
-              Command palette
-              <span className="ml-auto text-xs text-muted-foreground">
-                {shortcutLabel('MOD P')}
-              </span>
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <Sparkles aria-hidden="true" />
+          <span className="hidden md:inline">Reflect</span>
+        </Button>
+      </div>
+      <div className="m7-header-actions flex items-center justify-end">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                ref={actionsRef}
+                variant="outline"
+                size="icon"
+                aria-label="Actions"
+                title="Actions"
+              />
+            }
+          >
+            <MoreVertical aria-hidden="true" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => onOpenSources(actionsRef.current)}>
+                Open sources
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenFilters}>Filter documents</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onOpenContext(actionsRef.current)}>
+                Open agent context
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenHistory}>Open conversations</DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Search history</DropdownMenuLabel>
+              <DropdownMenuItem disabled={!canGoBack} onClick={onHistoryBack}>
+                Previous query
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled={!canGoForward} onClick={onHistoryForward}>
+                Next query
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onOpenCommands(actionsRef.current)}>
+                Command palette
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {shortcutLabel('MOD P')}
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
     </header>
   )
 }
@@ -428,7 +436,7 @@ export function M7ApplicationNavigation({
       aria-label="Primary navigation"
       className="m7-application-sidebar"
     >
-      <SidebarHeader className="m7-workspace-header p-3">
+      <SidebarHeader className="m7-workspace-header">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -548,13 +556,13 @@ export function M7ApplicationNavigation({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              tooltip="Help"
-              isActive={navigation.view === 'help'}
-              aria-current={navigation.view === 'help' ? 'page' : undefined}
-              onClick={() => runNavigation(() => navigation.onNavigate('help'))}
+              tooltip="Settings"
+              isActive={navigation.view === 'settings'}
+              aria-current={navigation.view === 'settings' ? 'page' : undefined}
+              onClick={() => runNavigation(() => navigation.onNavigate('settings'))}
             >
-              <CircleHelp aria-hidden="true" />
-              <span>Help</span>
+              <Settings aria-hidden="true" />
+              <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
@@ -584,13 +592,13 @@ export function M7ApplicationNavigation({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              tooltip="Settings"
-              isActive={navigation.view === 'settings'}
-              aria-current={navigation.view === 'settings' ? 'page' : undefined}
-              onClick={() => runNavigation(() => navigation.onNavigate('settings'))}
+              tooltip="Help"
+              isActive={navigation.view === 'help'}
+              aria-current={navigation.view === 'help' ? 'page' : undefined}
+              onClick={() => runNavigation(() => navigation.onNavigate('help'))}
             >
-              <Settings aria-hidden="true" />
-              <span>Settings</span>
+              <CircleHelp aria-hidden="true" />
+              <span>Help</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

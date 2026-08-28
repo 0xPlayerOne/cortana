@@ -1030,6 +1030,12 @@ function CortanaApplication() {
     )
   }
 
+  function openSettingsAt(section: typeof settingsSection) {
+    if (!canLeaveSettings()) return
+    setSettingsSection(section)
+    setView('settings')
+  }
+
   async function toggleSource(nextSource: string, project: string, enabled: boolean) {
     const key = `${project}:${nextSource}`
     if (sourceToggleBusy) return
@@ -1907,7 +1913,7 @@ function CortanaApplication() {
             sourceJobs={sourceJobs.jobs}
             sourceJobError={sourceJobsError}
             onRetrySourceJobs={sourceJobsRetry}
-            onOpenSettings={() => setView('settings')}
+            onOpenSettings={() => openSettingsAt('sources')}
             onRetryStatus={retryStatus}
             onCancelSourceJob={cancelSourceJob}
           />
@@ -1932,7 +1938,7 @@ function CortanaApplication() {
             onRetrySourceJobs={sourceJobsRetry}
             onSearchFocus={focusSearch}
             onRetrieveContext={() => void retrieveAgentContext()}
-            onOpenSettings={() => setView('settings')}
+            onOpenSettings={() => openSettingsAt(view === 'index' ? 'readiness' : 'services')}
             onOpenProject={() => openDesktopProject()}
             onCancelSourceJob={cancelSourceJob}
           />
