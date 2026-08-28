@@ -65,7 +65,8 @@ import {
   sourceJobAttention,
   useSourceJobs,
 } from './sourceJobs'
-import { applyTheme, readThemePreference } from './theme'
+import { applyTheme, readThemePreference, THEME_EVENT } from './theme'
+import { readWorkspaceThemePreference, WORKSPACE_THEME_EVENT } from './workspaceThemePreference'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -229,8 +230,19 @@ function CortanaApplication() {
   }, [])
 
   useEffect(() => {
-    applyTheme(readThemePreference())
-  }, [])
+    const syncTheme = () => {
+      applyTheme(readWorkspaceThemePreference(effectiveWorkspace) ?? readThemePreference(), {
+        persist: false,
+      })
+    }
+    syncTheme()
+    window.addEventListener(THEME_EVENT, syncTheme)
+    window.addEventListener(WORKSPACE_THEME_EVENT, syncTheme)
+    return () => {
+      window.removeEventListener(THEME_EVENT, syncTheme)
+      window.removeEventListener(WORKSPACE_THEME_EVENT, syncTheme)
+    }
+  }, [effectiveWorkspace])
 
   useEffect(() => {
     if (!isDemoMode) return
@@ -1938,7 +1950,7 @@ function CortanaApplication() {
             onRetrySourceJobs={sourceJobsRetry}
             onSearchFocus={focusSearch}
             onRetrieveContext={() => void retrieveAgentContext()}
-            onOpenSettings={() => openSettingsAt(view === 'index' ? 'readiness' : 'services')}
+            onOpenSettings={() => openSettingsAt(view === 'index' ? 'sources' : 'services')}
             onOpenProject={() => openDesktopProject()}
             onCancelSourceJob={cancelSourceJob}
           />

@@ -33,7 +33,6 @@ export function WorkspaceLogo({
   return (
     <span
       className={`workspace-logo workspace-logo--${size}${size === 'small' ? ' workspace-picker-mark' : ''}`}
-      style={{ background: workspace.color || 'var(--amber)' }}
       aria-hidden="true"
     >
       {(workspace.name.trim()[0] || '?').toUpperCase()}

@@ -1,6 +1,8 @@
-export type ThemeMode = 'blue' | 'accessible' | 'forest' | 'plum' | 'sand'
+export type ThemeMode =
+  'blue' | 'accessible' | 'forest' | 'plum' | 'sand' | 'graphite' | 'teal' | 'rose'
 
 const THEME_KEY = 'cortana.theme.v1'
+export const THEME_EVENT = 'cortana:theme-changed'
 
 export const SUPPORTED_THEMES: ReadonlyArray<{ id: ThemeMode; label: string }> = [
   { id: 'blue', label: 'Navy' },
@@ -8,15 +10,21 @@ export const SUPPORTED_THEMES: ReadonlyArray<{ id: ThemeMode; label: string }> =
   { id: 'forest', label: 'Forest' },
   { id: 'plum', label: 'Plum' },
   { id: 'sand', label: 'Sand' },
+  { id: 'graphite', label: 'Graphite' },
+  { id: 'teal', label: 'Teal' },
+  { id: 'rose', label: 'Rose' },
 ]
 
-function isThemeMode(value: string | null): value is ThemeMode {
+export function isThemeMode(value: string | null): value is ThemeMode {
   return (
     value === 'blue' ||
     value === 'accessible' ||
     value === 'forest' ||
     value === 'plum' ||
-    value === 'sand'
+    value === 'sand' ||
+    value === 'graphite' ||
+    value === 'teal' ||
+    value === 'rose'
   )
 }
 
@@ -32,14 +40,15 @@ export function readThemePreference(): ThemeMode {
 export function writeThemePreference(theme: ThemeMode): void {
   try {
     localStorage.setItem(THEME_KEY, theme)
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(THEME_EVENT))
   } catch {
     // Theme preference remains session-local when storage is unavailable.
   }
 }
 
-export function applyTheme(theme: ThemeMode): void {
+export function applyTheme(theme: ThemeMode, options: { persist?: boolean } = {}): void {
   if (typeof document !== 'undefined') {
     document.documentElement.setAttribute('data-theme', theme)
   }
-  writeThemePreference(theme)
+  if (options.persist !== false) writeThemePreference(theme)
 }

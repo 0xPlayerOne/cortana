@@ -240,6 +240,11 @@ export async function startDesktopSourceValidation(
   )
 }
 
+export async function startDesktopSourceConnectionCheck(source: string): Promise<DesktopSourceJob> {
+  if (!isDesktopApp) throw new Error('Source connection checks are available in Cortana Desktop')
+  return invokeDesktop<DesktopSourceJob>('desktop_source_connection_check_start', { source })
+}
+
 export async function startDesktopSourceAuthorization(source: string): Promise<DesktopSourceJob> {
   if (!isDesktopApp) throw new Error('Source authorization is available in Cortana Desktop')
   return invokeDesktop<DesktopSourceJob>('desktop_source_authorization_start', { source })

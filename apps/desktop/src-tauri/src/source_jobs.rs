@@ -868,6 +868,23 @@ impl SourceJobState {
         self.start(app, source, "validation", args, summary, None, false)
     }
 
+    pub fn start_connection_check<R: tauri::Runtime>(
+        &self,
+        app: &tauri::AppHandle<R>,
+        source_name: &str,
+    ) -> Result<SourceJobSnapshot, String> {
+        let source = settings::configured_source(source_name)?;
+        self.start(
+            app,
+            source,
+            "connection-check",
+            connection_check_args(source_name),
+            "Checking source credentials and connection. No documents will be indexed or recorded as validation coverage.".into(),
+            None,
+            false,
+        )
+    }
+
     pub fn plan_initial_sync(
         &self,
         source_name: &str,
@@ -1423,6 +1440,13 @@ fn validation_args(source: &str, sample: bool) -> Vec<String> {
     validation_args_with(source, 25, 5_242_880, 60, sample)
 }
 
+fn connection_check_args(source: &str) -> Vec<String> {
+    ["check-source", source]
+        .into_iter()
+        .map(str::to_string)
+        .collect()
+}
+
 fn validation_args_with(
     source: &str,
     documents: usize,
@@ -1647,6 +1671,18 @@ fn open_validation_state(path: &Path) -> Result<fs::File, String> {
 
 fn terminal_summary(operation: &str, status: &str, disconnected: bool, kind: &str) -> String {
     match (operation, status, disconnected) {
+        ("connection-check", "succeeded", _) => {
+            "Connection check passed. No documents were indexed or recorded as validation coverage.".into()
+        }
+        ("connection-check", "cancelled", _) => {
+            "Connection check was cancelled. No documents were indexed or recorded as validation coverage.".into()
+        }
+        ("connection-check", _, true) => {
+            "Connection check ended without a process result. No documents were indexed or recorded as validation coverage.".into()
+        }
+        ("connection-check", _, false) => {
+            "Connection check failed. No documents were indexed or recorded as validation coverage.".into()
+        }
         ("trial-sync", "succeeded", _) => {
             "Guarded trial sync completed without deletion reconciliation.".into()
         }
@@ -1944,6 +1980,14 @@ mod tests {
         assert!(sample_summary_suffix(false).is_empty());
         assert!(sample_summary_suffix(true).contains("bounded sample"));
         assert!(sample_summary_suffix(true).contains("full-corpus sync"));
+    }
+
+    #[test]
+    fn connection_check_command_only_names_the_configured_source() {
+        assert_eq!(
+            connection_check_args("personal-drive"),
+            ["check-source", "personal-drive"]
+        );
     }
 
     #[test]
@@ -2520,6 +2564,14 @@ mod tests {
 
     #[test]
     fn initial_sync_terminal_summaries_cover_cancellation_and_disconnects() {
+        assert!(
+            terminal_summary("connection-check", "succeeded", false, "google-drive")
+                .contains("Connection check passed")
+        );
+        assert!(
+            terminal_summary("connection-check", "failed", false, "google-drive")
+                .contains("validation coverage")
+        );
         assert!(
             terminal_summary("initial-sync", "succeeded", false, "filesystem")
                 .contains("without deletion reconciliation")

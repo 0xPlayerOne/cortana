@@ -613,7 +613,7 @@ export function M7ShellProvider({ children }: { children: ReactNode }) {
       <SidebarProvider
         defaultOpen={false}
         className="m7-shell-provider min-h-0 overflow-hidden"
-        style={{ '--sidebar-width-icon': '4.5rem' } as CSSProperties}
+        style={{ '--sidebar-width-icon': '3.5rem' } as CSSProperties}
       >
         {children}
       </SidebarProvider>

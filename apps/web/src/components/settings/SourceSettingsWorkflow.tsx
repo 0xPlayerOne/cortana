@@ -39,6 +39,7 @@ import {
   planDesktopInitialSync,
   startDesktopInitialSync,
   startDesktopSourceAuthorization,
+  startDesktopSourceConnectionCheck,
   startDesktopSourceTrialSync,
   startDesktopSourceValidation,
 } from '../../api'
@@ -95,6 +96,16 @@ const SOURCE_KINDS: Array<{ value: SourceKind; label: string }> = [
 ]
 
 const UNASSIGNED_WORKSPACE = '__unassigned__'
+
+function sourceJobOperationLabel(operation: DesktopSourceJob['operation']): string {
+  return {
+    'connection-check': 'Connection check',
+    validation: 'Budget validation',
+    authorization: 'Authorization',
+    'trial-sync': 'Trial sync',
+    'initial-sync': 'Initial sync',
+  }[operation]
+}
 
 function initialSourceWorkspace(settings: DesktopSettings): string {
   const workspaceIds = new Set(settings.workspaces.map((workspace) => workspace.id))
@@ -313,7 +324,7 @@ export function SourcesSection({
     if (!initialSync) return
     if (!canValidate) {
       setError(
-        'Save source changes before validating so the native runtime uses this exact config.'
+        'Save source changes before checking the connection so the native runtime uses this exact config.'
       )
       return
     }
@@ -451,7 +462,7 @@ export function SourcesSection({
     }
   }
 
-  const validateSource = async (source: SourceSettings) => {
+  const checkSourceConnection = async (source: SourceSettings) => {
     if (!canValidate) {
       setError(
         'Save source changes before validating so the native runtime uses this exact config.'
@@ -460,16 +471,16 @@ export function SourcesSection({
     }
     if (
       !(await confirm(
-        `Validate ${source.name} now?\n\nCortana may read up to 25 documents or 5 MiB for at most 60 seconds. It will not embed, index, reconcile, or start a sync.`
+        `Check the connection for ${source.name} now?\n\nCortana checks the configured path or credentials and does not index documents, record validation coverage, or start a sync.`
       ))
     ) {
       return
     }
     setError('')
     try {
-      applyJob(await startDesktopSourceValidation(source.name))
+      applyJob(await startDesktopSourceConnectionCheck(source.name))
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Source validation failed to start')
+      setError(caught instanceof Error ? caught.message : 'Source connection check failed to start')
     }
   }
 
@@ -777,7 +788,7 @@ export function SourcesSection({
   return (
     <SettingsSection
       title="Ingestion sources"
-      description="Configure local and account-backed sources per workspace. Saving never ingests data. Most users only need Test connection followed by Initial sync; Trial sync is reserved for an optional guarded recovery check."
+      description="Configure local and account-backed sources per workspace. Saving never ingests data. Most users only need Check connection followed by Initial sync; budget validation runs inside the initial-sync flow, while Trial sync remains an optional guarded recovery check."
     >
       <div className="source-settings-toolbar">
         <span>
@@ -804,7 +815,7 @@ export function SourcesSection({
                 : sourceType === 'buzz'
                   ? `Add a Buzz connector for ${selectedWorkspace?.name || 'the first workspace'}, then open advanced settings to choose communities.`
                   : `Connect ${SOURCE_KINDS.find((kind) => kind.value === sourceType)?.label || 'this provider'} to ${selectedWorkspace?.name || 'the first workspace'}. Cortana will collect the required connection files, save the populated source, and launch authorization.`}{' '}
-              No content is read until you run validation or sync.
+              No content is indexed until you run validation or sync.
             </DialogDescription>
           </DialogHeader>
           <SettingsRadioGroup
@@ -1043,7 +1054,7 @@ export function SourcesSection({
                           className="source-icon-button "
                           aria-label="Test connection"
                           tooltip="Test connection"
-                          onClick={() => void validateSource(source)}
+                          onClick={() => void checkSourceConnection(source)}
                         >
                           <ShieldCheck size={14} />
                         </Button>
@@ -2098,6 +2109,57 @@ export function SourcesSection({
                       </SettingsAccordionContent>
                     </SettingsAccordionItem>
                   </SettingsAccordion>
+                  {observedJob?.source === source.name && (
+                    <div className={`source-validation-job ${observedJob.status}`}>
+                      <div>
+                        <StatusGlyph
+                          passed={observedJob.status === 'succeeded'}
+                          optional={observedJob.status === 'cancelled'}
+                        />
+                        <span>
+                          <strong>
+                            {sourceJobOperationLabel(observedJob.operation)} · {observedJob.status}
+                          </strong>
+                          <small>{observedJob.summary}</small>
+                        </span>
+                        {['running', 'cancelling'].includes(observedJob.status) && (
+                          <Button
+                            variant="compact"
+                            type="button"
+                            disabled={observedJob.status === 'cancelling'}
+                            onClick={() => void cancel()}
+                          >
+                            <CircleStop size={14} /> Cancel
+                          </Button>
+                        )}
+                        {observedJob.retryable && (
+                          <Button
+                            variant="compact"
+                            type="button"
+                            disabled={!canValidate || Boolean(activeJob)}
+                            onClick={() => {
+                              if (observedJob.operation === 'authorization')
+                                void authorizeSource(source)
+                              else if (observedJob.operation === 'trial-sync')
+                                void trialSyncSource(source)
+                              else if (
+                                observedJob.operation === 'initial-sync' ||
+                                observedJob.operation === 'validation'
+                              ) {
+                                void openInitialSync(
+                                  source,
+                                  (observedJob.budget as InitialSyncBudget | null) || 'small'
+                                )
+                              } else void checkSourceConnection(source)
+                            }}
+                          >
+                            <RefreshCw size={14} /> Retry
+                          </Button>
+                        )}
+                      </div>
+                      {observedJob.log && <pre>{observedJob.log}</pre>}
+                    </div>
+                  )}
                 </SettingsCard>
               )
             })}
@@ -2115,7 +2177,7 @@ export function SourcesSection({
                   <DialogTitle>Initial sync</DialogTitle>
                   <DialogDescription>
                     <span className="eyebrow">Guided initial sync</span> Review the bounded
-                    first-import plan for {initialSyncSource.name}. Test the connection first, then
+                    first-import plan for {initialSyncSource.name}. Check the connection first, then
                     start the sync only when the selected budget is covered by a successful
                     validation.
                   </DialogDescription>
@@ -2139,69 +2201,17 @@ export function SourcesSection({
               {error}
             </SettingsAlert>
           )}
-          {observedJob && (
-            <div className={`source-validation-job ${observedJob.status}`}>
-              <div>
-                <StatusGlyph
-                  passed={observedJob.status === 'succeeded'}
-                  optional={observedJob.status === 'cancelled'}
-                />
-                <span>
-                  <strong>
-                    {observedJob.source} · {observedJob.operation} · {observedJob.status}
-                  </strong>
-                  <small>{observedJob.summary}</small>
-                </span>
-                {['running', 'cancelling'].includes(observedJob.status) && (
-                  <Button
-                    variant="compact"
-                    type="button"
-                    disabled={observedJob.status === 'cancelling'}
-                    onClick={() => void cancel()}
-                  >
-                    <CircleStop size={14} /> Cancel
-                  </Button>
-                )}
-                {observedJob.retryable && (
-                  <Button
-                    variant="compact"
-                    type="button"
-                    disabled={!canValidate || Boolean(activeJob)}
-                    onClick={() => {
-                      const source = settings.sources.find(
-                        (item) => item.name === observedJob.source
-                      )
-                      if (source) {
-                        if (observedJob.operation === 'authorization') void authorizeSource(source)
-                        else if (observedJob.operation === 'trial-sync')
-                          void trialSyncSource(source)
-                        else if (observedJob.operation === 'initial-sync') {
-                          void openInitialSync(
-                            source,
-                            (observedJob.budget as InitialSyncBudget | null) || 'small'
-                          )
-                        } else void validateSource(source)
-                      }
-                    }}
-                  >
-                    <RefreshCw size={14} /> Retry
-                  </Button>
-                )}
-              </div>
-              {observedJob.log && <pre>{observedJob.log}</pre>}
-            </div>
-          )}
-
           <details className="source-safety-details">
             <summary>How source sync limits work</summary>
             <p>
-              Test connection checks a bounded snapshot and writes only metadata about the outcome.
-              Trial sync is an optional guarded recovery check, requires an exact successful
-              validation, limits work to 25 documents and 5 MiB, and never performs deletion
-              reconciliation. It is not required for the normal first import. Initial sync is
-              planned first, uses one of three fixed budgets (up to 2,000 documents, 128 MiB, 60
-              minutes), requires validation at equal or larger limits, and never escalates beyond
-              the selected budget.
+              Check connection verifies the configured path or credentials without reading source
+              documents or recording validation coverage. Budget validation is an explicit
+              initial-sync safety step and writes only metadata about the outcome. Trial sync is an
+              optional guarded recovery check, requires an exact successful validation, limits work
+              to 25 documents and 5 MiB, and never performs deletion reconciliation. It is not
+              required for the normal first import. Initial sync is planned first, uses one of three
+              fixed budgets (up to 2,000 documents, 128 MiB, 60 minutes), requires validation at
+              equal or larger limits, and never escalates beyond the selected budget.
             </p>
           </details>
         </SettingsTabsContent>

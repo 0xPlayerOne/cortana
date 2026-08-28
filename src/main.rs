@@ -257,6 +257,8 @@ enum Command {
         )]
         sample: bool,
     },
+    /// Check one configured source's path or credentials without indexing it or recording validation coverage.
+    CheckSource { source: String },
     /// Authorize a configured Google source in the system browser without reading source data.
     AuthorizeGoogle { source: String },
     /// Authorize a configured GitHub source through the device flow without reading repository content.
@@ -840,6 +842,13 @@ async fn main() -> Result<()> {
         cancellation.stop();
         return result;
     }
+    if let Some(Command::CheckSource { source }) = cli.command.as_ref() {
+        let _lock = SyncLock::acquire(&config.data_dir.join("sync.lock"))?;
+        let cancellation = Cancellation::install();
+        let result = check_configured_source(&config, source, &cancellation).await;
+        cancellation.stop();
+        return result;
+    }
     if let Some(Command::AuthorizeGoogle { source }) = cli.command.as_ref() {
         let outcome = google_oauth::authorize(&config, source).await?;
         println!("{}", serde_json::to_string(&outcome)?);
@@ -1357,6 +1366,7 @@ async fn main() -> Result<()> {
             | Command::SlackWorkspaces { .. }
             | Command::BuzzCommunities { .. }
             | Command::ValidateSource { .. }
+            | Command::CheckSource { .. }
             | Command::Memory { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
@@ -1918,6 +1928,86 @@ async fn validate_configured_source(
                 "reconciliations": 0
             },
             "scope": result,
+        })
+    );
+    Ok(())
+}
+
+async fn check_configured_source(
+    config: &Config,
+    selected: &str,
+    cancellation: &Cancellation,
+) -> Result<()> {
+    let source = config
+        .sources
+        .iter()
+        .find(|source| source.name == selected)
+        .with_context(|| format!("configured source {selected} was not found"))?;
+    let scope = if source.kind == "filesystem" {
+        let root = source
+            .root
+            .as_ref()
+            .with_context(|| format!("source {} requires root", source.name))?;
+        let metadata = std::fs::metadata(root)
+            .with_context(|| format!("source {} path is not accessible", source.name))?;
+        anyhow::ensure!(
+            metadata.is_dir(),
+            "source {} path must be a directory",
+            source.name
+        );
+        anyhow::ensure!(!cancellation.is_requested(), "source check was cancelled");
+        serde_json::json!({ "inspection": "filesystem path" })
+    } else if source.kind == "external" {
+        anyhow::ensure!(
+            !source.command.is_empty(),
+            "external source {} requires command",
+            source.name
+        );
+        anyhow::ensure!(!cancellation.is_requested(), "source check was cancelled");
+        serde_json::json!({ "inspection": "external command configuration" })
+    } else {
+        // Connector probes are deliberately capped and cache-free. We only
+        // need the connector's exit status here; parsing its document output
+        // would turn this quick auth/reachability check back into validation.
+        let limits = SourceLimits::resolve(
+            config,
+            source,
+            SyncOverrides {
+                max_documents: Some(1),
+                max_bytes: Some(1024 * 1024),
+                max_seconds: Some(30),
+            },
+        )?;
+        let control = SourceControl {
+            limits,
+            started: Instant::now(),
+            cancellation,
+            progress: None,
+        };
+        cleanup_connector_spools(&config.data_dir)?;
+        let (spool, diagnostics) =
+            run_connector_to_spool(config, source, &control, Some(limits.max_documents), true)
+                .await?;
+        let _ = std::fs::remove_file(&spool);
+        let _ = std::fs::remove_file(&diagnostics);
+        serde_json::json!({ "inspection": "connector credentials and reachability" })
+    };
+
+    println!(
+        "{}",
+        serde_json::json!({
+            "source": source.name,
+            "kind": source.kind,
+            "enabled": source.enabled,
+            "project": source.project,
+            "checked": true,
+            "writes": {
+                "documents": 0,
+                "embeddings": 0,
+                "reconciliations": 0,
+                "validation_coverage": 0
+            },
+            "scope": scope,
         })
     );
     Ok(())
@@ -5150,6 +5240,16 @@ mod tests {
             .expect("plain validate-source");
         match cli.command.expect("command") {
             Command::ValidateSource { sample, .. } => assert!(!sample),
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn check_source_command_parses_without_validation_options() {
+        let cli = Cli::try_parse_from(["cortana", "check-source", "work-code"])
+            .expect("check-source command");
+        match cli.command.expect("command") {
+            Command::CheckSource { source } => assert_eq!(source, "work-code"),
             other => panic!("unexpected command: {other:?}"),
         }
     }

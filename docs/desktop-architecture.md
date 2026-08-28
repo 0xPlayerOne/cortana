@@ -83,6 +83,12 @@ and metadata-only audit event. Arbitrary programs, package sources, and argument
 accepted from the renderer. Installer commands run in an isolated process group on Unix so
 cancellation also terminates shell and package-manager helpers.
 
+On Desktop startup, the native setup hook compares the managed connector environment with the
+bundled connector release and automatically starts that same fixed installer when the environment
+is missing or stale. The readiness surface reports this as automatic reconciliation in progress;
+users do not need to rediscover or manually reinstall the Connector Environment after each Desktop
+update. A failed reconciliation remains visible as a readiness failure for recovery.
+
 Source validation is a third native boundary. The renderer sends only an exact configured source
 name. Native Rust reloads the owner-local configuration, rejects an unknown name, then constructs
 the declared sidecar command with fixed `validate-source` arguments and limits of 25 documents,
@@ -106,6 +112,13 @@ webview remount recovers active and recent jobs instead of losing operational vi
 Sources settings section adopts the newest recovered snapshot so an operator can cancel or retry
 it after navigating back. A failed recovery request is non-fatal and newly started jobs remain
 tracked locally.
+
+Desktop also exposes a separate **Check connection** source job. It uses the fixed
+`cortana check-source SOURCE_NAME` command, which verifies a filesystem root or external command
+configuration directly and runs connector sources with a one-document, cache-free reachability
+probe. It does not parse documents into the index, write embeddings, reconcile records, or create
+validation coverage. The action is therefore safe for a quick credential/connection check; use
+budget validation when the goal is to prove that a later bounded sync is covered.
 
 Guarded trial sync reuses the source-job boundary but is intentionally distinct from validation.
 It requires explicit confirmation and a matching successful validation fingerprint, then invokes

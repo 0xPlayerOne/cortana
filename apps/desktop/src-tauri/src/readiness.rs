@@ -100,6 +100,23 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
     }
 }
 
+/// Returns whether the user-scoped connector environment should be repaired
+/// from the connector workspace bundled with this Desktop release. The
+/// installer is started by the native setup hook, so normal updates do not
+/// require the user to rediscover or approve this maintenance step.
+pub async fn connector_needs_reconcile(app: &AppHandle) -> bool {
+    let connector = connector_status(app).await;
+    if !connector.install_supported {
+        return false;
+    }
+    if !connector.available {
+        return true;
+    }
+    let bundled_version = sidecar_output(app, &["--version"], VERSION_TIMEOUT).await;
+    let cortana = bundled_runtime_status(bundled_version.as_ref());
+    !enforce_connector_version_match(connector, cortana.version.as_deref()).available
+}
+
 fn bundled_runtime_status(result: Result<&ProcessOutput, &String>) -> ToolStatus {
     match result {
         Ok(version) => ToolStatus {
@@ -341,12 +358,17 @@ async fn connector_status(app: &AppHandle) -> ToolStatus {
                 if !resource_available {
                     "This Desktop build is missing its bundled connector workspace.".into()
                 } else if uv_available {
-                    "Approve installation of the bundled ingestion workspace.".into()
+                    "Installed automatically when this Desktop release starts.".into()
                 } else {
                     "Install uv before installing the bundled ingestion workspace.".into()
                 }
             },
-            |path| format!("Found {}", path.display()),
+            |path| {
+                format!(
+                    "Found {}; reconciled automatically after Desktop updates",
+                    path.display()
+                )
+            },
         ),
     }
 }
@@ -368,14 +390,13 @@ fn enforce_connector_version_match(
     let Some(connector_version) = connector.version.as_deref().and_then(release_version) else {
         connector.available = false;
         connector.detail =
-            "Connector version could not be read; reinstall the bundled connector workspace."
-                .into();
+            "Connector version could not be read; it will be reconciled automatically.".into();
         return connector;
     };
     if connector_version != bundled_version {
         connector.available = false;
         connector.detail = format!(
-            "Connector version {connector_version} does not match bundled Cortana {bundled_version}; reinstall the bundled connector workspace."
+            "Connector version {connector_version} does not match bundled Cortana {bundled_version}; reconciling automatically."
         );
     }
     connector
@@ -773,10 +794,8 @@ mod tests {
             install_supported: true,
             detail: "Found connector".into(),
         };
-        let status = enforce_connector_version_match(
-            connector,
-            Some(&format!("cortana {current_version}")),
-        );
+        let status =
+            enforce_connector_version_match(connector, Some(&format!("cortana {current_version}")));
         assert!(!status.available);
         assert!(status.detail.contains("does not match"));
 

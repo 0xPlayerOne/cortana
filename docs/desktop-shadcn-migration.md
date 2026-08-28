@@ -25,7 +25,7 @@ renderer resolver, duplicate renderer entries, and runtime surface adapters have
 `scripts/check-web-ui-contract.mjs` prevents those contracts and ordinary raw form controls from
 returning outside the documented graph, root-failure, and generated-component exceptions.
 
-All five Cortana themes map the same semantic variables. `background`, `foreground`, `card`,
+All eight Cortana themes map the same semantic variables. `background`, `foreground`, `card`,
 `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`,
 chart, and sidebar tokens resolve through the existing theme palette. Theme selection changes
 values only; component structure and interaction do not fork.
@@ -59,7 +59,7 @@ that it is missing. The capture fails on browser console errors. The legacy run 
 all primary wide-screen destinations; the default and accessibility themes at 320, 768, 1024,
 and 1440 CSS pixels; Forest and Plum at compact and desktop widths; command, source-sheet,
 settings, and graph states. The final run records the complete matrix: the real data-backed shell
-at five widths from 320 through 1920 CSS pixels in all five themes, mobile navigation, tablet
+at five widths from 320 through 1920 CSS pixels in all eight themes, mobile navigation, tablet
 source/context panels, command and
 workspace overlays, collapsed and expanded desktop navigation, Inbox, Conversations, Agent tools,
 Index, and Help at every target width,
@@ -158,16 +158,16 @@ exceptions.
 
 The migration began with this 5,087-line stylesheet contract:
 
-| Owner                   | Lines | Current responsibility                                  | Replacement                                                          |
-| ----------------------- | ----: | ------------------------------------------------------- | -------------------------------------------------------------------- |
-| `styles/tokens.css`     |   354 | Five themes, type, focus, control sizes, reduced motion | semantic variables in `shadcn.css`; #2161 and #2167                  |
-| `styles/buttons.css`    |    97 | temporary `cortana-button` variants                     | generated Button variants; #2162 and #2167                           |
-| `styles/shell.css`      | 1,068 | title bar, rail, panes, status, overlays                | Sidebar, Sheet, Tooltip, Command, shell composition; #2163 and #2164 |
-| `styles/workspace.css`  |   809 | document, answer, graph, timeline, tabs                 | Card, Tabs, ScrollArea, Empty, Skeleton, renderer wrapper; #2165     |
-| `styles/context.css`    |   159 | agent-context pane                                      | Card, Sheet, Badge, Progress; #2165                                  |
-| `styles/settings.css`   | 1,927 | setup, sources, forms, services, updates                | Field system and shared feedback/overlays; #2162 and #2166           |
-| `styles/utility.css`    |   470 | inbox, conversations, agent tools, memory               | shared cards, tables, status, menus; #2165 and #2166                 |
-| `styles/responsive.css` |   203 | 1280, 1000, and 780 pixel shell forks                   | component-owned responsive composition; #2164 through #2167          |
+| Owner                   | Lines | Current responsibility                                   | Replacement                                                          |
+| ----------------------- | ----: | -------------------------------------------------------- | -------------------------------------------------------------------- |
+| `styles/tokens.css`     |   354 | Eight themes, type, focus, control sizes, reduced motion | semantic variables in `shadcn.css`; #2161 and #2167                  |
+| `styles/buttons.css`    |    97 | temporary `cortana-button` variants                      | generated Button variants; #2162 and #2167                           |
+| `styles/shell.css`      | 1,068 | title bar, rail, panes, status, overlays                 | Sidebar, Sheet, Tooltip, Command, shell composition; #2163 and #2164 |
+| `styles/workspace.css`  |   809 | document, answer, graph, timeline, tabs                  | Card, Tabs, ScrollArea, Empty, Skeleton, renderer wrapper; #2165     |
+| `styles/context.css`    |   159 | agent-context pane                                       | Card, Sheet, Badge, Progress; #2165                                  |
+| `styles/settings.css`   | 1,927 | setup, sources, forms, services, updates                 | Field system and shared feedback/overlays; #2162 and #2166           |
+| `styles/utility.css`    |   470 | inbox, conversations, agent tools, memory                | shared cards, tables, status, menus; #2165 and #2166                 |
+| `styles/responsive.css` |   203 | 1280, 1000, and 780 pixel shell forks                    | component-owned responsive composition; #2164 through #2167          |
 
 Additional page-local breakpoints exist at 760, 780, and 900 pixels. The final renderer may retain
 layout breakpoints, but it must not retain a second component styling or interaction system.
