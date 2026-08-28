@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.4](https://github.com/0xPlayerOne/cortana/compare/v0.53.3...v0.53.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* **desktop:** close out M4-M7 product polish ([#2205](https://github.com/0xPlayerOne/cortana/issues/2205)) ([422b39f](https://github.com/0xPlayerOne/cortana/commit/422b39fdac3754dd1aef5cf711b981c2386935f3))
+
 ## [0.53.3](https://github.com/0xPlayerOne/cortana/compare/v0.53.2...v0.53.3) (2026-08-28)
 
 
