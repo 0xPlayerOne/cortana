@@ -1,4 +1,11 @@
-import type { BrainStatus, Evidence } from './types'
+import type {
+  AgentMemory,
+  BrainStatus,
+  DerivedMemoryResponse,
+  Evidence,
+  MemoryCandidate,
+  MemoryCandidateClassification,
+} from './types'
 
 export const demoEvidence: Evidence[] = [
   {
@@ -54,6 +61,76 @@ export const demoEvidence: Evidence[] = [
     updated_at: '2026-07-13T09:30:00Z',
   },
 ]
+
+export const demoMemoryCandidates: MemoryCandidate[] = [
+  {
+    id: 'demo-memory-candidate',
+    observation_kind: 'workflow',
+    content_type: 'preference',
+    retention_tier: 'durable',
+    scope: 'workspace',
+    project: 'work',
+    title: 'Release validation preference',
+    content: 'Require the complete validation gate before merging release changes.',
+    source: 'demo',
+    source_id: 'release-process',
+    confidence: 0.92,
+    importance: 0.86,
+    sensitivity: 'private',
+    status: 'pending',
+    acl: ['work'],
+    provenance: { fixture: true },
+    expires_at: '2026-09-04T12:00:00Z',
+    created_at: '2026-08-28T12:00:00Z',
+    updated_at: '2026-08-28T12:00:00Z',
+    consolidation: null,
+  },
+]
+
+export const demoCanonicalMemories: AgentMemory[] = [
+  {
+    id: 'demo-canonical-memory',
+    kind: 'preference',
+    retention_tier: 'durable',
+    scope: 'workspace',
+    project: 'work',
+    title: 'Evidence-backed release decisions',
+    content: 'Use exact checks and current release evidence before declaring readiness.',
+    confidence: 0.95,
+    importance: 0.9,
+    source: 'demo',
+    status: 'active',
+    updated_at: '2026-08-28T12:00:00Z',
+  },
+]
+
+export const demoDerivedMemories: DerivedMemoryResponse = {
+  contract_version: 'memory-derived.v1',
+  derivation_version: 'demo-v1',
+  memory_revision: 1,
+  canonical_memory_mutated: false,
+  recomputed: true,
+  representations: [
+    {
+      id: 'demo-derived-memory',
+      kind: 'working-style',
+      statement: 'Release decisions prioritize reproducible evidence.',
+      confidence: 0.91,
+      supporting_memory_ids: ['demo-canonical-memory'],
+      contradicting_memory_ids: [],
+      citation_authority: false,
+    },
+  ],
+  relations: [],
+}
+
+export const demoMemoryClassification: MemoryCandidateClassification = {
+  candidate_id: 'demo-memory-candidate',
+  classification: 'durable-preference',
+  confidence: 0.92,
+  supporting_memory_ids: ['demo-canonical-memory'],
+  explanation: 'The candidate describes a stable workflow preference.',
+}
 
 export const demoStatus: BrainStatus = {
   status: 'ok',

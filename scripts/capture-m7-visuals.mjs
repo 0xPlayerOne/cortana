@@ -18,7 +18,7 @@ if (!['legacy', 'shadcn'].includes(renderer)) {
 
 const baseUrl = args.get('--base-url') ?? 'http://127.0.0.1:4173'
 const output = resolve(args.get('--output') ?? `artifacts/m7-shadcn/${renderer}`)
-const widths = [320, 768, 1024, 1440]
+const widths = [320, 768, 1024, 1440, 1920]
 const themes = ['blue', 'accessible', 'forest', 'plum']
 const consoleErrors = []
 let screenshotCount = 0
@@ -26,7 +26,7 @@ let screenshotCount = 0
 await mkdir(output, { recursive: true })
 const browser = await chromium.launch({ headless: true })
 
-async function openPage(theme, width) {
+async function openPage(theme, width, state = 'configured') {
   const context = await browser.newContext({ viewport: { width, height: 1000 } })
   await context.addInitScript((value) => localStorage.setItem('cortana.theme.v1', value), theme)
   const page = await context.newPage()
@@ -36,7 +36,7 @@ async function openPage(theme, width) {
       consoleErrors.push(`${renderer}/${theme}/${width}: ${message.text()}`)
     }
   })
-  const query = renderer === 'shadcn' ? '?demo=1&renderer=shadcn' : '?demo=1'
+  const query = renderer === 'shadcn' ? `?demo=1&renderer=shadcn&demo-state=${state}` : '?demo=1'
   await page.goto(`${baseUrl}/${query}`, { waitUntil: 'domcontentloaded' })
   if (renderer === 'shadcn') {
     await page.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
@@ -45,6 +45,17 @@ async function openPage(theme, width) {
     await page.getByRole('main').waitFor()
   }
   return { context, page }
+}
+
+async function openSettings(page, width) {
+  if (width <= 768) {
+    await page.getByRole('button', { name: 'Toggle navigation' }).click()
+    await page.locator('[data-mobile="true"]').waitFor()
+  }
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  if (width <= 768) await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
+  await page.locator('.settings-view').waitFor()
+  await page.getByRole('heading', { name: 'Settings', exact: true }).waitFor()
 }
 
 async function screenshot(page, name) {
@@ -97,13 +108,13 @@ if (renderer === 'shadcn') {
         await screenshot(page, 'conversations-blue-320')
         await navigationTrigger.click()
         await page.locator('[data-mobile="true"]').waitFor()
-        await page.getByRole('button', { name: 'Search', exact: true }).click()
+        await page.getByRole('button', { name: 'Knowledge', exact: true }).click()
         await page.getByRole('heading', { name: 'How do releases work?', level: 1 }).waitFor()
 
         await page.evaluate(() => {
           if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
         })
-        for (let index = 0; index < 40; index += 1) {
+        for (let index = 0; index < 80; index += 1) {
           await page.keyboard.press('Tab')
           if (await navigationTrigger.evaluate((element) => element === document.activeElement)) {
             break
@@ -125,11 +136,8 @@ if (renderer === 'shadcn') {
         await page.waitForTimeout(300)
         await auditAccessibility(page, 'mobile production navigation')
         await screenshot(page, 'mobile-navigation-blue-320')
-        await page.getByRole('button', { name: 'Search', exact: true }).click()
+        await page.getByRole('button', { name: 'Knowledge', exact: true }).click()
         await page.locator('[data-mobile="true"]').waitFor({ state: 'detached' })
-        await page.waitForFunction(
-          () => document.activeElement?.getAttribute('aria-label') === 'Search your knowledge'
-        )
         await navigationTrigger.click()
         await page.locator('[data-mobile="true"]').waitFor()
         await page.getByRole('button', { name: 'Inbox', exact: true }).click()
@@ -224,11 +232,82 @@ if (renderer === 'shadcn') {
         await page.locator('[data-m7-activity-inbox] h1').waitFor()
         await screenshot(page, 'inbox-blue-1440')
 
+        await page.getByRole('button', { name: 'Agent tools', exact: true }).click()
+        await page.getByRole('heading', { name: 'Agent tools', level: 1 }).waitFor()
+        await screenshot(page, 'agent-tools-blue-1440')
+
+        await page.getByRole('button', { name: 'Index', exact: true }).click()
+        await page.getByRole('heading', { name: 'Index', level: 1 }).waitFor()
+        await screenshot(page, 'index-blue-1440')
+
         await page.getByRole('button', { name: 'Settings', exact: true }).click()
         await page.locator('.settings-view').waitFor()
-        await screenshot(page, 'settings-blue-1440')
+        await page.getByRole('heading', { name: 'Settings', exact: true }).waitFor()
+        await auditAccessibility(page, 'settings readiness')
+        await screenshot(page, 'settings-readiness-blue-1440')
 
-        await page.getByRole('button', { name: 'Toggle navigation' }).click()
+        await page.getByRole('button', { name: 'Services', exact: true }).click()
+        await page.getByRole('heading', { name: 'Services', exact: true }).waitFor()
+        await auditAccessibility(page, 'settings services and recovery')
+        await screenshot(page, 'settings-services-recovery-blue-1440')
+
+        await page.getByRole('button', { name: 'Sources', exact: true }).click()
+        await page.getByRole('heading', { name: 'Ingestion sources' }).waitFor()
+        const addSource = page.getByRole('button', { name: 'Add source', exact: true })
+        await addSource.click()
+        const sourceTypeDialog = page.getByRole('dialog', { name: 'Choose a source type' })
+        await sourceTypeDialog.waitFor()
+        await page.waitForTimeout(300)
+        await auditAccessibility(page, 'settings source-type selection')
+        await screenshot(page, 'settings-source-type-blue-1440')
+        await page.keyboard.press('Escape')
+        await sourceTypeDialog.waitFor({ state: 'detached' })
+        await page.waitForFunction(
+          () => document.activeElement?.textContent?.trim() === 'Add source'
+        )
+        await page.getByRole('button', { name: 'Advanced source settings' }).click()
+        await auditAccessibility(page, 'settings configured source')
+        await screenshot(page, 'settings-source-configured-blue-1440')
+        const removeSource = page.getByRole('button', { name: 'Remove work-code' })
+        await removeSource.click()
+        await page.getByRole('alertdialog').waitFor()
+        await page.waitForTimeout(300)
+        await auditAccessibility(page, 'settings destructive confirmation')
+        await screenshot(page, 'settings-source-confirmation-blue-1440')
+        await page.keyboard.press('Escape')
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute('aria-label') === 'Remove work-code'
+        )
+        await removeSource.click()
+        await page.getByRole('alertdialog').waitFor()
+        await page.getByRole('button', { name: 'Continue' }).click()
+        await removeSource.waitFor({ state: 'detached' })
+        await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Sources')
+
+        await page.getByRole('button', { name: 'Access', exact: true }).click()
+        await page.getByRole('heading', { name: 'Agent access' }).waitFor()
+        await auditAccessibility(page, 'settings write-only access')
+        await screenshot(page, 'settings-access-blue-1440')
+
+        await page.getByRole('button', { name: 'Updates', exact: true }).click()
+        await page.getByRole('heading', { name: 'Updates', exact: true }).waitFor()
+        await screenshot(page, 'settings-updater-blue-1440')
+
+        await page.getByRole('button', { name: 'Query', exact: true }).click()
+        await page.getByRole('heading', { name: 'Query and answer model' }).waitFor()
+        await auditAccessibility(page, 'settings query model selector')
+        await screenshot(page, 'settings-query-blue-1440')
+
+        await page.getByRole('button', { name: 'Memory', exact: true }).click()
+        await page.getByRole('heading', { name: 'Native agentic memory' }).waitFor()
+        await auditAccessibility(page, 'settings memory control center')
+        await screenshot(page, 'settings-memory-blue-1440')
+
+        await page.getByRole('button', { name: 'Advanced', exact: true }).click()
+        await page.getByRole('heading', { name: 'Local runtime' }).waitFor()
+        await auditAccessibility(page, 'settings backup and recovery')
+        await screenshot(page, 'settings-backup-recovery-blue-1440')
+
         const collapsedSidebar = page.locator('[data-slot="sidebar"][data-state="collapsed"]')
         await collapsedSidebar.waitFor()
         await page.waitForFunction(() => {
@@ -253,8 +332,54 @@ if (renderer === 'shadcn') {
           throw new Error('Collapsed desktop sidebar leaves an empty layout gutter')
         }
       }
+
+      if (theme === 'blue' && width === 1920) {
+        const wideSearch = page.getByRole('textbox', { name: 'Search your knowledge' })
+        await wideSearch.fill('How do releases work?')
+        await wideSearch.press('Enter')
+        await page.getByRole('heading', { name: 'How do releases work?', level: 1 }).waitFor()
+
+        for (const destination of ['Inbox', 'Conversations', 'Agent tools', 'Index', 'Help']) {
+          await page.getByRole('button', { name: destination, exact: true }).click()
+          await page.getByRole('heading', { name: destination, level: 1 }).waitFor()
+          await auditAccessibility(page, `wide ${destination}`)
+          await screenshot(page, `${destination.toLowerCase().replaceAll(' ', '-')}-blue-1920`)
+        }
+      }
       await context.close()
     }
+  }
+
+  for (const theme of themes) {
+    for (const width of widths) {
+      if (theme === 'blue' && width === 1440) continue
+      const { context, page } = await openPage(theme, width)
+      await openSettings(page, width)
+      await auditAccessibility(page, `configured settings ${theme}/${width}`)
+      await screenshot(page, `settings-configured-${theme}-${width}`)
+      await context.close()
+    }
+  }
+
+  for (const state of [
+    'setup',
+    'busy',
+    'success',
+    'warning',
+    'failure',
+    'cancelled',
+    'retry',
+    'recovery',
+  ]) {
+    const { context, page } = await openPage('blue', 1440, state)
+    await openSettings(page, 1440)
+    if (state === 'success') {
+      await page.getByRole('button', { name: 'Services', exact: true }).click()
+      await page.getByRole('heading', { name: 'Services', exact: true }).waitFor()
+    }
+    await auditAccessibility(page, `${state} settings state`)
+    await screenshot(page, `settings-state-${state}-blue-1440`)
+    await context.close()
   }
 
   const zoomContext = await browser.newContext({
@@ -264,6 +389,8 @@ if (renderer === 'shadcn') {
   const zoomPage = await zoomContext.newPage()
   await zoomPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, { waitUntil: 'domcontentloaded' })
   await zoomPage.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
+  await openSettings(zoomPage, 720)
+  await auditAccessibility(zoomPage, 'settings at 200% zoom')
   const horizontalOverflow = await zoomPage.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth
   )

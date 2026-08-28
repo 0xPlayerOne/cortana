@@ -206,6 +206,22 @@
   grid-area: rail;
 }
 
+.m7-application-sidebar [data-sidebar='menu-button'] > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.m7-application-sidebar [data-sidebar='menu-button'][data-active] {
+  color: var(--sidebar-accent-foreground);
+  background: color-mix(in srgb, var(--sidebar-primary) 22%, var(--sidebar-accent));
+  box-shadow: inset 3px 0 0 var(--sidebar-primary);
+}
+
+.m7-application-sidebar [data-sidebar='menu-button'][data-active] > svg {
+  color: var(--sidebar-primary);
+  stroke-width: 2.4;
+}
+
 .m7-production-shell [data-m7-activity-inbox] {
   grid-column: 2 / -1;
   grid-row: 2;
@@ -388,6 +404,38 @@
   color: var(--foreground);
 }
 
+.m7-production-shell .m7-utility-view .utility-body {
+  display: grid;
+  width: 100%;
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.75rem;
+}
+
+.m7-production-shell .m7-utility-view .utility-section {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.m7-production-shell .m7-utility-view .utility-empty {
+  width: 100%;
+  max-width: none;
+}
+
+@media (min-width: 1180px) {
+  .m7-production-shell .m7-utility-view .utility-body:not([data-m7-activity-body]) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .m7-production-shell
+    .m7-utility-view
+    .utility-body:not([data-m7-activity-body])
+    > :is(.utility-error, .utility-warning, .utility-empty, .utility-actions) {
+    grid-column: 1 / -1;
+  }
+}
+
 .m7-utility-view .utility-header {
   border-bottom-color: var(--border);
 }
@@ -488,8 +536,10 @@
 }
 
 .m7-memory-review[data-m7-memory-review] {
-  border-color: var(--border);
-  background: var(--background);
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
   color: var(--foreground);
 }
 

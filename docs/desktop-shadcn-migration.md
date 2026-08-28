@@ -59,12 +59,17 @@ Install the matching browser once with `bunx playwright install chromium` when P
 that it is missing. The capture fails on browser console errors. The legacy run records 56 images:
 all primary wide-screen destinations; the default and accessibility themes at 320, 768, 1024,
 and 1440 CSS pixels; Forest and Plum at compact and desktop widths; command, source-sheet,
-settings, and graph states. The production-shell run records 31 images: the real data-backed shell
-at all four widths in all four themes, mobile navigation, tablet source/context panels, command and
-workspace overlays, Inbox, Settings, and populated answer, conversations, evidence, timeline,
-canonical-document, and bounded-graph views, with populated conversations at mobile and desktop
-widths. Exceptional native settings states remain part of #2166 rather than being
-represented by the retired static prototype.
+settings, and graph states. The production-shell run records 78 images: the real data-backed shell
+at five widths from 320 through 1920 CSS pixels in all four themes, mobile navigation, tablet
+source/context panels, command and
+workspace overlays, Inbox, responsive Conversations, Agent tools, Index, Settings, and populated
+answer, evidence, timeline, canonical-document, and bounded-graph views, with populated
+conversations at mobile and desktop widths. Its non-secret typed Desktop fixture also records
+readiness, services/recovery, source-type selection, a configured source, a destructive AlertDialog,
+write-only agent access, updater, query-model selection, memory controls, and backup/runtime recovery
+surfaces. It additionally records configured Settings at every target width and theme plus explicit
+first-run, busy, success, warning, failure, cancellation, retry, and recovery states. Fixture paths
+use `/example` and no secret value is present in the DOM or screenshots.
 
 `.github/workflows/m7-visual-evidence.yml` runs the same capture on the exact pull-request revision,
 audits every production-shell theme/width against WCAG 2.2 AA automation, and uploads the complete
@@ -182,7 +187,7 @@ layout breakpoints, but it must not retain a second component styling or interac
 | Dialogs, destructive confirmations, sheets, dropdowns, popovers, tooltips, command palette, focus entry/return                                                  | manual markup in `App.tsx`, `SettingsView.tsx`, `MemoryReview.tsx`, and CSS pseudo-tooltips | Dialog, AlertDialog, Sheet, DropdownMenu, Popover, Tooltip, Command                         | #2163 |
 | Title/search bar, primary navigation, source navigation, context pane, resizing, status and background activity                                                 | `App.tsx`, `Navigation.tsx`, `SourcePanel.tsx`, `ContextPanel.tsx`                          | responsive Sidebar/Sheet shell and shared status components                                 | #2164 |
 | Workspace selection, search, documents, answer, citations, context bundle, graph, timeline, conversations, memory review                                        | `Workspace.tsx`, `MemoryReview.tsx`, `UtilityView.tsx`, `App.tsx`                           | Tabs, Card, Breadcrumb, ScrollArea, Table, menus, feedback, renderer-specific graph wrapper | #2165 |
-| First-run setup, source setup, initial sync, service readiness, settings, principals, models, backups, updater, recovery, activity inbox and operational errors | `SettingsView.tsx`, `SourceInitialSync.tsx`, `UtilityView.tsx`                              | Field/FieldGroup forms, shared navigation, progress, alerts, overlays and confirmations     | #2166 |
+| First-run setup, source setup, initial sync, service readiness, settings, principals, models, backups, updater, recovery, activity inbox and operational errors | `SettingsView.tsx`, `components/settings/*`, `UtilityView.tsx`                              | Field/FieldGroup forms, shared navigation, progress, alerts, overlays and confirmations     | #2166 |
 | Legacy button/classes, eight CSS files, page-local primitives, renderer flag, duplicate theme and responsive contracts                                          | all owners above                                                                            | one generated/composed system                                                               | #2167 |
 | Loading, empty, partial, offline, busy, success, warning, destructive, error, responsive, zoom, reduced-motion, keyboard, screen-reader and packaged states     | full renderer and typed native bridge                                                       | final migrated renderer                                                                     | #2168 |
 
@@ -205,3 +210,38 @@ The canonical document body, radial graph canvas, and virtualized list math rema
 Their interactive rows, filters, pagination, status, selected-node inspector, theme colors, and
 responsive boundaries are shadcn-owned. This preserves stable document provenance and bounded graph
 loading without disguising custom renderers as ordinary component primitives.
+
+## Settings and operations migration
+
+Issue #2166 routes settings text fields, textareas, checkboxes, switches, radio budgets, selects,
+buttons, cards, alerts, workspace/source tabs, advanced disclosures, destructive confirmations,
+and the toast host through generated shadcn primitives. `SettingsSurface.tsx` keeps the common
+renderer adapter component types module-scoped so ordinary parent updates preserve control
+identity; the model Combobox and provider-secret InputGroup import their generated primitives from
+lazy workflow modules. Section navigation intentionally mounts only the active workflow, and the
+complete Settings view, source workflow, advanced workflow, Combobox, and InputGroup are split from
+the initial application bundle. `SettingsConfirm.tsx` owns the shared
+AlertDialog promise boundary and restores focus to the initiating action after Cancel, Escape, or
+Continue. A shadcn render fails closed when its primitive provider is absent instead of silently
+falling back to the legacy system.
+
+Settings layout and validation association now live in `SettingsLayout.tsx`; portable settings,
+secret-file access, and secure-storage migration live in `AdvancedSettingsSection.tsx`. The
+generated FieldLabel, FieldDescription, and FieldError contract gives numeric fields deterministic
+required, whole-number, and range errors, then restores the last saved value when an invalid draft
+loses focus. The source workflow lives in `SourceSettingsWorkflow.tsx`, keeping the settings
+controller focused on persistence and cross-workflow state rather than one oversized component. The
+controller keeps write-only secret drafts separate from the persisted settings object, removes a
+pending clear when a replacement value is entered, and prunes drafts when a credential identity is
+renamed or removed. Principal, workspace, source, and stored-credential removal are explicit draft
+confirmations; native service, backup/restore, installer, authorization, validation, trial-sync,
+initial-sync, updater, import, and secure-storage safety messages retain their previous bounded
+semantics.
+
+The deterministic Desktop settings fixture in `apps/web/src/demoDesktop.ts` exists only behind
+`?demo=1`. It contains invented
+identities, `example.test` URLs, masked `/example` paths, configuration metadata, and configured
+secret indicators without secret values. It lets the visual evidence job exercise real Settings
+composition in a browser without adding Tauri capabilities, invoking native commands, or exposing
+host state. The issue #2166 evidence set contains 78 screenshots covering the configured matrix and
+explicit setup, busy, success, warning, failure, cancelled, retry, and recovery states.

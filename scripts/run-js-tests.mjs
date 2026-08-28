@@ -59,6 +59,7 @@ const isolatedNames = new Set([
   'DiscordServers.test.tsx',
   'ProviderModels.test.tsx',
   'SlackWorkspaces.test.tsx',
+  'SettingsView.demo.test.tsx',
   'SourceInitialSync.test.tsx',
   'sourceJobs.test.ts',
   'prepare-desktop-resources.test.mjs',

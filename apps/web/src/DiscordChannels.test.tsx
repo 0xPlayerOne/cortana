@@ -136,7 +136,7 @@ mock.module('./api', () => ({
 
 const { SettingsView } = await import('./components/SettingsView')
 
-function renderDiscordSettings() {
+async function renderDiscordSettings() {
   render(
     <SettingsView
       initialSection="sources"
@@ -146,6 +146,7 @@ function renderDiscordSettings() {
       }}
     />
   )
+  await screen.findByLabelText(/^Source name/)
 }
 
 function channelIdsTextarea(): HTMLTextAreaElement {
@@ -153,7 +154,7 @@ function channelIdsTextarea(): HTMLTextAreaElement {
 }
 
 test('discord chooser discovers guilds and channels and persists selected snowflake ids', async () => {
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() => expect(screen.getByText('Engineering')).toBeTruthy())
@@ -183,7 +184,7 @@ test('discord chooser discovers guilds and channels and persists selected snowfl
 })
 
 test('discord chooser selects every text and announcement channel in the assigned servers', async () => {
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() => expect(screen.getByText('Engineering')).toBeTruthy())
@@ -204,7 +205,7 @@ test('discord chooser limits select-all to assigned servers', async () => {
     ...discordSource,
     servers: ['175928847299117067'],
   })
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() => expect(screen.getByText('Community')).toBeTruthy())
@@ -217,7 +218,7 @@ test('discord chooser refuses to discover unsaved changes and surfaces failures'
   // A selected channel keeps the required Channel IDs field satisfied so the
   // rename can be saved and the failure path reached.
   state.settings = settingsWith({ ...discordSource, channels: ['175928847299117064'] })
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   // Editing the source makes the native command unsafe until it is saved, so
   // the discovery button is disabled and no IPC call can start.
@@ -248,7 +249,7 @@ test('discord chooser refuses to discover unsaved changes and surfaces failures'
 
 test('discord chooser warns when discovery is truncated at 100 servers', async () => {
   state.discoveryResult = { ...discovery, truncated: true }
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() =>
@@ -276,7 +277,7 @@ test('discord chooser marks a server with more than 100 channels as truncated', 
       },
     ],
   }
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() => expect(screen.getByText('channel-99 · text')).toBeTruthy())

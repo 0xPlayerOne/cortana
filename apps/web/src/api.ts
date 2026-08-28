@@ -1,6 +1,13 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 
-import { demoEvidence, demoStatus } from './demo'
+import {
+  demoCanonicalMemories,
+  demoDerivedMemories,
+  demoEvidence,
+  demoMemoryCandidates,
+  demoMemoryClassification,
+  demoStatus,
+} from './demo'
 import { buildAgentContext, estimateTokens } from './context'
 import { safeSourceLink } from './sourceLinks'
 import type {
@@ -449,6 +456,18 @@ export async function listMemoryCandidates(
   queryValue?: string,
   status?: string
 ): Promise<MemoryCandidate[]> {
+  if (isDemoMode) {
+    const needle = queryValue?.trim().toLowerCase()
+    return demoMemoryCandidates.filter(
+      (candidate) =>
+        (!project || candidate.project === project) &&
+        (!status || candidate.status === status) &&
+        (!needle ||
+          `${candidate.title} ${candidate.content} ${candidate.project} ${candidate.source}`
+            .toLowerCase()
+            .includes(needle))
+    )
+  }
   type CandidatePage = { candidates: MemoryCandidate[]; truncated: boolean }
   const request = {
     project: project || null,
@@ -477,6 +496,7 @@ export async function listMemoryCandidates(
 }
 
 export async function classifyMemoryCandidate(id: string): Promise<MemoryCandidateClassification> {
+  if (isDemoMode) return { ...demoMemoryClassification, candidate_id: id }
   if (isTauri()) {
     return invokeDesktop<MemoryCandidateClassification>('brain_memory_candidate_action', {
       id,
@@ -501,6 +521,13 @@ export async function actOnMemoryCandidate(
   policy: MemoryReviewPolicy,
   edit?: { title: string; content: string }
 ): Promise<MemoryCandidateActionResult> {
+  if (isDemoMode) {
+    return {
+      status: action === 'reject' || action === 'redact' ? action : 'review',
+      updated: false,
+      memory_id: null,
+    }
+  }
   const request = { policy: consolidationPolicy(policy), edit: edit || null }
   if (isTauri()) {
     return invokeDesktop<MemoryCandidateActionResult>('brain_memory_candidate_action', {
@@ -552,6 +579,7 @@ export async function actOnMemoryCandidate(
 }
 
 export async function setMemoryConsolidationPaused(paused: boolean): Promise<void> {
+  if (isDemoMode) return
   if (isTauri()) {
     await invokeDesktop('brain_memory_consolidation_control', {
       action: paused ? 'pause' : 'resume',
@@ -569,6 +597,7 @@ export async function getMemoryConsolidationState(): Promise<{
   paused: boolean
   canControl: boolean
 }> {
+  if (isDemoMode) return { paused: false, canControl: true }
   if (isTauri()) {
     const response = await invokeDesktop<{ paused: boolean; can_control: boolean }>(
       'brain_memory_consolidation_control',
@@ -585,6 +614,7 @@ export async function getMemoryConsolidationState(): Promise<{
 }
 
 export async function listDerivedMemories(project?: string): Promise<DerivedMemoryResponse> {
+  if (isDemoMode) return demoDerivedMemories
   const request = { project: project || null, limit: 64 }
   if (isTauri()) {
     return invokeDesktop<DerivedMemoryResponse>('brain_memory_derived', { request })
@@ -597,6 +627,9 @@ export async function listDerivedMemories(project?: string): Promise<DerivedMemo
 }
 
 export async function listCanonicalMemories(project?: string): Promise<AgentMemory[]> {
+  if (isDemoMode) {
+    return demoCanonicalMemories.filter((memory) => !project || memory.project === project)
+  }
   const request = { project: project || null, limit: 100 }
   if (isTauri()) {
     return invokeDesktop<AgentMemory[]>('brain_memory_export', { request })

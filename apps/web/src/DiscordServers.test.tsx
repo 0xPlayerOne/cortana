@@ -148,7 +148,7 @@ mock.module('./api', () => ({
 
 const { SettingsView } = await import('./components/SettingsView')
 
-function renderDiscordSettings() {
+async function renderDiscordSettings() {
   render(
     <SettingsView
       initialSection="sources"
@@ -158,10 +158,11 @@ function renderDiscordSettings() {
       }}
     />
   )
+  await screen.findByLabelText(/^Source name/)
 }
 
 test('discord server chooser discovers guilds and persists per-workspace assignment', async () => {
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
   await waitFor(() => expect(screen.getByText('Engineering')).toBeTruthy())
@@ -183,7 +184,7 @@ test('discord server chooser discovers guilds and persists per-workspace assignm
 })
 
 test('discord server chooser refuses to discover unsaved changes and surfaces failures', async () => {
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   // Editing the source makes the native command unsafe until it is saved, so
   // the discovery button is disabled and no IPC call can start.
@@ -211,7 +212,7 @@ test('discord server chooser refuses to discover unsaved changes and surfaces fa
 
 test('discord server chooser warns when discovery is truncated at 100 servers', async () => {
   state.serversResult = { ...servers, truncated: true }
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
   await waitFor(() =>
@@ -226,7 +227,7 @@ test('discord channels outside assigned servers are marked when servers are assi
     ...discordSource,
     servers: ['175928847299117063'],
   })
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() => expect(screen.getByText('release · text')).toBeTruthy())
@@ -246,7 +247,7 @@ test('discord authorize action names Discord and starts Desktop authorization', 
     token_path: '/Users/you/.config/cortana/discord-rpc-token.json',
     oauth_client_path: '/Users/you/.config/cortana/discord-rpc-client.json',
   })
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   const confirm = mock((message?: string) => {
     confirmMessage = message ?? ''
@@ -269,7 +270,7 @@ test('discord authorize action stays disabled until OAuth paths are saved', asyn
     token_path: null,
     oauth_client_path: null,
   })
-  renderDiscordSettings()
+  await renderDiscordSettings()
 
   const authorize = screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement
   expect(authorize.disabled).toBe(true)

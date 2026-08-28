@@ -106,6 +106,7 @@ mock.module('./api', () => ({
 
 const { App } = await import('./App')
 const { UtilityView } = await import('./components/UtilityView')
+const { M7ActivityInbox } = await import('./components/m7/M7ActivityInbox')
 const { M7SurfacePrimitivesProvider } = await import('./components/m7/M7SurfacePrimitives')
 const { m7SurfacePrimitives } = await import('./components/m7/M7SurfacePrimitives.shadcn')
 
@@ -413,7 +414,7 @@ test('Inbox renders current sync attention and a truthful idle empty state', asy
   // The demo status contains a budget-exceeded sync run that needs attention.
   await renderApp()
   fireEvent.click(railButton('Inbox'))
-  await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Inbox' })).toBeTruthy())
+  await screen.findByRole('heading', { level: 1, name: 'Inbox' })
   expect(screen.getByText('community-discord')).toBeTruthy()
   expect(screen.getByText('Budget exceeded')).toBeTruthy()
   // A clean sync run must not be listed as attention.
@@ -426,6 +427,16 @@ test('Inbox renders current sync attention and a truthful idle empty state', asy
   fireEvent.click(railButton('Inbox'))
   await waitFor(() => expect(screen.getByText('No sync attention')).toBeTruthy())
   expect(screen.getByRole('button', { name: 'Open settings' })).toBeTruthy()
+})
+
+test('shadcn Inbox shares the responsive utility-page spacing contract', () => {
+  render(<M7ActivityInbox status={demoStatus} sourceJobs={[]} onOpenSettings={() => {}} />)
+
+  const inbox = screen.getByRole('heading', { level: 1, name: 'Inbox' }).closest('main')
+  expect(inbox?.className).toContain('m7-utility-view')
+  expect(inbox?.querySelector('.utility-header')).toBeTruthy()
+  expect(inbox?.querySelector('[data-m7-activity-body].utility-body')).toBeTruthy()
+  expect(inbox?.querySelector('.max-w-5xl')).toBeNull()
 })
 
 test('Inbox does not claim clean sync history while runtime status is unavailable', () => {

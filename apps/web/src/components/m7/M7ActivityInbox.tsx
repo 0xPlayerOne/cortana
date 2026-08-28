@@ -32,8 +32,6 @@ import {
   EmptyTitle,
 } from '@/components/shadcn/empty'
 import { Progress } from '@/components/shadcn/progress'
-import { ScrollArea } from '@/components/shadcn/scroll-area'
-import { Separator } from '@/components/shadcn/separator'
 
 export type M7ActivityInboxProps = {
   status: BrainStatus | null
@@ -230,108 +228,99 @@ export function M7ActivityInbox({
   const empty = attention.length === 0 && activeJobs.length === 0 && completedJobs.length === 0
 
   return (
-    <main
-      id="main-content"
-      className="min-h-0 min-w-0 overflow-hidden bg-muted/20"
-      data-m7-activity-inbox
-    >
-      <ScrollArea className="h-full">
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 p-4 md:p-6">
-          <header className="space-y-1">
-            <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">
-              Attention
-            </p>
-            <h1 className="font-heading text-2xl font-semibold">Inbox</h1>
-            <p className="text-sm text-muted-foreground">
-              Current sync health and source-job activity. Nothing here is fabricated history.
-            </p>
-          </header>
-          <Separator />
-          {sourceJobError ? (
-            <Alert variant="destructive">
-              <AlertTriangle aria-hidden="true" />
-              <AlertTitle>Source jobs unavailable</AlertTitle>
-              <AlertDescription>{sourceJobError}</AlertDescription>
-              {onRetrySourceJobs ? (
-                <AlertAction>
-                  <Button variant="outline" size="sm" onClick={onRetrySourceJobs}>
-                    Retry
-                  </Button>
-                </AlertAction>
-              ) : null}
-            </Alert>
-          ) : null}
-          {statusError && status ? (
-            <Alert>
-              <AlertTriangle aria-hidden="true" />
-              <AlertTitle>Showing the last known sync snapshot</AlertTitle>
-              <AlertDescription>{statusError}</AlertDescription>
-              {onRetryStatus ? (
-                <AlertAction>
-                  <Button variant="outline" size="sm" onClick={onRetryStatus}>
-                    Retry
-                  </Button>
-                </AlertAction>
-              ) : null}
-            </Alert>
-          ) : null}
-          {empty ? (
-            <ActivityEmpty
-              loading={!status && !statusError}
-              error={statusError}
-              onRetryStatus={onRetryStatus}
-              onOpenSettings={onOpenSettings}
-            />
-          ) : (
-            <div className="space-y-6">
-              {attention.length ? (
-                <section className="space-y-3" aria-labelledby="m7-sync-attention">
-                  <h2 id="m7-sync-attention" className="font-heading text-base font-medium">
-                    Sync attention
-                  </h2>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {attention.map((run) => (
-                      <SyncActivityCard
-                        key={`${run.project}:${run.source}:${run.started_at}`}
-                        run={run}
-                      />
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              {activeJobs.length ? (
-                <section className="space-y-3" aria-labelledby="m7-active-source-jobs">
-                  <h2 id="m7-active-source-jobs" className="font-heading text-base font-medium">
-                    Active source jobs
-                  </h2>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {activeJobs.map((job) => (
-                      <SourceJobCard key={job.id} job={job} onCancel={onCancelSourceJob} />
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-              {completedJobs.length ? (
-                <section className="space-y-3" aria-labelledby="m7-recent-source-jobs">
-                  <h2 id="m7-recent-source-jobs" className="font-heading text-base font-medium">
-                    Recent source jobs
-                  </h2>
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {completedJobs.map((job) => (
-                      <SourceJobCard key={job.id} job={job} />
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-            </div>
-          )}
-          <div>
-            <Button variant="outline" onClick={onOpenSettings}>
-              <Settings aria-hidden="true" /> Manage ingestion in settings
-            </Button>
-          </div>
+    <main id="main-content" className="utility-view m7-utility-view" data-m7-activity-inbox>
+      <header className="utility-header">
+        <div>
+          <span className="eyebrow">Attention</span>
+          <h1>Inbox</h1>
+          <p>Current sync health and source-job activity. Nothing here is fabricated history.</p>
         </div>
-      </ScrollArea>
+      </header>
+      <div className="utility-body" data-m7-activity-body>
+        {sourceJobError ? (
+          <Alert variant="destructive">
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle>Source jobs unavailable</AlertTitle>
+            <AlertDescription>{sourceJobError}</AlertDescription>
+            {onRetrySourceJobs ? (
+              <AlertAction>
+                <Button variant="outline" size="sm" onClick={onRetrySourceJobs}>
+                  Retry
+                </Button>
+              </AlertAction>
+            ) : null}
+          </Alert>
+        ) : null}
+        {statusError && status ? (
+          <Alert>
+            <AlertTriangle aria-hidden="true" />
+            <AlertTitle>Showing the last known sync snapshot</AlertTitle>
+            <AlertDescription>{statusError}</AlertDescription>
+            {onRetryStatus ? (
+              <AlertAction>
+                <Button variant="outline" size="sm" onClick={onRetryStatus}>
+                  Retry
+                </Button>
+              </AlertAction>
+            ) : null}
+          </Alert>
+        ) : null}
+        {empty ? (
+          <ActivityEmpty
+            loading={!status && !statusError}
+            error={statusError}
+            onRetryStatus={onRetryStatus}
+            onOpenSettings={onOpenSettings}
+          />
+        ) : (
+          <div className="space-y-6">
+            {attention.length ? (
+              <section className="space-y-3" aria-labelledby="m7-sync-attention">
+                <h2 id="m7-sync-attention" className="font-heading text-base font-medium">
+                  Sync attention
+                </h2>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {attention.map((run) => (
+                    <SyncActivityCard
+                      key={`${run.project}:${run.source}:${run.started_at}`}
+                      run={run}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {activeJobs.length ? (
+              <section className="space-y-3" aria-labelledby="m7-active-source-jobs">
+                <h2 id="m7-active-source-jobs" className="font-heading text-base font-medium">
+                  Active source jobs
+                </h2>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {activeJobs.map((job) => (
+                    <SourceJobCard key={job.id} job={job} onCancel={onCancelSourceJob} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {completedJobs.length ? (
+              <section className="space-y-3" aria-labelledby="m7-recent-source-jobs">
+                <h2 id="m7-recent-source-jobs" className="font-heading text-base font-medium">
+                  Recent source jobs
+                </h2>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {completedJobs.map((job) => (
+                    <SourceJobCard key={job.id} job={job} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+        )}
+        <div className="utility-actions">
+          <Button variant="outline" onClick={onOpenSettings}>
+            <Settings aria-hidden="true" /> Manage ingestion in settings
+          </Button>
+        </div>
+      </div>
     </main>
   )
 }

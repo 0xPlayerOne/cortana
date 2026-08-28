@@ -2,9 +2,42 @@ import { afterEach, expect, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+import { M7ApplicationNavigation, M7ShellProvider } from './M7ApplicationShell'
 import { M7ShadcnPrototype } from './M7ShadcnPrototype'
 
 afterEach(() => cleanup())
+
+test('starts the desktop application rail collapsed with a visible active destination contract', () => {
+  render(
+    <M7ShellProvider enabled>
+      <M7ApplicationNavigation
+        navigation={{
+          view: 'settings',
+          onNavigate: () => undefined,
+          onOpenGraph: () => undefined,
+        }}
+        workspaces={[{ id: 'work', name: 'Work', color: '#5a9bd5' }]}
+        workspace="work"
+        onWorkspaceChange={() => undefined}
+      />
+    </M7ShellProvider>
+  )
+
+  const navigation = screen.getByRole('navigation', { name: 'Primary navigation' })
+  expect(navigation.closest('[data-state]')?.getAttribute('data-state')).toBe('collapsed')
+  expect(screen.queryByRole('button', { name: 'Search' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Timeline' })).toBeNull()
+  expect(
+    screen.getByRole('button', { name: 'Switch workspace' }).querySelector('.workspace-logo')
+  ).toBeTruthy()
+  const destinations = Array.from(
+    navigation.querySelectorAll<HTMLElement>('[data-sidebar="menu-button"]')
+  ).map((item) => item.textContent?.trim())
+  expect(destinations.indexOf('Graph')).toBe(destinations.indexOf('Knowledge') + 1)
+  const settings = screen.getByRole('button', { name: 'Settings' })
+  expect(settings.getAttribute('aria-current')).toBe('page')
+  expect(settings.hasAttribute('data-active')).toBe(true)
+})
 
 test('switches evidence tabs without losing the document workflow', async () => {
   render(<M7ShadcnPrototype />)

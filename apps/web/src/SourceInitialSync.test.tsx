@@ -385,7 +385,7 @@ test('a shared active source job locks source actions until it finishes', async 
     false
   )
   expect((screen.getByLabelText(/^Source name/) as HTMLInputElement).disabled).toBe(true)
-  expect((screen.getByLabelText('Workspace') as HTMLSelectElement).disabled).toBe(true)
+  expect(screen.queryByLabelText('Workspace')).toBeNull()
 })
 
 test('standalone source polling pauses while Settings is backgrounded', async () => {
