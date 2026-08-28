@@ -379,13 +379,16 @@ test('a shared active source job locks source actions until it finishes', async 
   }
   render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
 
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
   await openAdvancedSource()
   expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: /Cancel/ }))
   await waitFor(() => expect(state.cancelCalls).toEqual(['source-1-1']))
   for (const label of ['Validate', 'Trial sync', 'Initial sync', 'Remove work-code']) {
-    expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(true)
+    if (label === 'Remove work-code') {
+      expect((screen.getByRole('button', { name: label }) as HTMLButtonElement).disabled).toBe(true)
+    } else {
+      expect(screen.queryByRole('button', { name: label })).toBeNull()
+    }
   }
   expect((screen.getByRole('button', { name: 'Add source' }) as HTMLButtonElement).disabled).toBe(
     false

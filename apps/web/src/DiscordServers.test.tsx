@@ -277,7 +277,7 @@ test('discord authorize action names Discord and starts Desktop authorization', 
   window.confirm = originalConfirm
 })
 
-test('discord authorize action stays disabled until OAuth paths are saved', async () => {
+test('discord authorize action stays hidden until OAuth paths are saved', async () => {
   state.settings = settingsWith({
     ...discordSource,
     token_path: null,
@@ -285,8 +285,7 @@ test('discord authorize action stays disabled until OAuth paths are saved', asyn
   })
   await renderDiscordSettings()
 
-  const authorize = screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement
-  expect(authorize.disabled).toBe(true)
+  expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull()
   expect(state.authorizationCalls).toEqual([])
 
   // A token destination without a client JSON is still incomplete, and the
@@ -299,9 +298,7 @@ test('discord authorize action stays disabled until OAuth paths are saved', asyn
     screen.getByPlaceholderText('/Users/you/.config/cortana/discord-rpc-client.json'),
     { target: { value: '/Users/you/.config/cortana/discord-rpc-client.json' } }
   )
-  expect((screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement).disabled).toBe(
-    true
-  )
+  expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull()
 
   // Once the paths are saved, the same source card offers Desktop RPC
   // authorization for Discord.

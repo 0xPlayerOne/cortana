@@ -239,11 +239,10 @@ test('slack authorize action names Slack and starts browser authorization', asyn
   window.confirm = originalConfirm
 })
 
-test('slack authorize action stays disabled until OAuth paths are saved', async () => {
+test('slack authorize action stays hidden until saved OAuth paths are available', async () => {
   await renderSlackSettings()
 
-  const authorize = screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement
-  expect(authorize.disabled).toBe(true)
+  expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull()
   expect(state.authorizationCalls).toEqual([])
 
   // A token destination without a client JSON is still incomplete, and the
@@ -256,9 +255,7 @@ test('slack authorize action stays disabled until OAuth paths are saved', async 
     screen.getByPlaceholderText('/Users/you/.config/cortana/slack-oauth-client.json'),
     { target: { value: '/Users/you/.config/cortana/slack-oauth-client.json' } }
   )
-  expect((screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement).disabled).toBe(
-    true
-  )
+  expect(screen.queryByRole('button', { name: 'Authorize' })).toBeNull()
 
   // Once the paths are saved, the same source card offers browser
   // authorization for Slack.

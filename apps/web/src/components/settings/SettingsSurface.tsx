@@ -292,7 +292,9 @@ export function SettingsSelect({ children, onChange, value, ...props }: Componen
     >
       <SelectTrigger
         id={props.id}
-        className={props.className}
+        className={['w-full border-border bg-background shadow-xs', props.className]
+          .filter(Boolean)
+          .join(' ')}
         aria-label={props['aria-label']}
         aria-describedby={props['aria-describedby']}
         aria-invalid={props['aria-invalid']}

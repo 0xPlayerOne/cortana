@@ -42,9 +42,7 @@ test('workspace logo data URLs reject non-raster or malformed payloads', () => {
 
 test('workspace logo files reject unsupported types', async () => {
   const svg = new File(['<svg/>'], 'logo.svg', { type: 'image/svg+xml' })
-  await expect(readWorkspaceLogoFile(svg)).rejects.toThrow(
-    'Choose a PNG, JPEG, WebP, or GIF image.'
-  )
+  await expect(readWorkspaceLogoFile(svg)).rejects.toThrow('Choose a raster image')
 })
 
 test('workspace logo files over 200 KB are resized and compressed to a valid JPEG', async () => {
@@ -96,10 +94,64 @@ test('workspace logo files over 200 KB are resized and compressed to a valid JPE
   }
 })
 
+test('workspace logo compression retries with a data URL when the webview rejects a blob URL', async () => {
+  const previousImage = globalThis.Image
+  const previousGetContext = HTMLCanvasElement.prototype.getContext
+  const previousToBlob = HTMLCanvasElement.prototype.toBlob
+  const previousCreateObjectURL = URL.createObjectURL
+  const previousRevokeObjectURL = URL.revokeObjectURL
+  let sources: string[] = []
+
+  class BlobRejectingImage {
+    naturalWidth = 1200
+    naturalHeight = 800
+    onload: (() => void) | null = null
+    onerror: (() => void) | null = null
+
+    set src(value: string) {
+      sources.push(value)
+      queueMicrotask(() => (value.startsWith('blob:') ? this.onerror?.() : this.onload?.()))
+    }
+  }
+
+  try {
+    globalThis.Image = BlobRejectingImage as unknown as typeof Image
+    URL.createObjectURL = (() => 'blob:unsupported-in-webview') as typeof URL.createObjectURL
+    URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL
+    HTMLCanvasElement.prototype.getContext = (() => ({
+      clearRect() {},
+      drawImage() {},
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext
+    HTMLCanvasElement.prototype.toBlob = ((callback) => {
+      callback(new Blob([new Uint8Array(1_024)], { type: 'image/jpeg' }))
+    }) as typeof HTMLCanvasElement.prototype.toBlob
+
+    const source = new File([new Uint8Array(200_001)], 'logo.avif', { type: 'image/avif' })
+    const dataUrl = await readWorkspaceLogoFile(source)
+    expect(dataUrl.startsWith('data:image/jpeg;base64,')).toBe(true)
+    expect(sources[0]).toBe('blob:unsupported-in-webview')
+    expect(sources[1]?.startsWith('data:image/avif;base64,')).toBe(true)
+  } finally {
+    sources = []
+    globalThis.Image = previousImage
+    HTMLCanvasElement.prototype.getContext = previousGetContext
+    HTMLCanvasElement.prototype.toBlob = previousToBlob
+    URL.createObjectURL = previousCreateObjectURL
+    URL.revokeObjectURL = previousRevokeObjectURL
+  }
+})
+
 test('workspace logo files within the size bound produce a valid data URL', async () => {
   const file = new File(['logo-bytes'], 'logo.png', { type: 'image/png' })
   const dataUrl = await readWorkspaceLogoFile(file)
   expect(dataUrl.startsWith('data:image/png;base64,')).toBe(true)
+  expect(isWorkspaceLogoDataUrl(dataUrl)).toBe(true)
+})
+
+test('workspace logo files recover a missing MIME type from a supported extension', async () => {
+  const file = new File(['logo-bytes'], 'camera-export.JPG')
+  const dataUrl = await readWorkspaceLogoFile(file)
+  expect(dataUrl.startsWith('data:image/jpeg;base64,')).toBe(true)
   expect(isWorkspaceLogoDataUrl(dataUrl)).toBe(true)
 })
 

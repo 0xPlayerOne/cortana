@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { desktopInfo, desktopSettings } from './test/fixtures'
 import type {
@@ -140,13 +141,8 @@ function modelCatalog(): HTMLElement {
   return screen.getByRole('combobox', { name: 'Model catalog' })
 }
 
-function modelInput(): HTMLInputElement {
-  return screen.getByLabelText('Model') as HTMLInputElement
-}
-
 async function openEmbeddingCatalog() {
-  await screen.findByRole('combobox', { name: 'Model catalog' })
-  fireEvent.click(screen.getByRole('button', { name: 'Toggle options' }))
+  fireEvent.click(await screen.findByRole('combobox', { name: 'Model catalog' }))
 }
 
 test('refresh exposes provider-advertised models without stale cloud presets', async () => {
@@ -156,8 +152,7 @@ test('refresh exposes provider-advertised models without stale cloud presets', a
 
   // Cloud models are not maintained as a stale static list; discovery is the
   // source of truth and the current value is preserved as custom until then.
-  expect(screen.queryByLabelText('Model catalog')).toBeNull()
-  expect(modelInput().value).toBe('text-embedding-3-small')
+  expect(modelCatalog().textContent).toContain('text-embedding-3-small')
 
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
 
@@ -174,23 +169,22 @@ test('a current model that is not advertised falls back to the custom field unch
 
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
 
-  // Flush the refresh continuation (scheduled outside `fireEvent`'s act scope)
-  // so the derived custom fallback commits deterministically.
+  // Flush the refresh continuation (scheduled outside `fireEvent`'s act scope).
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
-  expect(screen.queryByLabelText('Model catalog')).toBeNull()
-  expect(modelInput().value).toBe('provider-custom-embedding')
+  expect(modelCatalog().textContent).toContain('provider-custom-embedding')
 })
 
 test('selecting an advertised model updates the provider settings', async () => {
+  const user = userEvent.setup()
   state.settings.embedding.model = 'text-embedding-3-small'
   renderEmbeddingSettings()
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
   await openEmbeddingCatalog()
 
-  fireEvent.click(screen.getByRole('option', { name: 'text-embedding-3-large' }))
-  expect((modelCatalog() as HTMLInputElement).value).toBe('text-embedding-3-large')
+  await user.click(screen.getByRole('option', { name: 'text-embedding-3-large' }))
+  await waitFor(() => expect(modelCatalog().textContent).toContain('text-embedding-3-large'))
 
   fireEvent.click(screen.getByRole('button', { name: /Save/ }))
   await waitFor(() => {
@@ -207,17 +201,17 @@ test('failed discovery keeps the explicit model and reports the error', async ()
   await waitFor(() => {
     expect(screen.getByText(/provider \/models request failed with status 404/)).toBeTruthy()
   })
-  expect(screen.queryByLabelText('Model catalog')).toBeNull()
-  expect(modelInput().value).toBe('provider-custom-embedding')
+  expect(modelCatalog().textContent).toContain('provider-custom-embedding')
 })
 
 test('changing the endpoint invalidates the advertised catalog', async () => {
+  const user = userEvent.setup()
   state.settings.embedding.model = 'text-embedding-3-small'
   renderEmbeddingSettings()
   fireEvent.click(screen.getByRole('button', { name: /Refresh Embedding model models/ }))
   await openEmbeddingCatalog()
   expect(screen.getByRole('option', { name: 'text-embedding-3-large' })).toBeTruthy()
-  fireEvent.click(screen.getByRole('option', { name: 'text-embedding-3-small' }))
+  await user.click(screen.getByRole('option', { name: 'text-embedding-3-small' }))
 
   // The user edits the endpoint; the stale advertised list must not apply to
   // the new provider.
@@ -225,8 +219,7 @@ test('changing the endpoint invalidates the advertised catalog', async () => {
   fireEvent.change(endpoint, { target: { value: 'https://other.example.test/v1' } })
 
   await waitFor(() => {
-    expect(screen.queryByLabelText('Model catalog')).toBeNull()
-    expect(modelInput().value).toBe('text-embedding-3-small')
+    expect(modelCatalog().textContent).toContain('text-embedding-3-small')
   })
 })
 

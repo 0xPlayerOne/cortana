@@ -97,6 +97,10 @@ afterEach(() => {
   state.openUrlError = null
   state.openProjectCalls = 0
   state.openProjectError = null
+  state.pickedPath = null
+  state.pickedPaths = []
+  state.pathPickerCalls = []
+  state.authorizationCalls = []
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -217,6 +221,9 @@ const state = {
   openSecretFileCalls: 0,
   openProjectCalls: 0,
   openProjectError: null as Error | null,
+  pickedPath: null as string | null,
+  pickedPaths: [] as string[],
+  pathPickerCalls: [] as string[],
   serviceAction: null as (() => Promise<DesktopServiceReport>) | null,
   readinessScan: null as
     (() => Promise<Awaited<ReturnType<typeof realApi.scanDesktopReadiness>>>) | null,
@@ -496,7 +503,10 @@ mock.module('./api', () => ({
   listDesktopBuzzCommunities: () => Promise.reject(new Error('Buzz communities unavailable')),
   listDesktopProviderModels: (kind: 'embedding' | 'query') =>
     Promise.resolve({ kind, provider: 'local', models: [], truncated: false }),
-  pickDesktopPath: () => Promise.resolve(null),
+  pickDesktopPath: (kind: string) => {
+    state.pathPickerCalls.push(kind)
+    return Promise.resolve(state.pickedPaths.shift() ?? state.pickedPath)
+  },
   planDesktopInitialSync: () => Promise.reject(new Error('initial sync unavailable')),
   startDesktopInitialSync: () => Promise.reject(new Error('initial sync unavailable')),
   getDesktopSourceValidation: (id: string) => {
@@ -546,7 +556,7 @@ test('shadcn settings compose generated source controls', async () => {
   fireEvent.click(await screen.findByRole('button', { name: /Advanced source settings/ }))
   expect(document.querySelector('[data-slot="input"]')).toBeTruthy()
   expect(document.querySelector('[data-slot="select-trigger"]')).toBeTruthy()
-  expect(document.querySelector('[data-slot="checkbox"]')).toBeTruthy()
+  expect(document.querySelector('[data-slot="switch"]')).toBeTruthy()
   expect(document.querySelector('[data-slot="button"]')).toBeTruthy()
 
   expect(screen.getByRole('button', { name: `Remove ${workSource.name}` })).toBeTruthy()
@@ -606,7 +616,7 @@ test('lazy provider controls keep generated field labels and help associated', a
   expect(secret.getAttribute('aria-describedby')?.split(' ')).toContain(secretHint.id)
 }, 20_000)
 
-test('shadcn disabled source checkbox keeps its assignment explanation', async () => {
+test('shadcn disabled source switch keeps its assignment explanation', async () => {
   const unassignedSource = {
     ...workSource,
     name: 'legacy-source',
@@ -622,7 +632,7 @@ test('shadcn disabled source checkbox keeps its assignment explanation', async (
   )
 
   expect(
-    (await screen.findByRole('checkbox', { name: /^Enable legacy-source/ })).getAttribute('title')
+    (await screen.findByRole('switch', { name: /^Enable legacy-source/ })).getAttribute('title')
   ).toBe('Assign this source to a workspace before enabling it')
 })
 
@@ -885,8 +895,8 @@ test('desktop settings navigation opens the audit trail and renders both event s
   expect(state.saveSettingsCalls).toBe(0)
   expect(screen.getByText('Runtime retrieval')).toBeTruthy()
   expect(screen.getByText('Desktop actions')).toBeTruthy()
-  expect(screen.getByText('brain_answer')).toBeTruthy()
-  expect(screen.getByText('brain_documents')).toBeTruthy()
+  expect(screen.getByText('memory.export').className).toContain('success')
+  expect(screen.getByText('brain_documents').className).toContain('failure')
   expect(screen.getByText('settings_saved')).toBeTruthy()
 
   // Refreshing keeps the audit list stable.
@@ -1265,13 +1275,8 @@ test('embedding model field supports preset catalog with custom fallback', async
     fireEvent.click(screen.getByRole('button', { name: 'Embedding' }))
 
     const catalog = await screen.findByRole('combobox', { name: 'Model catalog' })
-    expect((catalog as HTMLInputElement).value).toBe('Qwen/Qwen3-Embedding-0.6B')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Toggle options' }))
-    fireEvent.click(await screen.findByRole('option', { name: 'Custom' }))
-    const custom = screen.getByRole('textbox', { name: 'Model' }) as HTMLInputElement
-    fireEvent.change(custom, { target: { value: 'local/custom-model' } })
-    expect(custom.value).toBe('local/custom-model')
+    expect(catalog.textContent).toContain('Qwen/Qwen3-Embedding-0.6B')
+    expect(catalog.getAttribute('data-slot')).toBe('select-trigger')
   } finally {
     state.settings = originalSettings
   }
@@ -1354,14 +1359,14 @@ test('settings add controls avoid reusing removed identifiers', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove source-1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add source' }))
     expect(screen.getByRole('dialog', { name: 'Choose a source type' })).toBeTruthy()
-    fireEvent.click(screen.getByRole('radio', { name: 'Slack' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Add Slack' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Buzz' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add Buzz' }))
     fireEvent.click(screen.getByRole('tab', { name: /Two/ }))
     fireEvent.click(screen.getAllByRole('button', { name: /Advanced source settings/ }).at(-1)!)
     expect(
       (screen.getAllByLabelText(/Source name/) as HTMLInputElement[]).map((input) => input.value)
     ).toContain('source-1')
-    expect(screen.getByRole('img', { name: 'Slack connector' })).toBeTruthy()
+    expect(screen.getByRole('img', { name: 'Buzz connector' })).toBeTruthy()
     expect(screen.queryByRole('combobox', { name: 'Workspace for source-1' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Access' }))
@@ -1371,6 +1376,89 @@ test('settings add controls avoid reusing removed identifiers', async () => {
     ).toContain('agent-3')
   } finally {
     window.confirm = originalConfirm
+    state.settings = originalSettings
+  }
+})
+
+test('adding files and code opens the native picker before creating a populated source', async () => {
+  const originalSettings = state.settings
+  state.settings = { ...desktopSettings, sources: [] }
+  state.pickedPath = '/Users/you/Developer/example-repo'
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add source' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Files and code' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Choose folder' }))
+
+    await waitFor(() => expect(state.pathPickerCalls).toEqual(['directory']))
+    expect(await screen.findByText('/Users/you/Developer/example-repo')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /Advanced source settings/ }))
+    expect((screen.getByLabelText('Source name') as HTMLInputElement).value).toBe('example-repo')
+  } finally {
+    state.settings = originalSettings
+  }
+})
+
+test('connecting a provider collects its files before persisting and authorizing the source', async () => {
+  const originalSettings = state.settings
+  state.settings = { ...desktopSettings, sources: [] }
+  state.applySettingsUpdate = true
+  state.pickedPaths = [
+    '/Users/you/Downloads/google-oauth-client.json',
+    '/Users/you/.config/cortana/google-calendar-token.json',
+  ]
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add source' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Google Calendar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Google Calendar' }))
+
+    await waitFor(() => expect(state.pathPickerCalls).toEqual(['oauth-client', 'google-token']))
+    await waitFor(() => expect(state.authorizationCalls).toEqual(['google-calendar']))
+    expect(state.lastSettingsUpdate?.sources).toContainEqual(
+      expect.objectContaining({
+        name: 'google-calendar',
+        kind: 'google-calendar',
+        oauth_client_path: '/Users/you/Downloads/google-oauth-client.json',
+        token_path: '/Users/you/.config/cortana/google-calendar-token.json',
+      })
+    )
+    expect(screen.queryByRole('dialog', { name: 'Choose a source type' })).toBeNull()
+    expect(screen.getByText('google-calendar · authorization · running')).toBeTruthy()
+  } finally {
+    state.settings = originalSettings
+    state.sourceJob = null
+    state.applySettingsUpdate = false
+  }
+})
+
+test('cancelling provider connection creates no source', async () => {
+  const originalSettings = state.settings
+  state.settings = { ...desktopSettings, sources: [] }
+  state.pickedPaths = ['/Users/you/Downloads/google-oauth-client.json']
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Sources' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Add source' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'Google Drive' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Google Drive' }))
+
+    await waitFor(() => expect(state.pathPickerCalls).toEqual(['oauth-client', 'google-token']))
+    expect(state.saveSettingsCalls).toBe(0)
+    expect(state.authorizationCalls).toEqual([])
+    expect(state.settings.sources).toEqual([])
+  } finally {
     state.settings = originalSettings
   }
 })
@@ -1427,7 +1515,7 @@ test('workspace cards show display name and advanced details', async () => {
     expect(screen.getByDisplayValue('Work')).toBeTruthy()
     expect((screen.getByLabelText(/Scope ID/i) as HTMLInputElement).readOnly).toBe(true)
     const upload = screen.getByLabelText('Upload logo for Work') as HTMLInputElement
-    expect(upload.accept).toContain('image/png')
+    expect(upload.accept).toBe('image/*')
   } finally {
     state.settings = originalSettings
   }
@@ -1727,13 +1815,9 @@ test('source settings quarantine legacy scopes and offer workspace assignment', 
       .find((alert) => alert.className.includes('source-unassigned-note'))!
     expect(assignmentAlert.textContent).toContain('uses the legacy community scope')
     expect(assignmentAlert.className).toContain('source-unassigned-note')
-    expect(screen.getByRole('checkbox').getAttribute('aria-disabled')).toBe('true')
-    expect((screen.getByRole('button', { name: 'Validate' }) as HTMLButtonElement).disabled).toBe(
-      true
-    )
-    expect(
-      (screen.getByRole('button', { name: 'Initial sync' }) as HTMLButtonElement).disabled
-    ).toBe(true)
+    expect(screen.getByRole('switch').getAttribute('aria-disabled')).toBe('true')
+    expect(screen.queryByRole('button', { name: 'Validate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Initial sync' })).toBeNull()
 
     const workspace = screen.getByRole('combobox', {
       name: 'Workspace for community-discord',

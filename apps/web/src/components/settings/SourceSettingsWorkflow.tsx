@@ -73,6 +73,7 @@ import {
   SettingsRadio,
   SettingsRadioGroup,
   SettingsSelect as Select,
+  SettingsSwitch,
   SettingsTabs,
   SettingsTabsContent,
   SettingsTabsList,
@@ -120,6 +121,7 @@ export function SourcesSection({
   onClearSecret,
   onJob,
   sourceJobs,
+  onPersistSources,
 }: SettingsSectionProps & {
   canValidate: boolean
   secretValues: Record<string, string>
@@ -128,6 +130,7 @@ export function SourcesSection({
   onClearSecret: (name: string) => void
   onJob?: (job: DesktopSourceJob) => void
   sourceJobs?: DesktopSourceJob[]
+  onPersistSources?: (sources: SourceSettings[]) => Promise<DesktopSettings>
 }) {
   const confirm = useSettingsConfirm()
   const [job, setJob] = useState<DesktopSourceJob | null>(null)
@@ -159,6 +162,7 @@ export function SourcesSection({
   const [sourceWorkspace, setSourceWorkspace] = useState(() => initialSourceWorkspace(settings))
   const [sourceTypeOpen, setSourceTypeOpen] = useState(false)
   const [sourceType, setSourceType] = useState<SourceKind>('filesystem')
+  const [connectingSource, setConnectingSource] = useState(false)
   const [initialSync, setInitialSync] = useState<{
     source: string
     budget: InitialSyncBudget
@@ -368,16 +372,84 @@ export function SourcesSection({
     }))
   }
 
-  const addSource = (kind: SourceKind) => {
+  const addSource = (kind: SourceKind, root: string | null = null) => {
     const targetWorkspace = sourceWorkspaceIsAssigned
       ? sourceWorkspace
       : settings.workspaces[0]?.id || 'personal'
     if (!sourceWorkspaceIsAssigned) setSourceWorkspace(targetWorkspace)
-    update((current) => ({
-      ...current,
-      sources: [...current.sources, newSource(current, targetWorkspace, kind)],
-    }))
+    update((current) => {
+      const source = newSource(current, targetWorkspace, kind)
+      if (root) {
+        source.root = root
+        source.name = nextAvailablePathIdentifier(
+          identifierFromPath(root),
+          current.sources.map((item) => item.name)
+        )
+      }
+      return { ...current, sources: [...current.sources, source] }
+    })
     setSourceTypeOpen(false)
+  }
+
+  const addFilesystemSource = async (picker: 'directory' | 'source-file') => {
+    setError('')
+    try {
+      const root = await pickDesktopPath(picker)
+      if (root) addSource('filesystem', root)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'File selection failed')
+    }
+  }
+
+  const connectProviderSource = async (kind: SourceKind) => {
+    if (!onPersistSources) {
+      addSource(kind)
+      return
+    }
+    if (kind === 'buzz') {
+      addSource(kind)
+      return
+    }
+    if (!canValidate) {
+      setError('Save or discard current settings changes before connecting a provider.')
+      return
+    }
+    setError('')
+    setConnectingSource(true)
+    try {
+      const targetWorkspace = sourceWorkspaceIsAssigned
+        ? sourceWorkspace
+        : settings.workspaces[0]?.id || 'personal'
+      const source = newSource(settings, targetWorkspace, kind)
+      source.name = nextAvailablePathIdentifier(
+        kind,
+        settings.sources.map((item) => item.name)
+      )
+      if (kind !== 'apple-notes') {
+        const oauthClientPath = await pickDesktopPath('oauth-client')
+        if (!oauthClientPath) return
+        const tokenPicker = isGoogleSource(kind)
+          ? 'google-token'
+          : kind === 'github'
+            ? 'github-token'
+            : kind === 'discord'
+              ? 'discord-token'
+              : 'slack-token'
+        const tokenPath = await pickDesktopPath(tokenPicker)
+        if (!tokenPath) return
+        source.oauth_client_path = oauthClientPath
+        source.token_path = tokenPath
+        source.token_env = null
+      }
+      await onPersistSources([...settings.sources, source])
+      setSourceTypeOpen(false)
+      if (kind === 'apple-notes') await openDesktopSourceSetup(source.name)
+      else applyJob(await startDesktopSourceAuthorization(source.name))
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Source connection could not be started')
+    } finally {
+      setConnectingSource(false)
+    }
   }
 
   const validateSource = async (source: SourceSettings) => {
@@ -728,8 +800,12 @@ export function SourcesSection({
           <DialogHeader>
             <DialogTitle>Choose a source type</DialogTitle>
             <DialogDescription>
-              The new source will be assigned to {selectedWorkspace?.name || 'the first workspace'}.
-              Saving the draft will not validate or ingest data.
+              {sourceType === 'filesystem'
+                ? `Choose a file or folder for ${selectedWorkspace?.name || 'the first workspace'}. Cortana will populate the source from your selection.`
+                : sourceType === 'buzz'
+                  ? `Add a Buzz connector for ${selectedWorkspace?.name || 'the first workspace'}, then open advanced settings to choose communities.`
+                  : `Connect ${SOURCE_KINDS.find((kind) => kind.value === sourceType)?.label || 'this provider'} to ${selectedWorkspace?.name || 'the first workspace'}. Cortana will collect the required connection files, save the populated source, and launch authorization.`}{' '}
+              No content is read until you run validation or sync.
             </DialogDescription>
           </DialogHeader>
           <SettingsRadioGroup
@@ -756,9 +832,35 @@ export function SourcesSection({
             <Button variant="secondary" type="button" onClick={() => setSourceTypeOpen(false)}>
               Cancel
             </Button>
-            <Button variant="primary" type="button" onClick={() => addSource(sourceType)}>
-              Add {SOURCE_KINDS.find((kind) => kind.value === sourceType)?.label || 'source'}
-            </Button>
+            {sourceType === 'filesystem' ? (
+              <>
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() => void addFilesystemSource('source-file')}
+                >
+                  Choose file
+                </Button>
+                <Button
+                  variant="primary"
+                  type="button"
+                  onClick={() => void addFilesystemSource('directory')}
+                >
+                  <FolderOpen size={15} /> Choose folder
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="primary"
+                type="button"
+                disabled={connectingSource}
+                onClick={() => void connectProviderSource(sourceType)}
+              >
+                {connectingSource ? <LoaderCircle className="spin" size={15} /> : null}
+                {sourceType === 'buzz' ? 'Add' : 'Connect'}{' '}
+                {SOURCE_KINDS.find((kind) => kind.value === sourceType)?.label || 'source'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -852,18 +954,7 @@ export function SourcesSection({
               return (
                 <SettingsCard className="source-settings-card" key={`source-${index}`}>
                   <header>
-                    <label className="source-enable">
-                      <SettingsCheckbox
-                        aria-label={`Enable ${source.name}`}
-                        checked={source.enabled}
-                        disabled={sourceLocked || (!workspaceAssigned && !source.enabled)}
-                        title={
-                          !workspaceAssigned
-                            ? 'Assign this source to a workspace before enabling it'
-                            : undefined
-                        }
-                        onChange={(event) => changeSource(index, { enabled: event.target.checked })}
-                      />
+                    <div className="source-enable">
                       <span
                         className={`source-service-icon source-service-icon--${source.kind}`}
                         aria-label={`${sourceLabel} connector`}
@@ -875,9 +966,9 @@ export function SourcesSection({
                         <strong>
                           {sourceDisplayName(source.kind, source.name || 'New source')}
                         </strong>
-                        <small>{source.enabled ? 'Enabled' : 'Disabled'}</small>
+                        <small>{sourceSubtitle(source)}</small>
                       </span>
-                    </label>
+                    </div>
                     {!workspaceAssigned && (
                       <label className="source-workspace-picker">
                         <span>Assign workspace</span>
@@ -899,101 +990,88 @@ export function SourcesSection({
                       </label>
                     )}
                     <div className="source-card-actions">
-                      {hasBrowserSetup(source.kind) && (
+                      <div className="source-enabled-switch">
+                        <span>{source.enabled ? 'Enabled' : 'Disabled'}</span>
+                        <SettingsSwitch
+                          aria-label={`Enable ${source.name}`}
+                          checked={source.enabled}
+                          disabled={sourceLocked || (!workspaceAssigned && !source.enabled)}
+                          title={
+                            !workspaceAssigned
+                              ? 'Assign this source to a workspace before enabling it'
+                              : undefined
+                          }
+                          onChange={(event) =>
+                            changeSource(index, { enabled: event.target.checked })
+                          }
+                        />
+                      </div>
+                      {hasBrowserSetup(source.kind) && canValidate && !activeJob && (
                         <Button
                           variant="icon"
                           type="button"
                           className="source-icon-button "
                           aria-label={setupActionLabel(source.kind)}
                           tooltip={setupActionLabel(source.kind)}
-                          disabled={!canValidate || sourceLocked}
                           onClick={() => void openSetup(source)}
                         >
                           <ExternalLink size={14} />
                         </Button>
                       )}
-                      {(isGoogleSource(source.kind) ||
-                        source.kind === 'github' ||
-                        source.kind === 'discord' ||
-                        source.kind === 'slack') && (
+                      {canValidate &&
+                        !activeJob &&
+                        (isGoogleSource(source.kind) ||
+                          source.kind === 'github' ||
+                          source.kind === 'discord' ||
+                          source.kind === 'slack') &&
+                        canAuthorizeSource(source) && (
+                          <Button
+                            variant="icon"
+                            type="button"
+                            className="source-icon-button "
+                            aria-label="Authorize"
+                            tooltip="Authorize"
+                            onClick={() => void authorizeSource(source)}
+                          >
+                            <KeyRound size={14} />
+                          </Button>
+                        )}
+                      {canValidate && !activeJob && workspaceAssigned && (
                         <Button
                           variant="icon"
                           type="button"
                           className="source-icon-button "
-                          aria-label="Authorize"
-                          tooltip="Authorize"
-                          disabled={
-                            !canValidate ||
-                            (source.kind === 'discord' || source.kind === 'slack'
-                              ? !source.token_path
-                              : !source.token_path && !source.token_env) ||
-                            !source.oauth_client_path ||
-                            Boolean(activeJob)
-                          }
-                          onClick={() => void authorizeSource(source)}
+                          aria-label="Validate"
+                          tooltip="Validate"
+                          onClick={() => void validateSource(source)}
                         >
-                          {runningThis && activeJob?.operation === 'authorization' ? (
-                            <LoaderCircle className="spin" size={14} />
-                          ) : (
-                            <KeyRound size={14} />
-                          )}
+                          <ShieldCheck size={14} />
                         </Button>
                       )}
-                      <Button
-                        variant="icon"
-                        type="button"
-                        className="source-icon-button "
-                        aria-label="Validate"
-                        tooltip="Validate"
-                        disabled={!canValidate || Boolean(activeJob) || !workspaceAssigned}
-                        onClick={() => void validateSource(source)}
-                      >
-                        {runningThis && activeJob?.operation === 'validation' ? (
-                          <LoaderCircle className="spin" size={14} />
-                        ) : (
-                          <ShieldCheck size={14} />
-                        )}
-                      </Button>
-                      <Button
-                        variant="icon"
-                        type="button"
-                        className="source-icon-button "
-                        aria-label="Trial sync"
-                        tooltip="Trial sync"
-                        disabled={
-                          !canValidate ||
-                          !source.enabled ||
-                          Boolean(activeJob) ||
-                          !workspaceAssigned
-                        }
-                        onClick={() => void trialSyncSource(source)}
-                      >
-                        {runningThis && activeJob?.operation === 'trial-sync' ? (
-                          <LoaderCircle className="spin" size={14} />
-                        ) : (
+                      {canValidate && !activeJob && source.enabled && workspaceAssigned && (
+                        <Button
+                          variant="icon"
+                          type="button"
+                          className="source-icon-button "
+                          aria-label="Trial sync"
+                          tooltip="Trial sync"
+                          onClick={() => void trialSyncSource(source)}
+                        >
                           <FlaskConical size={14} />
-                        )}
-                      </Button>
-                      <Button
-                        variant="icon"
-                        type="button"
-                        className="source-icon-button "
-                        aria-label="Initial sync"
-                        tooltip="Initial sync"
-                        disabled={
-                          !canValidate ||
-                          !source.enabled ||
-                          Boolean(activeJob) ||
-                          !workspaceAssigned
-                        }
-                        onClick={() => openInitialSync(source)}
-                      >
-                        {runningThis && activeJob?.operation === 'initial-sync' ? (
-                          <LoaderCircle className="spin" size={14} />
-                        ) : (
+                        </Button>
+                      )}
+                      {canValidate && !activeJob && source.enabled && workspaceAssigned && (
+                        <Button
+                          variant="icon"
+                          type="button"
+                          className="source-icon-button "
+                          aria-label="Initial sync"
+                          tooltip="Initial sync"
+                          onClick={() => openInitialSync(source)}
+                        >
                           <Zap size={14} />
-                        )}
-                      </Button>
+                        </Button>
+                      )}
                       <Button
                         variant="danger"
                         type="button"
@@ -2109,17 +2187,17 @@ export function SourcesSection({
             </div>
           )}
 
-          <SettingsAlert className="safety-note">
-            <AlertTriangle size={16} />
-            <span>
+          <details className="source-safety-details">
+            <summary>How source sync limits work</summary>
+            <p>
               Source validation checks a bounded snapshot and writes only metadata about the
               outcome. Trial sync is separately confirmed, requires an exact successful validation,
               limits work to 25 documents and 5 MiB, and never performs deletion reconciliation.
               Initial sync is planned first, uses one of three fixed budgets (up to 2,000 documents,
               128 MiB, 60 minutes), requires validation at equal or larger limits, and never
               escalates beyond the selected budget.
-            </span>
-          </SettingsAlert>
+            </p>
+          </details>
         </SettingsTabsContent>
       </SettingsTabs>
     </SettingsSection>
@@ -2128,6 +2206,53 @@ export function SourcesSection({
 
 function sourceOf(settings: DesktopSettings, name: string): SourceSettings {
   return settings.sources.find((item) => item.name === name)!
+}
+
+function identifierFromPath(path: string): string {
+  const leaf = path.split(/[\\/]/).filter(Boolean).at(-1) || 'source'
+  return (
+    leaf
+      .replace(/\.[^.]+$/, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'source'
+  )
+}
+
+function sourceSubtitle(source: SourceSettings): string {
+  if (source.kind === 'filesystem' || source.kind === 'external' || source.kind === 'buzz') {
+    return source.root || 'Choose a file or folder'
+  }
+  if (source.kind === 'github') {
+    return source.repositories.length
+      ? source.repositories.slice(0, 2).join(', ')
+      : source.token_path || source.token_env || 'GitHub account not connected'
+  }
+  if (source.kind === 'slack') {
+    return source.team_names.join(', ') || source.token_path || 'Slack account not connected'
+  }
+  if (
+    source.kind === 'google-drive' ||
+    source.kind === 'gmail' ||
+    source.kind === 'google-calendar'
+  ) {
+    return source.token_path || 'Google account not connected'
+  }
+  if (source.kind === 'discord') {
+    return source.servers.length
+      ? `${source.servers.length} server${source.servers.length === 1 ? '' : 's'} selected`
+      : source.token_path || 'Discord account not connected'
+  }
+  if (source.kind === 'apple-notes') {
+    return source.folders?.length ? source.folders.join(', ') : 'All Apple Notes folders'
+  }
+  return source.name || 'Not connected'
+}
+
+function canAuthorizeSource(source: SourceSettings): boolean {
+  if (!source.oauth_client_path) return false
+  if (source.kind === 'discord' || source.kind === 'slack') return Boolean(source.token_path)
+  return Boolean(source.token_path || source.token_env)
 }
 
 function budgetLabel(budget: InitialSyncBudget) {
@@ -2332,6 +2457,11 @@ function nextAvailableIdentifier(prefix: string, used: readonly string[]): strin
     const candidate = `${prefix}-${number}`
     if (!occupied.has(candidate)) return candidate
   }
+}
+
+function nextAvailablePathIdentifier(prefix: string, used: readonly string[]): string {
+  if (!used.includes(prefix)) return prefix
+  return nextAvailableIdentifier(prefix, used)
 }
 
 function defaultTokenEnv(kind: SourceKind): string | null {

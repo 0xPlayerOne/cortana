@@ -148,7 +148,9 @@ async function auditAccessibility(page, label) {
         await page.getByRole('dialog', { name: 'Sources and documents' }).waitFor({
           state: 'detached',
         })
-        await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Actions')
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute('aria-label') === 'Actions'
+        )
       }
 
       if (theme === 'blue' && width === 1024) {
@@ -160,7 +162,9 @@ async function auditAccessibility(page, label) {
         await screenshot(page, 'context-panel-blue-1024')
         await page.keyboard.press('Escape')
         await page.getByRole('dialog', { name: 'Agent context' }).waitFor({ state: 'detached' })
-        await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Actions')
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute('aria-label') === 'Actions'
+        )
       }
 
       if (theme === 'blue' && width === 1440) {
@@ -185,8 +189,8 @@ async function auditAccessibility(page, label) {
         if (
           Math.abs(collapsedMetrics.sidebarWidth - 72) > 1 ||
           Math.abs(collapsedMetrics.targetWidth - 48) > 1 ||
-          Math.abs(collapsedMetrics.iconWidth - 20) > 1 ||
-          Math.abs(collapsedMetrics.logoWidth - 48) > 1 ||
+          Math.abs(collapsedMetrics.iconWidth - 24) > 1 ||
+          Math.abs(collapsedMetrics.logoWidth - 72) > 1 ||
           collapsedMetrics.labelsDisplay !== 'none'
         ) {
           throw new Error(
@@ -200,7 +204,7 @@ async function auditAccessibility(page, label) {
         const expandedLogoWidth = await page
           .locator('[aria-label="Switch workspace"] .workspace-logo')
           .evaluate((element) => element.getBoundingClientRect().width)
-        if (Math.abs(expandedLogoWidth - 48) > 1) {
+        if (Math.abs(expandedLogoWidth - 72) > 1) {
           throw new Error(`Expanded workspace logo regressed to ${expandedLogoWidth}px`)
         }
         await auditAccessibility(page, 'expanded desktop navigation')
@@ -256,7 +260,9 @@ async function auditAccessibility(page, label) {
         await page.getByRole('menuitem', { name: 'Command palette' }).click()
         await page.getByRole('dialog', { name: 'Cortana command palette' }).waitFor()
         await page.keyboard.press('Escape')
-        await page.waitForFunction(() => document.activeElement?.textContent?.trim() === 'Actions')
+        await page.waitForFunction(
+          () => document.activeElement?.getAttribute('aria-label') === 'Actions'
+        )
 
         await page.getByRole('button', { name: 'Switch workspace' }).click()
         await page.getByRole('menuitemradio', { name: 'Work' }).waitFor()

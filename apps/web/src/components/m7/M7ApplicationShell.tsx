@@ -18,6 +18,7 @@ import {
   Inbox,
   LoaderCircle,
   MessageCircle,
+  MoreVertical,
   Search,
   Settings,
   Sparkles,
@@ -134,10 +135,7 @@ export type M7CommandPaletteProps = {
 
 const navigationItems = [
   { view: 'knowledge' as const, label: 'Knowledge', icon: BookOpenText },
-  { view: 'inbox' as const, label: 'Inbox', icon: Inbox },
   { view: 'conversations' as const, label: 'Conversations', icon: MessageCircle },
-  { view: 'agent-tools' as const, label: 'Agent tools', icon: TerminalSquare },
-  { view: 'index' as const, label: 'Index', icon: Database },
 ]
 
 export function M7ApplicationHeader({
@@ -234,8 +232,18 @@ export function M7ApplicationHeader({
         <span className="hidden md:inline">Reflect</span>
       </Button>
       <DropdownMenu>
-        <DropdownMenuTrigger render={<Button ref={actionsRef} variant="outline" size="sm" />}>
-          Actions
+        <DropdownMenuTrigger
+          render={
+            <Button
+              ref={actionsRef}
+              variant="outline"
+              size="icon"
+              aria-label="Actions"
+              title="Actions"
+            />
+          }
+        >
+          <MoreVertical aria-hidden="true" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuGroup>
@@ -420,13 +428,13 @@ export function M7ApplicationNavigation({
       aria-label="Primary navigation"
       className="m7-application-sidebar"
     >
-      <SidebarHeader className="p-3">
+      <SidebarHeader className="m7-workspace-header p-3">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <SidebarMenuButton
                 size="lg"
-                className="h-12 p-0 group-data-[collapsible=icon]:size-12!"
+                className="m7-workspace-trigger p-0"
                 tooltip={`Workspace: ${activeWorkspace?.name ?? 'Choose workspace'}`}
                 aria-label="Switch workspace"
               />
@@ -442,10 +450,7 @@ export function M7ApplicationNavigation({
                 ?
               </span>
             )}
-            <span
-              data-workspace-labels
-              className="min-w-0 flex-1 pr-2 text-left group-data-[collapsible=icon]:hidden"
-            >
+            <span data-workspace-labels className="min-w-0 flex-1 pr-2 text-left">
               <span className="block truncate text-sm font-medium">
                 {activeWorkspace?.name ?? 'Choose workspace'}
               </span>
@@ -518,6 +523,20 @@ export function M7ApplicationNavigation({
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
+                  {view === 'conversations' && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        size="lg"
+                        tooltip="Agent tools"
+                        isActive={navigation.view === 'agent-tools'}
+                        aria-current={navigation.view === 'agent-tools' ? 'page' : undefined}
+                        onClick={() => runNavigation(() => navigation.onNavigate('agent-tools'))}
+                      >
+                        <TerminalSquare aria-hidden="true" />
+                        <span>Agent tools</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
                 </Fragment>
               ))}
             </SidebarMenu>
@@ -529,18 +548,6 @@ export function M7ApplicationNavigation({
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              tooltip="Settings"
-              isActive={navigation.view === 'settings'}
-              aria-current={navigation.view === 'settings' ? 'page' : undefined}
-              onClick={() => runNavigation(() => navigation.onNavigate('settings'))}
-            >
-              <Settings aria-hidden="true" />
-              <span>Settings</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
               tooltip="Help"
               isActive={navigation.view === 'help'}
               aria-current={navigation.view === 'help' ? 'page' : undefined}
@@ -548,6 +555,42 @@ export function M7ApplicationNavigation({
             >
               <CircleHelp aria-hidden="true" />
               <span>Help</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              tooltip="Inbox"
+              isActive={navigation.view === 'inbox'}
+              aria-current={navigation.view === 'inbox' ? 'page' : undefined}
+              onClick={() => runNavigation(() => navigation.onNavigate('inbox'))}
+            >
+              <Inbox aria-hidden="true" />
+              <span>Inbox</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              tooltip="Index"
+              isActive={navigation.view === 'index'}
+              aria-current={navigation.view === 'index' ? 'page' : undefined}
+              onClick={() => runNavigation(() => navigation.onNavigate('index'))}
+            >
+              <Database aria-hidden="true" />
+              <span>Index</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              tooltip="Settings"
+              isActive={navigation.view === 'settings'}
+              aria-current={navigation.view === 'settings' ? 'page' : undefined}
+              onClick={() => runNavigation(() => navigation.onNavigate('settings'))}
+            >
+              <Settings aria-hidden="true" />
+              <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

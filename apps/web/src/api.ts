@@ -292,7 +292,13 @@ export async function listDesktopProviderModels(
 
 export async function pickDesktopPath(
   kind:
-    'directory' | 'oauth-client' | 'google-token' | 'github-token' | 'discord-token' | 'slack-token'
+    | 'directory'
+    | 'source-file'
+    | 'oauth-client'
+    | 'google-token'
+    | 'github-token'
+    | 'discord-token'
+    | 'slack-token'
 ): Promise<string | null> {
   if (!isDesktopApp) throw new Error('Native path selection is available in Cortana Desktop')
   return invokeDesktop<string | null>('desktop_path_pick', { kind })

@@ -195,7 +195,7 @@ never grants authorization; the Rust runtime remains the authority for project a
 
 Workspaces are query/project scopes inside one canonical database, rather than separate indexes.
 This keeps embedding and query caches reusable while allowing agents and people to filter work,
-personal, or special context. The first desktop iteration permits one to three workspaces; the
+personal, or special context. Desktop permits one to four workspaces; the
 storage and API contract remain list-based so that limit can be raised without a data migration.
 
 Workspace metadata is exposed by `/v1/status`. Desktop search sends the selected workspace ID as
