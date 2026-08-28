@@ -153,8 +153,8 @@ export const desktopInfo: DesktopInfo = {
 }
 
 export const runtimeAuditEvents: AuditEvent[] = [
-  { id: 1, event: 'brain_answer', at_unix_seconds: 1785000000, scope: 'query' },
-  { id: 2, event: 'brain_documents', at_unix_seconds: 1785000060, scope: 'status' },
+  { id: 1, event: 'memory.export', status: 'succeeded', at_unix_seconds: 1785000000 },
+  { id: 2, event: 'brain_documents', status: 'failed', at_unix_seconds: 1785000060 },
 ]
 
 export const desktopAuditEvents: AuditEvent[] = [

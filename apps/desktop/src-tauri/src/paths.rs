@@ -13,6 +13,11 @@ pub async fn pick(app: AppHandle, kind: &str) -> Result<Option<String>, String> 
             .pick_folder(move |path| {
                 let _ = sender.send(path);
             }),
+        "source-file" => dialog
+            .set_title("Choose a file to index")
+            .pick_file(move |path| {
+                let _ = sender.send(path);
+            }),
         "oauth-client" => dialog
             .set_title("Choose a Desktop OAuth client")
             .add_filter("OAuth client", &["json"])

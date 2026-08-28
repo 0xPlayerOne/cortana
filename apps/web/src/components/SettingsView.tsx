@@ -106,6 +106,7 @@ import type {
   DesktopSettingsUpdate,
   DesktopSourceJob,
   DesktopUpdate,
+  SourceSettings,
   AuditEvent,
   AuthPrincipalSettings,
   WorkspaceSettings,
@@ -538,6 +539,38 @@ function SettingsViewContent({
     }
   }
 
+  async function persistConnectedSources(sources: SourceSettings[]): Promise<DesktopSettings> {
+    if (!settings || dirty || saving) {
+      throw new Error('Save or discard current settings changes before connecting a source.')
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const next = await saveDesktopSettings({
+        workspaces: settings.workspaces,
+        sources,
+        auth_principals: settings.auth_principals,
+        embedding: settings.embedding,
+        query: settings.query,
+        memory: settings.memory,
+        ingestion: settings.ingestion,
+        runtime: settings.runtime,
+        secrets: [],
+      })
+      setSettings(next)
+      setSaved(true)
+      setDirty(false)
+      onSaved(next)
+      restartAfterSaveIfNeeded(next)
+      return next
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to save the connected source')
+      throw caught
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (!isDesktopApp && !externalSettings) {
     return (
       <SettingsSurfaceProvider>
@@ -748,6 +781,7 @@ function SettingsViewContent({
                   }}
                   onJob={onJob}
                   sourceJobs={sourceJobs}
+                  onPersistSources={persistConnectedSources}
                 />
               </Suspense>
             )}
@@ -2140,7 +2174,9 @@ function AuditList({ title, events }: { title: string; events: AuditEvent[] }) {
       ) : (
         events.map((event, index) => (
           <article key={`${String(event['id'] || event['at_unix_seconds'] || 'event')}:${index}`}>
-            <strong>{String(event['event'] || event['action'] || 'event')}</strong>
+            <strong className={`audit-event-title ${auditOutcome(event)}`}>
+              {String(event['event'] || event['action'] || 'event')}
+            </strong>
             <time>
               {event['timestamp']
                 ? new Date(String(event['timestamp'])).toLocaleString()
@@ -2154,6 +2190,15 @@ function AuditList({ title, events }: { title: string; events: AuditEvent[] }) {
       )}
     </div>
   )
+}
+
+function auditOutcome(event: AuditEvent): 'success' | 'failure' | 'neutral' {
+  if (event['success'] === true || event['passed'] === true) return 'success'
+  if (event['success'] === false || event['passed'] === false) return 'failure'
+  const value = String(event['status'] || event['outcome'] || event['result'] || '').toLowerCase()
+  if (/^(success|succeeded|completed|passed|ok)$/.test(value)) return 'success'
+  if (/^(failure|failed|error|cancelled|canceled|budget_exceeded)$/.test(value)) return 'failure'
+  return 'neutral'
 }
 
 function ReadinessSection({
@@ -2445,15 +2490,28 @@ function ReadinessSection({
               </SettingsAlert>
             )}
           </div>
-          {readiness.core && !readiness.core.passed && onOpenServices && (
+          {readiness.core && !readiness.core.passed && (
             <SettingsAlert className="safety-note" role="status">
               <span>
-                Runtime checks are not passing. Confirm the API and embedding services are installed
-                and running before retrying readiness.
+                Readiness is blocked by:{' '}
+                <strong>
+                  {readiness.core.checks
+                    .filter((check) => !check.passed)
+                    .map((check) => check.name.replaceAll('-', ' '))
+                    .join(', ') || 'an unknown runtime check'}
+                </strong>
+                . Review the failed check details above before retrying.
               </span>
-              <Button variant="secondary" onClick={onOpenServices}>
-                Check Services
-              </Button>
+              {onOpenServices &&
+                readiness.core.checks.some(
+                  (check) =>
+                    !check.passed &&
+                    /api|service|server|embedding/i.test(`${check.name} ${check.detail}`)
+                ) && (
+                  <Button variant="secondary" onClick={onOpenServices}>
+                    Check Services
+                  </Button>
+                )}
             </SettingsAlert>
           )}
         </>
@@ -2569,7 +2627,7 @@ function WorkspaceSection({
   return (
     <SettingsSection
       title="Workspaces"
-      description="Create up to three isolated query scopes. Sources and accounts can be assigned to one scope. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
+      description="Create up to four isolated query scopes. Sources and accounts can be assigned to one scope. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
     >
       <div className="workspace-settings-grid">
         {settings.workspaces.map((workspace, index) => (
@@ -2585,7 +2643,7 @@ function WorkspaceSection({
                 <span className="visually-hidden">Upload logo for {workspace.name}</span>
                 <Input
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  accept="image/*"
                   onChange={(event) => {
                     void updateLogo(workspace.id, event.target.files?.[0])
                     event.currentTarget.value = ''
@@ -2623,14 +2681,23 @@ function WorkspaceSection({
                 </Button>
               )}
             </div>
-            <Field label="Display name">
-              <Input
-                value={workspace.name}
-                onChange={(event) => changeWorkspace(index, { name: event.target.value })}
-                required
-                maxLength={80}
-              />
-            </Field>
+            <div className="workspace-identity-row">
+              <Field label="Display name">
+                <Input
+                  value={workspace.name}
+                  onChange={(event) => changeWorkspace(index, { name: event.target.value })}
+                  required
+                  maxLength={80}
+                />
+              </Field>
+              <Field label="Color">
+                <Input
+                  type="color"
+                  value={workspace.color || '#E8A83B'}
+                  onChange={(event) => changeWorkspace(index, { color: event.target.value })}
+                />
+              </Field>
+            </div>
             <SettingsAccordion className="workspace-advanced-details">
               <SettingsAccordionItem value={`workspace-${workspace.id}`}>
                 <SettingsAccordionTrigger>Advanced workspace details</SettingsAccordionTrigger>
@@ -2666,13 +2733,6 @@ function WorkspaceSection({
                 </SettingsAccordionContent>
               </SettingsAccordionItem>
             </SettingsAccordion>
-            <Field label="Color">
-              <Input
-                type="color"
-                value={workspace.color || '#E8A83B'}
-                onChange={(event) => changeWorkspace(index, { color: event.target.value })}
-              />
-            </Field>
           </SettingsCard>
         ))}
       </div>
@@ -2684,10 +2744,10 @@ function WorkspaceSection({
       <Button
         variant="secondary"
         type="button"
-        disabled={settings.workspaces.length >= 3}
+        disabled={settings.workspaces.length >= 4}
         onClick={addWorkspace}
       >
-        <Plus size={15} /> Add workspace ({settings.workspaces.length}/3)
+        <Plus size={15} /> Add workspace ({settings.workspaces.length}/4)
       </Button>
     </SettingsSection>
   )
@@ -2878,6 +2938,7 @@ function EmbeddingSection({
       modelsError={modelsError}
       modelsTruncated={modelsTruncated}
       onRefreshModels={onRefreshModels}
+      modelControl="select"
       modelCatalog={
         settings.embedding.provider === 'local'
           ? [

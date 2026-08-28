@@ -13,7 +13,7 @@ use toml::{Table, Value};
 
 use crate::secure_storage;
 
-const MAX_WORKSPACES: usize = 3;
+const MAX_WORKSPACES: usize = 4;
 const MAX_SOURCES: usize = 128;
 const MAX_AUTH_PRINCIPALS: usize = 64;
 const MAX_SECRET_BYTES: usize = 16 * 1024;
@@ -858,12 +858,12 @@ fn workspace_value(workspace: &WorkspaceSettings) -> Value {
     Value::Table(table)
 }
 
-/// Keep source scopes that predate the three-workspace Desktop surface.
+/// Keep source scopes that predate the four-workspace Desktop surface.
 ///
 /// The backend permits arbitrary project scopes when no explicit workspace
 /// table exists, and existing installations may therefore contain sources
 /// such as `community` or `agents`. Desktop intentionally renders only the
-/// first three workspaces, but a save must not orphan those source scopes and
+/// first four workspaces, but a save must not orphan those source scopes and
 /// make the backend reject its own configuration on the next restart.
 fn workspace_values(root: &Table, update: &SettingsUpdate) -> Vec<Value> {
     let mut values = update
@@ -3378,7 +3378,21 @@ mod tests {
         validate_update(&mut cache_disabled).expect("zero cache values are valid opt-outs");
 
         let mut update = valid_update(temp.path());
-        update.workspaces.push(update.workspaces[0].clone());
+        for (id, name) in [("personal", "Personal"), ("special", "Special"), ("lab", "Lab")] {
+            update.workspaces.push(WorkspaceSettings {
+                id: id.into(),
+                name: name.into(),
+                account_label: None,
+                color: None,
+            });
+        }
+        validate_update(&mut update).expect("four workspaces are supported");
+        update.workspaces.push(WorkspaceSettings {
+            id: "fifth".into(),
+            name: "Fifth".into(),
+            account_label: None,
+            color: None,
+        });
         assert!(validate_update(&mut update).is_err());
 
         let mut update = valid_update(temp.path());
@@ -3537,8 +3551,9 @@ mod tests {
             .iter()
             .map(|workspace| workspace.id.as_str())
             .collect();
-        assert_eq!(ids, vec!["work", "personal", "special"]);
+        assert_eq!(ids, vec!["work", "personal", "special", "agents"]);
         assert_eq!(workspaces[2].name, "Special");
+        assert_eq!(workspaces[3].name, "Agents");
     }
 
     #[test]
@@ -3591,7 +3606,7 @@ mod tests {
                 .iter()
                 .map(|workspace| workspace.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["work", "personal", "special"]
+            vec!["work", "personal", "special", "agents"]
         );
 
         let mut unsafe_update = valid_update(temp.path());

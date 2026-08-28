@@ -9,7 +9,29 @@ const COMPRESSION_QUALITIES = [0.82, 0.7, 0.58, 0.46, 0.34, 0.22, 0.1] as const
 // that passes the byte-size check in readWorkspaceLogoFile also passes
 // validation here.
 const MAX_LOGO_DATA_URL_LENGTH = 4 * Math.ceil(MAX_LOGO_BYTES / 3) + 64
-const ALLOWED_LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const PASSTHROUGH_LOGO_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
+const DECODABLE_LOGO_TYPES = new Set([
+  ...PASSTHROUGH_LOGO_TYPES,
+  'image/avif',
+  'image/bmp',
+  'image/x-ms-bmp',
+  'image/tiff',
+  'image/heic',
+  'image/heif',
+])
+const LOGO_EXTENSION_TYPES: Record<string, string> = {
+  avif: 'image/avif',
+  bmp: 'image/bmp',
+  gif: 'image/gif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  tif: 'image/tiff',
+  tiff: 'image/tiff',
+  webp: 'image/webp',
+}
 
 type WorkspaceLogoMap = Record<string, string>
 
@@ -57,9 +79,23 @@ export function writeWorkspaceLogo(workspaceId: string, logo: string | null): vo
 }
 
 export function readWorkspaceLogoFile(file: File): Promise<string> {
-  if (!ALLOWED_LOGO_TYPES.has(file.type)) {
-    return Promise.reject(new Error('Choose a PNG, JPEG, WebP, or GIF image.'))
+  const declaredType = file.type.toLowerCase()
+  const logoType =
+    declaredType === 'image/jpg' || declaredType === 'image/pjpeg'
+      ? 'image/jpeg'
+      : declaredType === 'image/x-png'
+        ? 'image/png'
+        : declaredType ||
+          LOGO_EXTENSION_TYPES[file.name.split('.').at(-1)?.toLowerCase() || ''] ||
+          ''
+  if (!DECODABLE_LOGO_TYPES.has(logoType)) {
+    return Promise.reject(
+      new Error(
+        'Choose a raster image such as PNG, JPEG, WebP, GIF, AVIF, BMP, TIFF, HEIC, or HEIF.'
+      )
+    )
   }
+  const readableFile: Blob = file.type === logoType ? file : file.slice(0, file.size, logoType)
   const readAsDataUrl = (): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader()
@@ -72,14 +108,14 @@ export function readWorkspaceLogoFile(file: File): Promise<string> {
         }
         resolve(value)
       }
-      reader.readAsDataURL(file)
+      reader.readAsDataURL(readableFile)
     })
 
-  if (file.size <= MAX_LOGO_BYTES) return readAsDataUrl()
-  return compressWorkspaceLogo(file)
+  if (file.size <= MAX_LOGO_BYTES && PASSTHROUGH_LOGO_TYPES.has(logoType)) return readAsDataUrl()
+  return compressWorkspaceLogo(readableFile)
 }
 
-function loadLogoImage(file: File): Promise<HTMLImageElement> {
+function loadLogoImage(file: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     if (typeof Image === 'undefined') {
       reject(new Error('Workspace logo compression is not supported in this browser.'))
@@ -98,9 +134,34 @@ function loadLogoImage(file: File): Promise<HTMLImageElement> {
       cleanup()
       resolve(image)
     }
+    const readWithFileReader = () => {
+      if (objectUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(objectUrl)
+      }
+      objectUrl = null
+      const reader = new FileReader()
+      reader.onerror = () => {
+        cleanup()
+        reject(new Error('Workspace logo could not be read.'))
+      }
+      reader.onload = () => {
+        const value = typeof reader.result === 'string' ? reader.result : ''
+        if (!value) {
+          cleanup()
+          reject(new Error('Workspace logo could not be read.'))
+          return
+        }
+        image.src = value
+      }
+      reader.readAsDataURL(file)
+    }
     image.onerror = () => {
+      if (objectUrl) {
+        readWithFileReader()
+        return
+      }
       cleanup()
-      reject(new Error('Workspace logo could not be decoded for compression.'))
+      reject(new Error('Workspace logo could not be decoded. Try exporting it as PNG or JPEG.'))
     }
     if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
       try {
@@ -111,21 +172,7 @@ function loadLogoImage(file: File): Promise<HTMLImageElement> {
         // Fall through to a data URL for browsers that reject this File.
       }
     }
-    const reader = new FileReader()
-    reader.onerror = () => {
-      cleanup()
-      reject(new Error('Workspace logo could not be read.'))
-    }
-    reader.onload = () => {
-      const value = typeof reader.result === 'string' ? reader.result : ''
-      if (!value) {
-        cleanup()
-        reject(new Error('Workspace logo could not be read.'))
-        return
-      }
-      image.src = value
-    }
-    reader.readAsDataURL(file)
+    readWithFileReader()
   })
 }
 
@@ -133,7 +180,7 @@ function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob 
   return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
 }
 
-async function compressWorkspaceLogo(file: File): Promise<string> {
+async function compressWorkspaceLogo(file: Blob): Promise<string> {
   if (typeof document === 'undefined') {
     throw new Error('Workspace logo compression is not supported in this browser.')
   }
