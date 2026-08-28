@@ -2,10 +2,11 @@ import { defineConfig, searchForWorkspaceRoot } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { realpathSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
 const geistPackagePath = realpathSync(
-  fileURLToPath(new URL('./node_modules/@fontsource-variable/geist', import.meta.url))
+  dirname(fileURLToPath(import.meta.resolve('@fontsource-variable/geist')))
 )
 
 export default defineConfig({
