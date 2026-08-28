@@ -128,7 +128,7 @@ mock.module('./api', () => ({
 
 const { SettingsView } = await import('./components/SettingsView')
 
-function renderSlackSettings() {
+async function renderSlackSettings() {
   render(
     <SettingsView
       initialSection="sources"
@@ -138,10 +138,11 @@ function renderSlackSettings() {
       }}
     />
   )
+  await screen.findByLabelText(/^Source name/)
 }
 
 test('slack workspace chooser discovers teams and persists per-workspace assignment', async () => {
-  renderSlackSettings()
+  await renderSlackSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover workspaces/ }))
   await waitFor(() => expect(screen.getByText('Acme Engineering')).toBeTruthy())
@@ -164,7 +165,7 @@ test('slack workspace chooser discovers teams and persists per-workspace assignm
 })
 
 test('slack workspace chooser refuses to discover unsaved changes and surfaces failures', async () => {
-  renderSlackSettings()
+  await renderSlackSettings()
 
   // Editing the source makes the native command unsafe until it is saved, so
   // the discovery button is disabled and no IPC call can start.
@@ -192,7 +193,7 @@ test('slack workspace chooser refuses to discover unsaved changes and surfaces f
 
 test('slack workspace chooser warns when discovery is truncated at 100 teams', async () => {
   state.workspacesResult = { ...workspaces, truncated: true }
-  renderSlackSettings()
+  await renderSlackSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover workspaces/ }))
   await waitFor(() =>
@@ -208,7 +209,7 @@ test('slack authorize action names Slack and starts browser authorization', asyn
     token_path: '/Users/you/.config/cortana/slack-user-token.json',
     oauth_client_path: '/Users/you/.config/cortana/slack-oauth-client.json',
   })
-  renderSlackSettings()
+  await renderSlackSettings()
 
   const confirm = mock((message?: string) => {
     confirmMessage = message ?? ''
@@ -226,7 +227,7 @@ test('slack authorize action names Slack and starts browser authorization', asyn
 })
 
 test('slack authorize action stays disabled until OAuth paths are saved', async () => {
-  renderSlackSettings()
+  await renderSlackSettings()
 
   const authorize = screen.getByRole('button', { name: 'Authorize' }) as HTMLButtonElement
   expect(authorize.disabled).toBe(true)

@@ -1,7 +1,23 @@
 import { createContext, type ReactNode, useContext } from 'react'
 
 import type { Badge } from '@/components/shadcn/badge'
+import type {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/shadcn/accordion'
 import type { Alert, AlertDescription, AlertTitle } from '@/components/shadcn/alert'
+import type {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/shadcn/alert-dialog'
 import type { Button } from '@/components/shadcn/button'
 import type { Card } from '@/components/shadcn/card'
 import type { Checkbox } from '@/components/shadcn/checkbox'
@@ -14,7 +30,17 @@ import type {
   EmptyTitle,
 } from '@/components/shadcn/empty'
 import type { Input } from '@/components/shadcn/input'
+import type {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '@/components/shadcn/field'
 import type { Progress } from '@/components/shadcn/progress'
+import type { RadioGroup, RadioGroupItem } from '@/components/shadcn/radio-group'
 import type { ScrollArea } from '@/components/shadcn/scroll-area'
 import type {
   Select,
@@ -23,7 +49,7 @@ import type {
   SelectTrigger,
   SelectValue,
 } from '@/components/shadcn/select'
-import type { Tabs, TabsList, TabsTrigger } from '@/components/shadcn/tabs'
+import type { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/shadcn/tabs'
 import type { Skeleton } from '@/components/shadcn/skeleton'
 import type { Spinner } from '@/components/shadcn/spinner'
 import type { Switch } from '@/components/shadcn/switch'
@@ -31,7 +57,19 @@ import type { Textarea } from '@/components/shadcn/textarea'
 import type { Toggle } from '@/components/shadcn/toggle'
 
 export type M7SurfacePrimitives = {
+  Accordion: typeof Accordion
+  AccordionContent: typeof AccordionContent
+  AccordionItem: typeof AccordionItem
+  AccordionTrigger: typeof AccordionTrigger
   Alert: typeof Alert
+  AlertDialog: typeof AlertDialog
+  AlertDialogAction: typeof AlertDialogAction
+  AlertDialogCancel: typeof AlertDialogCancel
+  AlertDialogContent: typeof AlertDialogContent
+  AlertDialogDescription: typeof AlertDialogDescription
+  AlertDialogFooter: typeof AlertDialogFooter
+  AlertDialogHeader: typeof AlertDialogHeader
+  AlertDialogTitle: typeof AlertDialogTitle
   AlertDescription: typeof AlertDescription
   AlertTitle: typeof AlertTitle
   Badge: typeof Badge
@@ -44,8 +82,17 @@ export type M7SurfacePrimitives = {
   EmptyHeader: typeof EmptyHeader
   EmptyMedia: typeof EmptyMedia
   EmptyTitle: typeof EmptyTitle
+  Field: typeof Field
+  FieldDescription: typeof FieldDescription
+  FieldError: typeof FieldError
+  FieldGroup: typeof FieldGroup
+  FieldLabel: typeof FieldLabel
+  FieldLegend: typeof FieldLegend
+  FieldSet: typeof FieldSet
   Input: typeof Input
   Progress: typeof Progress
+  RadioGroup: typeof RadioGroup
+  RadioGroupItem: typeof RadioGroupItem
   ScrollArea: typeof ScrollArea
   Select: typeof Select
   SelectContent: typeof SelectContent
@@ -53,6 +100,7 @@ export type M7SurfacePrimitives = {
   SelectTrigger: typeof SelectTrigger
   SelectValue: typeof SelectValue
   Tabs: typeof Tabs
+  TabsContent: typeof TabsContent
   TabsList: typeof TabsList
   TabsTrigger: typeof TabsTrigger
   Skeleton: typeof Skeleton

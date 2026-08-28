@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 
 import { desktopInfo, desktopSettings } from './test/fixtures'
 import type {
@@ -122,7 +122,7 @@ mock.module('./api', () => ({
 
 const { SettingsView } = await import('./components/SettingsView')
 
-function renderBuzzSettings() {
+async function renderBuzzSettings() {
   const view = render(
     <SettingsView
       initialSection="sources"
@@ -132,6 +132,7 @@ function renderBuzzSettings() {
       }}
     />
   )
+  await screen.findByLabelText(/^Source name/)
   return {
     view,
     rerender: () =>
@@ -148,12 +149,15 @@ function renderBuzzSettings() {
 }
 
 test('buzz community chooser discovers the identity file and persists per-workspace assignment', async () => {
-  const { rerender } = renderBuzzSettings()
+  const { rerender } = await renderBuzzSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover communities/ }))
   await waitFor(() => expect(screen.getByText('Welcome Team')).toBeTruthy())
   expect(state.discoverCalls).toEqual(['agent-buzz'])
   expect(screen.getByText('Research')).toBeTruthy()
+  const chooser = screen.getByRole('group', { name: 'Community chooser' })
+  expect(within(chooser).getAllByRole('checkbox')).toHaveLength(2)
+  expect(chooser.getAttribute('aria-describedby')).toBeTruthy()
 
   // Community selection lands in the `communities` field with display names
   // kept index-aligned in `community_names`, persisted per source (each Buzz
@@ -186,7 +190,7 @@ test('buzz community chooser discovers the identity file and persists per-worksp
 })
 
 test('buzz community chooser refuses to discover unsaved changes and surfaces failures', async () => {
-  renderBuzzSettings()
+  await renderBuzzSettings()
 
   // Editing the source makes the native command unsafe until it is saved, so
   // the discovery button is disabled and no IPC call can start.
@@ -214,7 +218,7 @@ test('buzz community chooser refuses to discover unsaved changes and surfaces fa
 
 test('buzz community chooser warns when discovery is truncated at 100 communities', async () => {
   state.communitiesResult = { ...communities, truncated: true }
-  renderBuzzSettings()
+  await renderBuzzSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover communities/ }))
   await waitFor(() =>
@@ -230,7 +234,7 @@ test('buzz community chooser is scoped to the selected workspace', async () => {
   // disappears while the Work tab is active, and reappears with its
   // per-workspace community chooser when switching back.
   state.settings = settingsWith({ ...buzzSource, project: 'personal' })
-  renderBuzzSettings()
+  await renderBuzzSettings()
 
   // The workspace tab with sources is selected initially.
   await waitFor(() =>

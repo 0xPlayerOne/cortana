@@ -79,11 +79,12 @@ function renderPanel(
   )
 }
 
-test('shadcn renderer uses shared source navigation and form primitives', () => {
+test('shadcn renderer uses shared source controls without a redundant workspace selector', () => {
   renderPanel(demoStatus, '', '', undefined, 'work', true, 'shadcn')
 
   expect(document.querySelector('[data-m7-source-panel]')).toBeTruthy()
-  expect(document.querySelector('[data-slot="select-trigger"]')).toBeTruthy()
+  expect(screen.queryByLabelText('Workspace')).toBeNull()
+  expect(document.querySelector('[data-slot="select-trigger"]')).toBeNull()
   expect(document.querySelector('[data-slot="input"]')).toBeTruthy()
   expect(document.querySelector('[data-slot="button"]')).toBeTruthy()
   expect(document.querySelector('[data-slot="switch"]')).toBeTruthy()

@@ -1,12 +1,19 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react'
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react'
 import {
   ArrowLeft,
   ArrowRight,
   BookOpenText,
-  CalendarDays,
   CircleHelp,
   Database,
-  FileSearch,
   GitFork,
   Inbox,
   LoaderCircle,
@@ -81,17 +88,15 @@ import {
 } from '@/components/shadcn/tooltip'
 import { shortcutLabel } from '@/shortcuts'
 import type { M7ActivityInbox } from '@/components/m7/M7ActivityInbox'
+import { WorkspaceLogo } from '@/workspaceLogos'
 
-type WorkspaceOption = { id: string; name: string }
+type WorkspaceOption = { id: string; name: string; color: string | null }
 
 export type M7NavigationProps = {
   view: AppView
   workspaceTab?: 'answer' | 'document' | 'sources' | 'graph' | 'timeline'
-  resultAvailable: boolean
   onNavigate: (view: AppView) => void
-  onSearch: () => void
   onOpenGraph: () => void
-  onOpenTimeline: () => void
 }
 
 export type M7HeaderProps = {
@@ -416,21 +421,32 @@ export function M7ApplicationNavigation({
       aria-label="Primary navigation"
       className="m7-application-sidebar"
     >
-      <SidebarHeader>
+      <SidebarHeader className="p-3">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
               <SidebarMenuButton
                 size="lg"
+                className="h-12 p-0 group-data-[collapsible=icon]:size-12!"
                 tooltip={`Workspace: ${activeWorkspace?.name ?? 'Choose workspace'}`}
                 aria-label="Switch workspace"
               />
             }
           >
-            <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <Database className="size-4" aria-hidden="true" />
-            </span>
-            <span className="min-w-0 flex-1 text-left">
+            {activeWorkspace ? (
+              <WorkspaceLogo workspace={activeWorkspace} size="large" />
+            ) : (
+              <span
+                className="workspace-logo workspace-logo--large workspace-picker-mark"
+                aria-hidden="true"
+              >
+                ?
+              </span>
+            )}
+            <span
+              data-workspace-labels
+              className="min-w-0 flex-1 pr-2 text-left group-data-[collapsible=icon]:hidden"
+            >
               <span className="block truncate text-sm font-medium">
                 {activeWorkspace?.name ?? 'Choose workspace'}
               </span>
@@ -446,6 +462,7 @@ export function M7ApplicationNavigation({
               >
                 {workspaces.map((item) => (
                   <DropdownMenuRadioItem key={item.id} value={item.id}>
+                    <WorkspaceLogo workspace={item} size="small" />
                     {item.name}
                   </DropdownMenuRadioItem>
                 ))}
@@ -456,77 +473,63 @@ export function M7ApplicationNavigation({
       </SidebarHeader>
       <SidebarSeparator />
       <SidebarContent>
-        <SidebarGroup>
+        <SidebarGroup className="p-3">
           <SidebarGroupLabel>Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="Search"
-                  onClick={() => runNavigation(navigation.onSearch, true)}
-                >
-                  <FileSearch aria-hidden="true" />
-                  <span>Search</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+            <SidebarMenu className="gap-0.5">
               {navigationItems.map(({ view, label, icon: Icon }) => (
-                <SidebarMenuItem key={view}>
-                  <SidebarMenuButton
-                    tooltip={label}
-                    isActive={navigation.view === view}
-                    aria-current={navigation.view === view ? 'page' : undefined}
-                    onClick={() => runNavigation(() => navigation.onNavigate(view))}
-                  >
-                    <Icon aria-hidden="true" />
-                    <span>{label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <Fragment key={view}>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      size="lg"
+                      tooltip={label}
+                      isActive={
+                        navigation.view === view &&
+                        (view !== 'knowledge' || navigation.workspaceTab !== 'graph')
+                      }
+                      aria-current={
+                        navigation.view === view &&
+                        (view !== 'knowledge' || navigation.workspaceTab !== 'graph')
+                          ? 'page'
+                          : undefined
+                      }
+                      onClick={() => runNavigation(() => navigation.onNavigate(view))}
+                    >
+                      <Icon aria-hidden="true" />
+                      <span>{label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  {view === 'knowledge' && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        size="lg"
+                        tooltip="Graph"
+                        isActive={
+                          navigation.view === 'knowledge' && navigation.workspaceTab === 'graph'
+                        }
+                        aria-current={
+                          navigation.view === 'knowledge' && navigation.workspaceTab === 'graph'
+                            ? 'page'
+                            : undefined
+                        }
+                        onClick={() => runNavigation(navigation.onOpenGraph)}
+                      >
+                        <GitFork aria-hidden="true" />
+                        <span>Graph</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </Fragment>
               ))}
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip="Graph"
-                  isActive={navigation.view === 'knowledge' && navigation.workspaceTab === 'graph'}
-                  aria-current={
-                    navigation.view === 'knowledge' && navigation.workspaceTab === 'graph'
-                      ? 'page'
-                      : undefined
-                  }
-                  onClick={() => runNavigation(navigation.onOpenGraph)}
-                >
-                  <GitFork aria-hidden="true" />
-                  <span>Graph</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip={
-                    navigation.resultAvailable
-                      ? 'Timeline'
-                      : 'Timeline: available once a search returns evidence'
-                  }
-                  disabled={!navigation.resultAvailable}
-                  isActive={
-                    navigation.view === 'knowledge' && navigation.workspaceTab === 'timeline'
-                  }
-                  aria-current={
-                    navigation.view === 'knowledge' && navigation.workspaceTab === 'timeline'
-                      ? 'page'
-                      : undefined
-                  }
-                  onClick={() => runNavigation(navigation.onOpenTimeline)}
-                >
-                  <CalendarDays aria-hidden="true" />
-                  <span>Timeline</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        <SidebarMenu>
+      <SidebarFooter className="p-3">
+        <SidebarMenu className="gap-0.5">
           <SidebarMenuItem>
             <SidebarMenuButton
+              size="lg"
               tooltip="Settings"
               isActive={navigation.view === 'settings'}
               aria-current={navigation.view === 'settings' ? 'page' : undefined}
@@ -538,6 +541,7 @@ export function M7ApplicationNavigation({
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              size="lg"
               tooltip="Help"
               isActive={navigation.view === 'help'}
               aria-current={navigation.view === 'help' ? 'page' : undefined}
@@ -557,7 +561,11 @@ export function M7ShellProvider({ enabled, children }: { enabled: boolean; child
   if (!enabled) return children
   return (
     <TooltipProvider delay={250}>
-      <SidebarProvider defaultOpen className="m7-shell-provider min-h-0 overflow-hidden">
+      <SidebarProvider
+        defaultOpen={false}
+        className="m7-shell-provider min-h-0 overflow-hidden"
+        style={{ '--sidebar-width-icon': '4.5rem' } as CSSProperties}
+      >
         {children}
       </SidebarProvider>
     </TooltipProvider>

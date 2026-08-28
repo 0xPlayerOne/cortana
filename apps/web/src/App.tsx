@@ -4,6 +4,8 @@ import {
   type FormEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -37,7 +39,6 @@ import {
 import { ContextPanel } from './components/ContextPanel'
 import type { M7PanelBoundaryProps, M7ShellComponents } from './components/m7/M7ApplicationShell'
 import { type AppView, Navigation, TitleActions } from './components/Navigation'
-import { SettingsView } from './components/SettingsView'
 import { SourcePanel } from './components/SourcePanel'
 import { UtilityView } from './components/UtilityView'
 import { Workspace, type WorkspaceTab } from './components/Workspace'
@@ -79,6 +80,10 @@ import type {
   Evidence,
   ReflectResponse,
 } from './types'
+
+const SettingsView = lazy(() =>
+  import('./components/SettingsView').then((module) => ({ default: module.SettingsView }))
+)
 
 const STATUS_REFRESH_MS = 15_000
 const INSTALLER_POLL_MS = 1_000
@@ -233,6 +238,43 @@ export function App({
 
   useEffect(() => {
     applyTheme(readThemePreference())
+  }, [])
+
+  useEffect(() => {
+    if (!isDemoMode) return
+    let active = true
+    void import('./demoDesktop').then(
+      ({ demoDesktopInfo, demoDesktopServices, demoDesktopState }) => {
+        if (!active) return
+        const requested = new URLSearchParams(window.location.search).get('demo-state')
+        const state = demoDesktopState(
+          requested &&
+            [
+              'setup',
+              'busy',
+              'success',
+              'warning',
+              'failure',
+              'cancelled',
+              'retry',
+              'recovery',
+            ].includes(requested)
+            ? (requested as Parameters<typeof demoDesktopState>[0])
+            : 'configured'
+        )
+        setDesktopSettings(state.settings)
+        setDesktopInfo(demoDesktopInfo)
+        setDesktopServices(demoDesktopServices)
+        setDesktopUpdate(state.update)
+        setDesktopReadiness(state.readiness)
+        setReadinessActivity(state.readinessActivity)
+        setServiceActivity(state.serviceActivity)
+        setInstallerJob(state.installerJob)
+      }
+    )
+    return () => {
+      active = false
+    }
   }, [])
 
   useEffect(() => {
@@ -1667,11 +1709,8 @@ export function App({
             navigation={{
               view,
               workspaceTab,
-              resultAvailable: answer !== null || reflection !== null || evidence.length > 0,
               onNavigate: navigate,
-              onSearch: focusSearch,
               onOpenGraph: openGraph,
-              onOpenTimeline: openTimeline,
             }}
             workspaces={workspaces}
             workspace={effectiveWorkspace}
@@ -1689,97 +1728,107 @@ export function App({
           />
         )}
         {view === 'settings' ? (
-          <SettingsView
-            renderer={renderer}
-            desktopSettings={desktopSettings ?? undefined}
-            onLoaded={applyDesktopSettings}
-            initialSection={settingsSection}
-            onDirtyChange={setSettingsDirty}
-            onJob={sourceJobs.remember}
-            sourceJobs={sourceJobs.jobs}
-            installerJob={installerJob}
-            onInstallerJob={setInstallerJob}
-            readiness={desktopReadiness}
-            onReadiness={setDesktopReadiness}
-            readinessActivity={readinessActivity}
-            onReadinessScan={runReadinessScan}
-            desktopUpdate={desktopUpdate ?? undefined}
-            onDesktopUpdate={setDesktopUpdate}
-            services={desktopServices}
-            onServices={(nextServices) => {
-              setDesktopServices(nextServices)
-              if (nextServices.activity) setServiceActivity(nextServices.activity)
-            }}
-            servicesError={desktopServicesError}
-            onServicesError={setDesktopServicesError}
-            desktopInfo={desktopInfo}
-            onDesktopInfo={setDesktopInfo}
-            serviceActivity={serviceActivity}
-            onServiceActivity={setServiceActivity}
-            onSaved={(next) => {
-              applyDesktopSettings(next)
-              setSettingsDirty(false)
-              // A settings save can change the configured embedding/runtime
-              // services. Refresh the shell-owned snapshots immediately rather
-              // than waiting for the next 15-second health tick.
-              const servicesRequestId = ++desktopServicesRequestRef.current
-              void getDesktopServices()
-                .then((nextServices) => {
-                  if (desktopServicesRequestRef.current !== servicesRequestId) return
-                  setDesktopServices(nextServices)
-                  if (nextServices.activity) setServiceActivity(nextServices.activity)
-                  setDesktopServicesError('')
-                })
-                .catch((caught: unknown) => {
-                  if (desktopServicesRequestRef.current !== servicesRequestId) return
-                  setDesktopServicesError(
-                    caught instanceof Error ? caught.message : 'Service status is unavailable'
+          <Suspense
+            fallback={
+              <main id="main-content" className="settings-view" aria-busy="true">
+                <p role="status">
+                  <LoaderCircle className="spin" size={16} /> Loading settings…
+                </p>
+              </main>
+            }
+          >
+            <SettingsView
+              renderer={renderer}
+              desktopSettings={desktopSettings ?? undefined}
+              onLoaded={applyDesktopSettings}
+              initialSection={settingsSection}
+              onDirtyChange={setSettingsDirty}
+              onJob={sourceJobs.remember}
+              sourceJobs={sourceJobs.jobs}
+              installerJob={installerJob}
+              onInstallerJob={setInstallerJob}
+              readiness={desktopReadiness}
+              onReadiness={setDesktopReadiness}
+              readinessActivity={readinessActivity}
+              onReadinessScan={runReadinessScan}
+              desktopUpdate={desktopUpdate ?? undefined}
+              onDesktopUpdate={setDesktopUpdate}
+              services={desktopServices}
+              onServices={(nextServices) => {
+                setDesktopServices(nextServices)
+                if (nextServices.activity) setServiceActivity(nextServices.activity)
+              }}
+              servicesError={desktopServicesError}
+              onServicesError={setDesktopServicesError}
+              desktopInfo={desktopInfo}
+              onDesktopInfo={setDesktopInfo}
+              serviceActivity={serviceActivity}
+              onServiceActivity={setServiceActivity}
+              onSaved={(next) => {
+                applyDesktopSettings(next)
+                setSettingsDirty(false)
+                // A settings save can change the configured embedding/runtime
+                // services. Refresh the shell-owned snapshots immediately rather
+                // than waiting for the next 15-second health tick.
+                const servicesRequestId = ++desktopServicesRequestRef.current
+                void getDesktopServices()
+                  .then((nextServices) => {
+                    if (desktopServicesRequestRef.current !== servicesRequestId) return
+                    setDesktopServices(nextServices)
+                    if (nextServices.activity) setServiceActivity(nextServices.activity)
+                    setDesktopServicesError('')
+                  })
+                  .catch((caught: unknown) => {
+                    if (desktopServicesRequestRef.current !== servicesRequestId) return
+                    setDesktopServicesError(
+                      caught instanceof Error ? caught.message : 'Service status is unavailable'
+                    )
+                  })
+                const infoRequestId = ++desktopInfoRequestRef.current
+                void getDesktopInfo()
+                  .then((nextInfo) => {
+                    if (desktopInfoRequestRef.current === infoRequestId) {
+                      setDesktopInfo(nextInfo)
+                    }
+                  })
+                  .catch(() => {
+                    // Keep the previous metadata snapshot when the refresh is
+                    // unavailable; the Services panel can retry explicitly.
+                  })
+                const statusRequestId = ++statusRequestRef.current
+                void getStatus()
+                  .then((nextStatus) => {
+                    if (statusRequestRef.current !== statusRequestId) return
+                    setStatus(nextStatus)
+                    setStatusError('')
+                  })
+                  .catch(() => {
+                    if (statusRequestRef.current !== statusRequestId) return
+                    setStatusError('Status unavailable after saving settings')
+                  })
+                if (
+                  !next.workspaces.some((item) => item.id === effectiveWorkspace) &&
+                  next.workspaces.length > 0
+                ) {
+                  chooseWorkspace(next.workspaces[0].id)
+                } else if (
+                  source &&
+                  !next.sources.some(
+                    (item) =>
+                      (item.name === source || item.source === source) &&
+                      (!effectiveWorkspace || item.project === effectiveWorkspace)
                   )
-                })
-              const infoRequestId = ++desktopInfoRequestRef.current
-              void getDesktopInfo()
-                .then((nextInfo) => {
-                  if (desktopInfoRequestRef.current === infoRequestId) {
-                    setDesktopInfo(nextInfo)
-                  }
-                })
-                .catch(() => {
-                  // Keep the previous metadata snapshot when the refresh is
-                  // unavailable; the Services panel can retry explicitly.
-                })
-              const statusRequestId = ++statusRequestRef.current
-              void getStatus()
-                .then((nextStatus) => {
-                  if (statusRequestRef.current !== statusRequestId) return
-                  setStatus(nextStatus)
-                  setStatusError('')
-                })
-                .catch(() => {
-                  if (statusRequestRef.current !== statusRequestId) return
-                  setStatusError('Status unavailable after saving settings')
-                })
-              if (
-                !next.workspaces.some((item) => item.id === effectiveWorkspace) &&
-                next.workspaces.length > 0
-              ) {
-                chooseWorkspace(next.workspaces[0].id)
-              } else if (
-                source &&
-                !next.sources.some(
-                  (item) =>
-                    (item.name === source || item.source === source) &&
-                    (!effectiveWorkspace || item.project === effectiveWorkspace)
-                )
-              ) {
-                abortSearchRequest()
-                abortContextRequest()
-                clearScopedResults()
-                scopeSources(effectiveWorkspace, '')
-                setSource('')
-                if (isDesktopApp) writeSourceSelectionPreference('')
-              }
-            }}
-          />
+                ) {
+                  abortSearchRequest()
+                  abortContextRequest()
+                  clearScopedResults()
+                  scopeSources(effectiveWorkspace, '')
+                  setSource('')
+                  if (isDesktopApp) writeSourceSelectionPreference('')
+                }
+              }}
+            />
+          </Suspense>
         ) : view === 'knowledge' ? (
           <>
             {!graphFullScreen && (
@@ -1789,7 +1838,7 @@ export function App({
                 breakpoint={800}
                 open={leftOpen}
                 title="Sources and documents"
-                description="Choose the workspace, source, or document used by the knowledge view."
+                description="Choose the source or document used by the current workspace."
                 finalFocus={sourcePanelOriginRef}
                 onOpenChange={setLeftOpen}
               >

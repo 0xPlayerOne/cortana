@@ -123,11 +123,6 @@ export function SourcePanel({
   const ShadcnButton = primitives?.Button
   const ShadcnInput = primitives?.Input
   const ShadcnProgress = primitives?.Progress
-  const ShadcnSelect = primitives?.Select
-  const ShadcnSelectContent = primitives?.SelectContent
-  const ShadcnSelectItem = primitives?.SelectItem
-  const ShadcnSelectTrigger = primitives?.SelectTrigger
-  const ShadcnSelectValue = primitives?.SelectValue
   const ShadcnSkeleton = primitives?.Skeleton
   const ShadcnSpinner = primitives?.Spinner
   const ShadcnSwitch = primitives?.Switch
@@ -202,32 +197,11 @@ export function SourcePanel({
             <Settings size={16} />
           </ActionButton>
         </div>
-        <label className="sidebar-workspace-select">
-          <span>Workspace</span>
-          <div className="workspace-picker">
-            {selectedWorkspace && <WorkspaceLogo workspace={selectedWorkspace} size="small" />}
-            {renderer === 'shadcn' &&
-            ShadcnSelect &&
-            ShadcnSelectContent &&
-            ShadcnSelectItem &&
-            ShadcnSelectTrigger &&
-            ShadcnSelectValue ? (
-              <ShadcnSelect
-                value={selectedWorkspaceId}
-                onValueChange={(value) => value && onSelectWorkspace(value)}
-              >
-                <ShadcnSelectTrigger className="w-full" aria-label="Workspace">
-                  <ShadcnSelectValue />
-                </ShadcnSelectTrigger>
-                <ShadcnSelectContent align="start">
-                  {workspaces.map((item) => (
-                    <ShadcnSelectItem value={item.id} key={item.id}>
-                      {item.name}
-                    </ShadcnSelectItem>
-                  ))}
-                </ShadcnSelectContent>
-              </ShadcnSelect>
-            ) : (
+        {renderer === 'legacy' && (
+          <label className="sidebar-workspace-select">
+            <span>Workspace</span>
+            <div className="workspace-picker">
+              {selectedWorkspace && <WorkspaceLogo workspace={selectedWorkspace} size="small" />}
               <select
                 value={selectedWorkspaceId}
                 onChange={(event) => onSelectWorkspace(event.target.value)}
@@ -239,9 +213,9 @@ export function SourcePanel({
                   </option>
                 ))}
               </select>
-            )}
-          </div>
-        </label>
+            </div>
+          </label>
+        )}
         <div className={`source-mode ${sourceModeClass}`}>
           <i />
           Ingestion {statusLoading ? 'loading status…' : sourceModeLabel}
