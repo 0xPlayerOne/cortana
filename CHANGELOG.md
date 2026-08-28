@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.3](https://github.com/0xPlayerOne/cortana/compare/v0.53.2...v0.53.3) (2026-08-28)
+
+
+### Bug Fixes
+
+* **ui:** close out desktop milestone polish ([576a941](https://github.com/0xPlayerOne/cortana/commit/576a94197627d6146614920d6ca8946e29557916))
+
 ## [0.53.2](https://github.com/0xPlayerOne/cortana/compare/v0.53.1...v0.53.2) (2026-08-28)
 
 
