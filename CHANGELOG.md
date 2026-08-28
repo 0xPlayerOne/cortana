@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.1](https://github.com/0xPlayerOne/cortana/compare/v0.53.0...v0.53.1) (2026-08-28)
+
+
+### Maintenance
+
+* **desktop-ui:** finish wholesale shadcn migration ([#2199](https://github.com/0xPlayerOne/cortana/issues/2199)) ([74c2848](https://github.com/0xPlayerOne/cortana/commit/74c2848d63d9c632df195d044508ae29cd1736c5))
+
 ## [0.53.0](https://github.com/0xPlayerOne/cortana/compare/v0.52.0...v0.53.0) (2026-08-28)
 
 
