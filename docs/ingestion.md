@@ -447,6 +447,18 @@ limits) so the resulting record covers a subsequent non-reconciling initial sync
 in `source-validations.json` always reflect the validation that actually ran, and a Desktop
 initial-sync plan reports whether the covering validation was complete or a bounded sample.
 
+For a quick connection or credential check without validation coverage, use:
+
+```bash
+cortana check-source SOURCE_NAME
+```
+
+Filesystem sources only verify that their configured root is an accessible directory. External
+sources only verify that a command is configured. Connector sources run a cache-free, one-document
+reachability probe with bounded output and timeout limits. The command never writes indexed data,
+embeddings, reconciliations, or `source-validations.json`; Desktop presents it as **Check
+connection** inside the matching source card.
+
 Desktop exposes a separately confirmed guarded trial sync after validation. It invokes the fixed
 equivalent of:
 

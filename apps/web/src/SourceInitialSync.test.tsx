@@ -121,6 +121,7 @@ const state = {
   settings: settingsWith(workSource),
   planCalls: [] as Array<{ source: string; budget: InitialSyncBudget }>,
   executeCalls: [] as Array<{ source: string; budget: InitialSyncBudget; planId: string }>,
+  connectionCheckCalls: [] as string[],
   validationCalls: [] as Array<{ source: string; budget?: InitialSyncBudget }>,
   planOverrides: {} as Partial<DesktopInitialSyncPlan>,
   planError: null as Error | null,
@@ -139,6 +140,7 @@ beforeEach(() => {
   state.settings = settingsWith(workSource)
   state.planCalls = []
   state.executeCalls = []
+  state.connectionCheckCalls = []
   state.validationCalls = []
   state.planOverrides = {}
   state.planError = null
@@ -201,6 +203,17 @@ mock.module('./api', () => ({
       id: 'source-1-2',
       operation: 'validation',
       writes_indexed_data: false,
+    })
+  },
+  startDesktopSourceConnectionCheck: (source: string) => {
+    state.connectionCheckCalls.push(source)
+    return Promise.resolve({
+      ...jobFor('small', 'running'),
+      id: 'source-connection-1',
+      operation: 'connection-check',
+      source,
+      writes_indexed_data: false,
+      budget: null,
     })
   },
   getDesktopSourceValidation: () => {
@@ -380,7 +393,7 @@ test('a shared active source job locks source actions until it finishes', async 
   render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
 
   await openAdvancedSource()
-  await waitFor(() => expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy())
+  await waitFor(() => expect(screen.getByText('Trial sync · running')).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: /Cancel/ }))
   await waitFor(() => expect(state.cancelCalls).toEqual(['source-1-1']))
   for (const label of ['Test connection', 'Trial sync', 'Initial sync', 'Remove work-code']) {
@@ -419,7 +432,7 @@ test('standalone source polling pauses while Settings is backgrounded', async ()
 
     act(() => setVisibility('hidden'))
     fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
-    await waitFor(() => expect(state.validationCalls).toHaveLength(1))
+    await waitFor(() => expect(state.connectionCheckCalls).toHaveLength(1))
     await new Promise((resolve) => setTimeout(resolve, 800))
     expect(state.pollCount).toBe(0)
 
@@ -633,7 +646,7 @@ test('shared source-job snapshots unlock the initial-sync plan without local pol
     view.rerender(
       <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[running]} />
     )
-    await waitFor(() => expect(screen.getByText('work-code · validation · running')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Budget validation · running')).toBeTruthy())
     view.rerender(
       <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[succeeded]} />
     )
@@ -653,9 +666,9 @@ test('evicting a shared source job clears its stale local snapshot', async () =>
     <SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />
   )
 
-  await waitFor(() => expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy())
+  await waitFor(() => expect(screen.getByText('Trial sync · running')).toBeTruthy())
   view.rerender(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[]} />)
-  await waitFor(() => expect(screen.queryByText('work-code · trial-sync · running')).toBeNull())
+  await waitFor(() => expect(screen.queryByText('Trial sync · running')).toBeNull())
 })
 
 test('execution shows running progress, cancellation, and a succeeded result', async () => {
@@ -671,14 +684,13 @@ test('execution shows running progress, cancellation, and a succeeded result', a
     )
     fireEvent.click(screen.getByRole('button', { name: 'Start initial sync' }))
 
-    await waitFor(() => expect(screen.getByText('work-code · initial-sync · running')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Initial sync · running')).toBeTruthy())
     expect(screen.getByRole('button', { name: /Cancel/ })).toBeTruthy()
 
     // The second native status poll completes the job.
-    await waitFor(
-      () => expect(screen.getByText('work-code · initial-sync · succeeded')).toBeTruthy(),
-      { timeout: 5000 }
-    )
+    await waitFor(() => expect(screen.getByText('Initial sync · succeeded')).toBeTruthy(), {
+      timeout: 5000,
+    })
     expect(state.pollCount).toBeGreaterThan(1)
     expect(
       screen.queryByText(
@@ -702,12 +714,10 @@ test('cancelling a running initial sync keeps the native cancelled summary', asy
       expect(screen.getByRole('button', { name: 'Start initial sync' })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Start initial sync' }))
-    await waitFor(() => expect(screen.getByText('work-code · initial-sync · running')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Initial sync · running')).toBeTruthy())
 
     fireEvent.click(screen.getByRole('button', { name: /Cancel/ }))
-    await waitFor(() =>
-      expect(screen.getByText('work-code · initial-sync · cancelled')).toBeTruthy()
-    )
+    await waitFor(() => expect(screen.getByText('Initial sync · cancelled')).toBeTruthy())
     expect(
       screen.getByText(
         'Guarded initial sync was cancelled. Committed batches remain indexed; reconciliation did not run.'
@@ -731,7 +741,7 @@ test('source-job cancellation disables duplicate clicks while native cancellatio
       expect(screen.getByRole('button', { name: 'Start initial sync' })).toBeTruthy()
     )
     fireEvent.click(screen.getByRole('button', { name: 'Start initial sync' }))
-    await waitFor(() => expect(screen.getByText('work-code · initial-sync · running')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Initial sync · running')).toBeTruthy())
 
     const cancel = screen.getByRole('button', { name: /Cancel/ })
     fireEvent.click(cancel)
@@ -742,9 +752,7 @@ test('source-job cancellation disables duplicate clicks while native cancellatio
     expect(state.cancelCalls).toHaveLength(1)
 
     state.cancelDeferred.resolve(jobFor('small', 'cancelled'))
-    await waitFor(() =>
-      expect(screen.getByText('work-code · initial-sync · cancelled')).toBeTruthy()
-    )
+    await waitFor(() => expect(screen.getByText('Initial sync · cancelled')).toBeTruthy())
   } finally {
     window.confirm = originalConfirm
   }

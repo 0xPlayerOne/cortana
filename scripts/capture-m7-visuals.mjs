@@ -187,10 +187,10 @@ async function auditAccessibility(page, label) {
           }
         })
         if (
-          Math.abs(collapsedMetrics.sidebarWidth - 72) > 1 ||
+          Math.abs(collapsedMetrics.sidebarWidth - 56) > 1 ||
           Math.abs(collapsedMetrics.targetWidth - 48) > 1 ||
           Math.abs(collapsedMetrics.iconWidth - 24) > 1 ||
-          Math.abs(collapsedMetrics.logoWidth - 48) > 1 ||
+          Math.abs(collapsedMetrics.logoWidth - 49) > 1 ||
           collapsedMetrics.labelsDisplay !== 'none'
         ) {
           throw new Error(
@@ -204,7 +204,7 @@ async function auditAccessibility(page, label) {
         const expandedLogoWidth = await page
           .locator('[aria-label="Switch workspace"] .workspace-logo')
           .evaluate((element) => element.getBoundingClientRect().width)
-        if (Math.abs(expandedLogoWidth - 48) > 1) {
+        if (Math.abs(expandedLogoWidth - 49) > 1) {
           throw new Error(`Expanded workspace logo regressed to ${expandedLogoWidth}px`)
         }
         await auditAccessibility(page, 'expanded desktop navigation')

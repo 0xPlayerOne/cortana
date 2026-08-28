@@ -28,6 +28,11 @@ import {
 import { applyTheme, readThemePreference, SUPPORTED_THEMES, type ThemeMode } from '../theme'
 import { WorkspaceLogo } from '../workspaceLogos'
 import { readWorkspaceLogoFile, writeWorkspaceLogo } from '../workspaceLogoStore'
+import {
+  moveWorkspaceThemePreference,
+  readWorkspaceThemePreferences,
+  writeWorkspaceThemePreference,
+} from '../workspaceThemePreference'
 import { MemoryReview } from './MemoryReview'
 import { Toaster } from './shadcn/sonner'
 import { SettingsConfirmProvider, useSettingsConfirm } from './settings/SettingsConfirm'
@@ -616,7 +621,7 @@ function SettingsViewContent({
           </div>
           <div className="settings-header-actions">
             <label className="settings-theme-control" htmlFor="theme-select">
-              <span>Theme</span>
+              <span>Default theme</span>
               <Select
                 id="theme-select"
                 value={theme}
@@ -754,7 +759,9 @@ function SettingsViewContent({
               />
             )}
             {section === 'audit' && <AuditSection />}
-            {section === 'workspaces' && <WorkspaceSection settings={settings} update={update} />}
+            {section === 'workspaces' && (
+              <WorkspaceSection settings={settings} update={update} defaultTheme={theme} />
+            )}
             {section === 'sources' && (
               <Suspense
                 fallback={
@@ -2397,7 +2404,7 @@ function ReadinessSection({
   return (
     <SettingsSection
       title="System readiness"
-      description="A read-only scan checks local tools and Cortana's production gates. It never starts a connector, installs a schedule, or writes indexed data."
+      description="A read-only scan checks local tools and Cortana's production gates. The Connector environment is maintained automatically after Desktop updates; this scan never starts a connector, installs a schedule, or writes indexed data."
     >
       <div className="readiness-actions">
         <Button variant="secondary" type="button" disabled={readinessInFlight} onClick={scan}>
@@ -2447,7 +2454,7 @@ function ReadinessSection({
                   <span>{tool.version || tool.detail}</span>
                   {tool.path && <code>{tool.path}</code>}
                 </div>
-                {!tool.available && tool.install_supported && (
+                {!tool.available && tool.install_supported && tool.id !== 'connectors' && (
                   <Button
                     variant="compact"
                     type="button"
@@ -2549,13 +2556,16 @@ function ReadinessSection({
 function WorkspaceSection({
   settings,
   update,
+  defaultTheme,
 }: {
   settings: DesktopSettings
   update: (change: (draft: DesktopSettings) => DesktopSettings) => void
+  defaultTheme: ThemeMode
 }) {
   const confirm = useSettingsConfirm()
   const [logoError, setLogoError] = useState('')
   const [logoLoading, setLogoLoading] = useState<string | null>(null)
+  const [workspaceThemes, setWorkspaceThemes] = useState(readWorkspaceThemePreferences)
   const hasWorkspaceSources = (workspaceId: string) =>
     settings.sources.some((source) => source.project === workspaceId)
 
@@ -2587,31 +2597,43 @@ function WorkspaceSection({
             id: nextId,
             name: nextName,
             account_label: null,
-            color: '#A875D6',
+            color: null,
           },
         ],
       }
     })
 
   const changeWorkspace = (index: number, patch: Partial<WorkspaceSettings>) => {
+    const currentWorkspace = settings.workspaces[index]
+    if (!currentWorkspace) return
+    const remainingIds = settings.workspaces
+      .map((workspace) => workspace.id)
+      .filter((candidate) => candidate !== currentWorkspace.id)
+    const nextName = patch.name ?? currentWorkspace.name
+    const shouldDeriveId =
+      patch.id === undefined &&
+      patch.name !== undefined &&
+      !hasWorkspaceSources(currentWorkspace.id) &&
+      isWorkspaceIdDerivedFromName(currentWorkspace)
+    const nextId = patch.id
+      ? patch.id
+      : shouldDeriveId
+        ? ensureWorkspaceIdentifierUnique(deriveWorkspaceIdentifier(nextName), remainingIds)
+        : currentWorkspace.id
+    if (nextId !== currentWorkspace.id) {
+      moveWorkspaceThemePreference(currentWorkspace.id, nextId)
+      setWorkspaceThemes((current) => {
+        const theme = current[currentWorkspace.id]
+        if (!theme) return current
+        const next = { ...current }
+        delete next[currentWorkspace.id]
+        next[nextId] = theme
+        return next
+      })
+    }
     update((current) => {
       const currentWorkspace = current.workspaces[index]
       if (!currentWorkspace) return current
-
-      const remainingIds = current.workspaces
-        .map((workspace) => workspace.id)
-        .filter((candidate) => candidate !== currentWorkspace.id)
-      const nextName = patch.name ?? currentWorkspace.name
-      const shouldDeriveId =
-        patch.id === undefined &&
-        patch.name !== undefined &&
-        !hasWorkspaceSources(currentWorkspace.id) &&
-        isWorkspaceIdDerivedFromName(currentWorkspace)
-      const nextId = patch.id
-        ? patch.id
-        : shouldDeriveId
-          ? ensureWorkspaceIdentifierUnique(deriveWorkspaceIdentifier(nextName), remainingIds)
-          : currentWorkspace.id
 
       return {
         ...current,
@@ -2707,12 +2729,25 @@ function WorkspaceSection({
                   maxLength={80}
                 />
               </Field>
-              <Field label="Color">
-                <Input
-                  type="color"
-                  value={workspace.color || '#E8A83B'}
-                  onChange={(event) => changeWorkspace(index, { color: event.target.value })}
-                />
+              <Field
+                label="Workspace theme"
+                hint="Stored locally for this Desktop profile; overrides the default theme."
+              >
+                <Select
+                  aria-label={`Theme for ${workspace.name || 'new workspace'}`}
+                  value={workspaceThemes[workspace.id] ?? defaultTheme}
+                  onChange={(event) => {
+                    const next = event.target.value as ThemeMode
+                    setWorkspaceThemes((current) => ({ ...current, [workspace.id]: next }))
+                    writeWorkspaceThemePreference(workspace.id, next)
+                  }}
+                >
+                  {SUPPORTED_THEMES.map((item) => (
+                    <option value={item.id} key={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </Select>
               </Field>
             </div>
             <SettingsAccordion className="workspace-advanced-details">

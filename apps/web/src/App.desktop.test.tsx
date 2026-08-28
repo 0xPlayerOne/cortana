@@ -47,6 +47,7 @@ afterEach(() => {
   window.localStorage.removeItem('cortana.workspace-selection.v1')
   window.localStorage.removeItem('cortana.source-selection.v1')
   window.localStorage.removeItem('cortana.theme.v1')
+  window.localStorage.removeItem('cortana.workspace-themes.v1')
   state.getDocumentsCalls = []
   state.getGraphCalls = 0
   state.saveSettingsCalls = 0
@@ -101,6 +102,7 @@ afterEach(() => {
   state.pickedPaths = []
   state.pathPickerCalls = []
   state.authorizationCalls = []
+  state.connectionCheckCalls = []
 })
 
 // Desktop-mode App: the tauri bridge is mocked with resolved local settings,
@@ -163,6 +165,7 @@ const state = {
   settings: desktopSettings as DesktopSettings,
   sourceJob: null as DesktopSourceJob | null,
   authorizationCalls: [] as string[],
+  connectionCheckCalls: [] as string[],
   embeddingMigrationCalls: [] as string[],
   openUrlCalls: [] as string[],
   openUrlError: null as Error | null,
@@ -461,6 +464,28 @@ mock.module('./api', () => ({
       acl: ['work'],
       status: 'running',
       summary: 'Validating source work-code…',
+      log: '',
+      started_at_unix_seconds: 1785000000,
+      completed_at_unix_seconds: null,
+      exit_code: null,
+      retryable: false,
+      writes_indexed_data: false,
+      budget: null,
+    }
+    state.sourceJob = job
+    return Promise.resolve(job)
+  },
+  startDesktopSourceConnectionCheck: (source: string) => {
+    state.connectionCheckCalls.push(source)
+    const job: DesktopSourceJob = {
+      id: 'job-connection-check-1',
+      operation: 'connection-check',
+      source,
+      kind: 'filesystem',
+      project: 'work',
+      acl: ['work'],
+      status: 'running',
+      summary: 'Checking source credentials and connection.',
       log: '',
       started_at_unix_seconds: 1785000000,
       completed_at_unix_seconds: null,
@@ -1435,7 +1460,7 @@ test('connecting a provider collects its files before persisting and authorizing
       })
     )
     expect(screen.queryByRole('dialog', { name: 'Choose a source type' })).toBeNull()
-    expect(screen.getByText('google-calendar · authorization · running')).toBeTruthy()
+    expect(screen.getByText('Authorization · running')).toBeTruthy()
   } finally {
     state.settings = originalSettings
     state.sourceJob = null
@@ -1982,7 +2007,7 @@ test('settings theme control updates and persists', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
 
-  const themeSelect = await screen.findByRole('combobox', { name: 'Theme' })
+  const themeSelect = await screen.findByRole('combobox', { name: 'Default theme' })
   expect(themeSelect).toBeTruthy()
   await user.click(themeSelect)
   await user.click(await screen.findByRole('option', { name: 'Blue' }))
@@ -1991,6 +2016,30 @@ test('settings theme control updates and persists', async () => {
     expect(window.localStorage.getItem('cortana.theme.v1')).toBe('accessible')
     expect(document.documentElement.getAttribute('data-theme')).toBe('accessible')
   })
+})
+
+test('workspace theme controls persist and apply per workspace', async () => {
+  const user = userEvent.setup()
+  render(<App />)
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy())
+
+  fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+  await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+  fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+
+  await user.click(screen.getByRole('combobox', { name: 'Theme for Work' }))
+  await user.click(await screen.findByRole('option', { name: 'Teal' }))
+  await user.click(screen.getByRole('combobox', { name: 'Theme for Personal' }))
+  await user.click(await screen.findByRole('option', { name: 'Rose' }))
+  expect(JSON.parse(window.localStorage.getItem('cortana.workspace-themes.v1') || '{}')).toEqual({
+    work: 'teal',
+    personal: 'rose',
+  })
+  expect(document.documentElement.getAttribute('data-theme')).toBe('teal')
+
+  fireEvent.click(screen.getByRole('button', { name: 'Switch workspace' }))
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Personal' }))
+  await waitFor(() => expect(document.documentElement.getAttribute('data-theme')).toBe('rose'))
 })
 
 test('settings refuses padded or control-character source labels before save', async () => {
@@ -3040,7 +3089,7 @@ test('Google source authorization action starts a tracked browser job', async ()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Authorize' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: 'Authorize' }))
     await waitFor(() => expect(state.authorizationCalls).toEqual(['personal-drive']))
-    expect(screen.getByText('personal-drive · authorization · running')).toBeTruthy()
+    expect(screen.getByText('Authorization · running')).toBeTruthy()
     expect(screen.getByText(/Waiting for Google authorization/)).toBeTruthy()
   } finally {
     state.settings = originalSettings
@@ -3092,7 +3141,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     expect(screen.getByText('Document labels')).toBeTruthy()
     expect(screen.getByText('Document ACL labels')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
-    await waitFor(() => expect(screen.getByText('work-code · validation · running')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Connection check · running')).toBeTruthy())
 
     // Leaving the settings view must not hide the running job: the status
     // bar indicator and the read-only source-panel strip keep it visible.
@@ -3106,7 +3155,7 @@ test('running source jobs stay visible in the shell after leaving the settings v
     fireEvent.click(activeJobs)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy())
     expect(screen.getByRole('heading', { name: 'Active source jobs' })).toBeTruthy()
-    const cancel = screen.getByRole('button', { name: 'Cancel work work-code validation' })
+    const cancel = screen.getByRole('button', { name: 'Cancel work work-code connection-check' })
     fireEvent.click(cancel)
     await waitFor(() => expect((cancel as HTMLButtonElement).disabled).toBe(true))
   } finally {

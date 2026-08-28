@@ -37,8 +37,7 @@ const MAX_DOCUMENT_CURSOR_LENGTH: usize = 1024;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
 const MAX_BACKEND_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 const PROJECT_URL: &str = "https://github.com/0xPlayerOne/cortana";
-const STATUS_WARMUP_MESSAGE: &str =
-    "Cortana is warming up; live status will be available shortly";
+const STATUS_WARMUP_MESSAGE: &str = "Cortana is warming up; live status will be available shortly";
 static QUITTING: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone)]
@@ -136,7 +135,9 @@ fn required_scope_for_path(path: &str) -> &'static str {
     match path {
         "/metrics" | "/v1/audit" | "/v1/auth/reload" => "admin",
         "/v1/status" => "status",
-        "/v1/memory" | "/v1/memory/recall" | "/v1/memory/forget"
+        "/v1/memory"
+        | "/v1/memory/recall"
+        | "/v1/memory/forget"
         | "/v1/memory/export"
         | "/v1/memory/derived"
         | "/v1/memory/reflect"
@@ -385,11 +386,24 @@ async fn brain_memory_candidate_action(
     validate_memory_candidate_id(&id)?;
     let base = format!("/v1/memory/candidates/{id}");
     match action.as_str() {
-        "classify" => backend.request(Method::POST, &format!("{base}/classify"), None).await,
-        "reject" => backend.request(Method::POST, &format!("{base}/cancel"), None).await,
-        "redact" => backend.request(Method::POST, &format!("{base}/redact"), None).await,
+        "classify" => {
+            backend
+                .request(Method::POST, &format!("{base}/classify"), None)
+                .await
+        }
+        "reject" => {
+            backend
+                .request(Method::POST, &format!("{base}/cancel"), None)
+                .await
+        }
+        "redact" => {
+            backend
+                .request(Method::POST, &format!("{base}/redact"), None)
+                .await
+        }
         "approve" | "working" | "supersede" | "retry" | "edit-approve" => {
-            let mut request = request.ok_or_else(|| "candidate action request required".to_string())?;
+            let mut request =
+                request.ok_or_else(|| "candidate action request required".to_string())?;
             let object = request
                 .as_object_mut()
                 .ok_or_else(|| "candidate action request must be an object".to_string())?;
@@ -444,7 +458,17 @@ async fn brain_memory_consolidation_control(
         "status" => "/v1/memory/consolidation/status",
         _ => return Err("unsupported memory consolidation control".into()),
     };
-    backend.request(if action == "status" { Method::GET } else { Method::POST }, path, None).await
+    backend
+        .request(
+            if action == "status" {
+                Method::GET
+            } else {
+                Method::POST
+            },
+            path,
+            None,
+        )
+        .await
 }
 
 #[tauri::command]
@@ -967,6 +991,15 @@ fn desktop_source_validation_start<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+fn desktop_source_connection_check_start<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    jobs: State<'_, source_jobs::SourceJobState>,
+    source: String,
+) -> Result<source_jobs::SourceJobSnapshot, String> {
+    jobs.start_connection_check(&app, &source)
+}
+
+#[tauri::command]
 fn desktop_source_authorization_start<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     jobs: State<'_, source_jobs::SourceJobState>,
@@ -1165,9 +1198,11 @@ fn validate_memory_list_request(request: &MemoryListRequest) -> Result<(), Strin
     if !(1..=1000).contains(&request.limit) {
         return Err("memory list limit must be between 1 and 1000".into());
     }
-    if request.query.as_ref().is_some_and(|value| {
-        value.len() > 256 || value.chars().any(char::is_control)
-    }) {
+    if request
+        .query
+        .as_ref()
+        .is_some_and(|value| value.len() > 256 || value.chars().any(char::is_control))
+    {
         return Err("memory candidate query exceeds its safe bound".into());
     }
     if request.status.as_ref().is_some_and(|value| {
@@ -1455,6 +1490,7 @@ pub fn run() {
             desktop_installer_status,
             desktop_installer_cancel,
             desktop_source_validation_start,
+            desktop_source_connection_check_start,
             desktop_source_authorization_start,
             desktop_source_trial_sync_start,
             desktop_source_setup_open,
@@ -1477,6 +1513,18 @@ pub fn run() {
                 loop {
                     refresh_tray(&backend, &jobs, &tray).await;
                     tokio::time::sleep(Duration::from_secs(15)).await;
+                }
+            });
+            let app_handle = app.handle().clone();
+            let installer = app.state::<installer::InstallerState>().inner().clone();
+            tauri::async_runtime::spawn(async move {
+                if readiness::connector_needs_reconcile(&app_handle).await
+                    && let Err(error) =
+                        installer.start_with_app(Some(&app_handle), "connectors", true)
+                {
+                    eprintln!(
+                        "automatic connector environment reconciliation could not start: {error}"
+                    );
                 }
             });
             Ok(())
@@ -1629,6 +1677,7 @@ mod tests {
                 desktop_source_jobs_status,
                 desktop_source_validation_cancel,
                 desktop_source_validation_start,
+                desktop_source_connection_check_start,
                 desktop_source_validation_status,
                 desktop_update_check,
                 desktop_update_status,

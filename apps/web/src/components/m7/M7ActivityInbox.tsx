@@ -69,6 +69,16 @@ function statusIcon(status: SourceSyncSummary['status'] | DesktopSourceJob['stat
   return <AlertTriangle className="size-4" aria-hidden="true" />
 }
 
+function sourceOperationLabel(operation: DesktopSourceJob['operation']): string {
+  return {
+    'connection-check': 'Connection check',
+    validation: 'Budget validation',
+    authorization: 'Authorization',
+    'trial-sync': 'Trial sync',
+    'initial-sync': 'Initial sync',
+  }[operation]
+}
+
 function ActivityEmpty({
   loading,
   error,
@@ -138,15 +148,19 @@ function SyncActivityCard({ run }: { run: SourceSyncSummary }) {
         </CardDescription>
         <CardAction>{statusBadge(run.status)}</CardAction>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">{describeSyncRunProgress(run)}</p>
-        {run.status === 'running' ? (
-          <Progress value={progress} aria-label={`${run.source} sync progress`} />
-        ) : null}
-        <p className="text-xs text-muted-foreground">
-          {documents.toLocaleString()} documents ·{' '}
-          {(run.progress_bytes ?? run.bytes ?? 0).toLocaleString()} bytes
+      <CardContent className="activity-card-content">
+        <p className="activity-card-summary text-sm text-muted-foreground">
+          {describeSyncRunProgress(run)}
         </p>
+        <div className="activity-card-status-row">
+          {run.status === 'running' ? (
+            <Progress value={progress} aria-label={`${run.source} sync progress`} />
+          ) : null}
+          <p className="text-xs text-muted-foreground">
+            {documents.toLocaleString()} documents ·{' '}
+            {(run.progress_bytes ?? run.bytes ?? 0).toLocaleString()} bytes
+          </p>
+        </div>
       </CardContent>
     </Card>
   )
@@ -167,42 +181,49 @@ function SourceJobCard({
     <Card size="sm">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          {statusIcon(job.status)} {job.source} · {job.operation}
+          {statusIcon(job.status)} {job.source} · {sourceOperationLabel(job.operation)}
         </CardTitle>
         <CardDescription>
           {job.project} · started {started.toLocaleString()}
         </CardDescription>
         <CardAction>{statusBadge(job.status)}</CardAction>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">{describeSourceJobProgress(job)}</p>
-        {job.status === 'running' || job.status === 'cancelling' ? (
-          <Progress value={null} aria-label={`${job.source} ${job.operation} in progress`} />
-        ) : null}
-        {completed ? (
-          <p className="text-xs text-muted-foreground">
-            Completed in {Math.max(0, Math.round((completed.getTime() - started.getTime()) / 1000))}{' '}
-            seconds
-          </p>
-        ) : null}
+      <CardContent className="activity-card-content">
+        <p className="activity-card-summary text-sm text-muted-foreground">
+          {describeSourceJobProgress(job)}
+        </p>
+        <div className="activity-card-status-row">
+          {job.status === 'running' || job.status === 'cancelling' ? (
+            <Progress
+              value={null}
+              aria-label={`${job.source} ${sourceOperationLabel(job.operation)} in progress`}
+            />
+          ) : null}
+          {completed ? (
+            <p className="text-xs text-muted-foreground">
+              Completed in{' '}
+              {Math.max(0, Math.round((completed.getTime() - started.getTime()) / 1000))} seconds
+            </p>
+          ) : null}
+          {onCancel && (job.status === 'running' || job.status === 'cancelling') ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={job.status === 'cancelling'}
+              aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
+              onClick={() => onCancel(job.id)}
+            >
+              <CircleStop aria-hidden="true" /> Cancel
+            </Button>
+          ) : null}
+        </div>
         {job.log ? (
-          <details className="rounded-md border p-2 text-xs">
+          <details className="activity-card-log rounded-md border p-2 text-xs">
             <summary className="cursor-pointer font-medium">View job log</summary>
             <pre className="mt-2 overflow-auto whitespace-pre-wrap text-muted-foreground">
               {job.log}
             </pre>
           </details>
-        ) : null}
-        {onCancel && (job.status === 'running' || job.status === 'cancelling') ? (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={job.status === 'cancelling'}
-            aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
-            onClick={() => onCancel(job.id)}
-          >
-            <CircleStop aria-hidden="true" /> Cancel
-          </Button>
         ) : null}
       </CardContent>
     </Card>

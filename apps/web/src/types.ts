@@ -437,7 +437,7 @@ export type DesktopSettingsImport = {
 
 export type DesktopSourceJob = {
   id: string
-  operation: 'validation' | 'authorization' | 'trial-sync' | 'initial-sync'
+  operation: 'connection-check' | 'validation' | 'authorization' | 'trial-sync' | 'initial-sync'
   source: string
   kind: string
   project: string

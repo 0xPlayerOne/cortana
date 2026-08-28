@@ -241,10 +241,115 @@
   --amber-soft: #f7d395;
 }
 
+:root[data-theme='graphite'] {
+  --theme-background: #151719;
+  --theme-surface: #202326;
+  --theme-panel: #292d31;
+  --theme-paper: #f4f5f6;
+  --theme-paper-ink: #25282b;
+  --theme-muted: #b7bec6;
+  --theme-line: #424950;
+  --theme-ink: #111315;
+  --theme-surface-elevated: #32383e;
+  --theme-tooltip-bg: #252b31;
+  --theme-control-bg: #353b41;
+  --theme-control-bg-hover: #444c54;
+  --theme-control-fg: #f5f7f8;
+  --theme-content-muted: #6e7882;
+  --theme-content-border: #d3d8dd;
+  --theme-content-surface: #f8f9fa;
+  --theme-text-primary: #f5f7f8;
+  --theme-text-secondary: #b7bec6;
+  --theme-content-text: #25282b;
+  --theme-content-subtle: #6e7882;
+  --theme-success-fg: #cdebd8;
+  --theme-success-bg: #1f3829;
+  --theme-success-border: #4d7d5d;
+  --theme-error-fg: #f2c7c4;
+  --theme-error-bg: #3b2525;
+  --theme-error-border: #814d4d;
+  --theme-warning-fg: #f0d69d;
+  --theme-warning-bg: #382d1d;
+  --theme-warning-border: #79623a;
+  --amber: #b7c4d2;
+  --amber-soft: #d7e0ea;
+}
+
+:root[data-theme='teal'] {
+  --theme-background: #0c1b1d;
+  --theme-surface: #12292b;
+  --theme-panel: #183638;
+  --theme-paper: #eefaf8;
+  --theme-paper-ink: #153536;
+  --theme-muted: #a7cbc9;
+  --theme-line: #2f5b5c;
+  --theme-ink: #0a1719;
+  --theme-surface-elevated: #225052;
+  --theme-tooltip-bg: #173c3e;
+  --theme-control-bg: #255154;
+  --theme-control-bg-hover: #326c6d;
+  --theme-control-fg: #effdfb;
+  --theme-content-muted: #5e8586;
+  --theme-content-border: #c6e2e0;
+  --theme-content-surface: #f5fcfb;
+  --theme-text-primary: #effdfb;
+  --theme-text-secondary: #a7cbc9;
+  --theme-content-text: #153536;
+  --theme-content-subtle: #5e8586;
+  --theme-success-fg: #d0f2d8;
+  --theme-success-bg: #1c4230;
+  --theme-success-border: #4c9367;
+  --theme-error-fg: #ffd0cb;
+  --theme-error-bg: #47262a;
+  --theme-error-border: #aa5f67;
+  --theme-warning-fg: #ffe3a3;
+  --theme-warning-bg: #40341c;
+  --theme-warning-border: #a7833c;
+  --amber: #75d8d1;
+  --amber-soft: #a7e8e2;
+}
+
+:root[data-theme='rose'] {
+  --theme-background: #21161c;
+  --theme-surface: #302027;
+  --theme-panel: #3d2932;
+  --theme-paper: #fff4f7;
+  --theme-paper-ink: #40242e;
+  --theme-muted: #d4b4bf;
+  --theme-line: #624451;
+  --theme-ink: #24151b;
+  --theme-surface-elevated: #513844;
+  --theme-tooltip-bg: #482c39;
+  --theme-control-bg: #573d49;
+  --theme-control-bg-hover: #6d4c5c;
+  --theme-control-fg: #fff7f9;
+  --theme-content-muted: #8d6c79;
+  --theme-content-border: #ead2da;
+  --theme-content-surface: #fff9fb;
+  --theme-text-primary: #fff7f9;
+  --theme-text-secondary: #d4b4bf;
+  --theme-content-text: #40242e;
+  --theme-content-subtle: #8d6c79;
+  --theme-success-fg: #d6f3df;
+  --theme-success-bg: #214334;
+  --theme-success-border: #579a70;
+  --theme-error-fg: #ffd4d8;
+  --theme-error-bg: #512834;
+  --theme-error-border: #bd687a;
+  --theme-warning-fg: #ffe5ad;
+  --theme-warning-bg: #44351f;
+  --theme-warning-border: #a98542;
+  --amber: #f0a5bb;
+  --amber-soft: #f6c4d2;
+}
+
 html[data-theme='blue'],
 html[data-theme='accessible'],
 html[data-theme='forest'],
-html[data-theme='plum'] {
+html[data-theme='plum'],
+html[data-theme='graphite'],
+html[data-theme='teal'],
+html[data-theme='rose'] {
   --ink: var(--theme-ink);
   --panel: var(--theme-surface);
   --line: var(--theme-line);
@@ -593,8 +698,8 @@ select:focus-visible {
   flex: 0 0 auto;
   place-items: center;
   overflow: hidden;
-  color: #fff;
-  border: 1px solid rgb(255 255 255 / 28%);
+  color: var(--primary-foreground);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
   border-radius: var(--radius-xs);
   background: var(--amber);
   font-size: 11px;
@@ -602,6 +707,7 @@ select:focus-visible {
   line-height: 1;
   box-sizing: border-box;
   object-fit: contain;
+  object-position: center;
   padding: 4px;
 }
 
@@ -628,7 +734,7 @@ select:focus-visible {
    workspace selector instead of floating as a bare tile. Defined after the
    logo sizes so the ring wins over the base logo border. */
 .workspace-picker-mark {
-  border: 2px solid var(--panel);
+  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--primary) 28%);
 }
 
 .panel-heading,
@@ -2662,7 +2768,7 @@ select:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-@media (min-width: 1800px) {
+@media (min-width: 1600px) {
   .settings-layout {
     grid-template-columns: clamp(190px, 14vw, 230px) minmax(0, 1440px);
   }
@@ -2718,14 +2824,9 @@ select:focus-visible {
 
 .workspace-identity-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: end;
   gap: 12px;
-}
-
-.workspace-identity-row input[type='color'] {
-  width: 52px;
-  min-height: 36px;
 }
 
 .workspace-logo-upload {
@@ -3113,7 +3214,7 @@ select:focus-visible {
 
 .source-settings-card > header {
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 14px;
   flex-wrap: wrap;
 }
@@ -3133,6 +3234,7 @@ select:focus-visible {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface-elevated);
+  align-self: center;
 }
 
 .source-service-icon--google-drive {
@@ -3358,8 +3460,8 @@ select:focus-visible {
 .source-validation-job {
   margin-top: 16px;
   padding: 13px 15px;
-  border: 1px solid #3d4e63;
-  background: #1c242d;
+  border: 1px solid var(--line);
+  background: var(--theme-control-bg);
 }
 
 .initial-sync-flow {
@@ -3468,13 +3570,13 @@ select:focus-visible {
 }
 
 .source-validation-job.succeeded {
-  border-color: #3d6945;
-  background: #1d2b20;
+  border-color: var(--theme-success-border);
+  background: var(--theme-success-bg);
 }
 
 .source-validation-job.failed {
-  border-color: #77403b;
-  background: #30201e;
+  border-color: var(--theme-error-border);
+  background: var(--theme-error-bg);
 }
 
 .source-validation-job > div {
@@ -3909,9 +4011,9 @@ select:focus-visible {
 }
 
 .update-card {
-  align-items: stretch;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
 }
 
 .update-card > div:first-child {
@@ -3919,7 +4021,6 @@ select:focus-visible {
   flex-direction: column;
   justify-content: flex-end;
   gap: 4px;
-  flex: 1;
   text-align: left;
 }
 
@@ -3929,9 +4030,8 @@ select:focus-visible {
 }
 
 .update-card > .service-actions {
-  flex: 0 0 auto;
   justify-content: flex-end;
-  margin-left: auto;
+  align-self: end;
 }
 
 .update-progress {
@@ -5224,6 +5324,57 @@ select:focus-visible {
   --palette-brand: #f2bd67;
 }
 
+:root[data-theme='graphite'] {
+  --palette-background: #151719;
+  --palette-foreground: #f5f7f8;
+  --palette-surface: #202326;
+  --palette-elevated: #32383e;
+  --palette-panel: #292d31;
+  --palette-line: #424950;
+  --palette-ink: #111315;
+  --palette-control: #353b41;
+  --palette-control-hover: #444c54;
+  --palette-muted: #b7bec6;
+  --palette-success: #cdebd8;
+  --palette-warning: #f0d69d;
+  --palette-error: #f2c7c4;
+  --palette-brand: #b7c4d2;
+}
+
+:root[data-theme='teal'] {
+  --palette-background: #0c1b1d;
+  --palette-foreground: #effdfb;
+  --palette-surface: #12292b;
+  --palette-elevated: #225052;
+  --palette-panel: #183638;
+  --palette-line: #2f5b5c;
+  --palette-ink: #0a1719;
+  --palette-control: #255154;
+  --palette-control-hover: #326c6d;
+  --palette-muted: #a7cbc9;
+  --palette-success: #d0f2d8;
+  --palette-warning: #ffe3a3;
+  --palette-error: #ffd0cb;
+  --palette-brand: #75d8d1;
+}
+
+:root[data-theme='rose'] {
+  --palette-background: #21161c;
+  --palette-foreground: #fff7f9;
+  --palette-surface: #302027;
+  --palette-elevated: #513844;
+  --palette-panel: #3d2932;
+  --palette-line: #624451;
+  --palette-ink: #24151b;
+  --palette-control: #573d49;
+  --palette-control-hover: #6d4c5c;
+  --palette-muted: #d4b4bf;
+  --palette-success: #d6f3df;
+  --palette-warning: #ffe5ad;
+  --palette-error: #ffd4d8;
+  --palette-brand: #f0a5bb;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -5355,13 +5506,18 @@ select:focus-visible {
 
 .m7-application-sidebar .m7-workspace-header {
   box-sizing: border-box;
-  height: 56px;
-  min-height: 56px;
-  padding: 4px 12px;
+  height: 55px;
+  min-height: 55px;
+  padding: 3px 12px;
 }
 
 [data-slot='sidebar'][data-state='collapsed'] .m7-application-sidebar .m7-workspace-header {
-  padding: 4px 0;
+  padding: 3px;
+}
+
+.m7-application-sidebar [data-sidebar='separator'] {
+  width: 100%;
+  margin: 0;
 }
 
 [data-slot='sidebar'][data-state='collapsed'] .m7-application-sidebar [data-workspace-labels] {
@@ -5376,12 +5532,12 @@ select:focus-visible {
 
 .m7-application-sidebar .m7-workspace-trigger {
   width: 100%;
-  height: 48px;
+  height: 49px;
 }
 
 .m7-application-sidebar .m7-workspace-trigger .workspace-logo {
-  width: 48px;
-  height: 48px;
+  width: 49px;
+  height: 49px;
   max-width: none;
 }
 
@@ -5390,7 +5546,10 @@ select:focus-visible {
   .m7-application-sidebar
   .m7-workspace-trigger
   .workspace-logo {
-  border-radius: 0;
+  width: 49px !important;
+  height: 49px !important;
+  padding: 0 !important;
+  border-radius: var(--radius-sm);
 }
 
 .m7-application-sidebar [data-sidebar='menu-button'][data-active] > svg {
@@ -5405,8 +5564,52 @@ select:focus-visible {
 
 .m7-production-shell [data-m7-activity-inbox] .activity-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
+}
+
+.m7-production-shell [data-m7-activity-inbox] .activity-card-content {
+  display: grid;
+  gap: 0.5rem 1rem;
+}
+
+.m7-production-shell [data-m7-activity-inbox] .activity-card-summary {
+  margin: 0;
+}
+
+.m7-production-shell [data-m7-activity-inbox] .activity-card-status-row {
+  display: grid;
+  min-width: 0;
+  align-items: center;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.m7-production-shell [data-m7-activity-inbox] .activity-card-status-row > p {
+  margin: 0;
+  text-align: right;
+}
+
+.m7-production-shell [data-m7-activity-inbox] .activity-card-log {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 520px) {
+  .update-card {
+    grid-template-columns: 1fr;
+  }
+
+  .update-card > .service-actions {
+    justify-content: flex-start;
+  }
+
+  .m7-production-shell [data-m7-activity-inbox] .activity-card-status-row {
+    grid-template-columns: 1fr;
+  }
+
+  .m7-production-shell [data-m7-activity-inbox] .activity-card-status-row > p {
+    text-align: left;
+  }
 }
 
 .m7-panel-boundary :is(.source-panel, .context-panel) {

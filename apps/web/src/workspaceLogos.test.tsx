@@ -173,13 +173,13 @@ test('workspace logos round-trip through local storage and reject invalid ids', 
 
 test('WorkspaceLogo renders the workspace initial tile without a stored logo', () => {
   const { container } = render(
-    <WorkspaceLogo workspace={{ id: 'work', name: 'Work', color: '#5A9BD5' }} />
+    <WorkspaceLogo workspace={{ id: 'work', name: 'Work', color: null }} />
   )
   const tile = container.querySelector('.workspace-logo') as HTMLElement
   expect(tile).toBeTruthy()
   expect(tile.className).toContain('workspace-logo--medium')
   expect(tile.textContent).toBe('W')
-  expect(tile.getAttribute('style')).toContain('#5A9BD5')
+  expect(tile.getAttribute('style')).toBeNull()
   expect(tile.getAttribute('aria-hidden')).toBe('true')
 })
 
@@ -195,7 +195,7 @@ test('WorkspaceLogo small variant composes with the workspace picker ring', () =
 test('WorkspaceLogo renders a stored logo image with decorative alt behavior', () => {
   writeWorkspaceLogo('work', pngDataUrl)
   const { container } = render(
-    <WorkspaceLogo workspace={{ id: 'work', name: 'Work', color: '#5A9BD5' }} />
+    <WorkspaceLogo workspace={{ id: 'work', name: 'Work', color: null }} />
   )
   const img = container.querySelector('img.workspace-logo') as HTMLImageElement
   expect(img).toBeTruthy()
