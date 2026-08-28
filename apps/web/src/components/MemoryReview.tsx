@@ -1,13 +1,5 @@
 import { Pause, Play, RefreshCw, Search, ShieldCheck } from 'lucide-react'
-import {
-  createContext,
-  type ComponentProps,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { type ComponentProps, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   actOnMemoryCandidate,
@@ -28,8 +20,16 @@ import type {
   MemoryReviewPolicy,
 } from '../types'
 import { virtualRange } from '../virtualization'
-import { useM7SurfacePrimitives } from './m7/M7SurfacePrimitives'
-import { Button, type ButtonProps } from './ui/Button'
+import { Alert, AlertDescription } from './shadcn/alert'
+import { Badge } from './shadcn/badge'
+import { Button } from './shadcn/button'
+import { Card } from './shadcn/card'
+import { Checkbox } from './shadcn/checkbox'
+import { Input } from './shadcn/input'
+import { Spinner } from './shadcn/spinner'
+import { Textarea } from './shadcn/textarea'
+import { Toggle } from './shadcn/toggle'
+import { useSettingsConfirm } from './settings/SettingsConfirm'
 
 type QueueView =
   | 'all'
@@ -41,14 +41,13 @@ type QueueView =
   | 'failed'
   | 'dead-letter'
 
-const MemoryRendererContext = createContext<'legacy' | 'shadcn'>('legacy')
+type MemoryButtonProps = Omit<ComponentProps<typeof Button>, 'variant' | 'size'> & {
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon' | 'compact'
+}
 
-function MemoryButton({ variant = 'secondary', ...props }: ButtonProps) {
-  const renderer = useContext(MemoryRendererContext)
-  const ShadcnButton = useM7SurfacePrimitives()?.Button
-  if (renderer === 'legacy' || !ShadcnButton) return <Button variant={variant} {...props} />
+function MemoryButton({ variant = 'secondary', ...props }: MemoryButtonProps) {
   return (
-    <ShadcnButton
+    <Button
       {...props}
       variant={
         variant === 'primary'
@@ -65,39 +64,19 @@ function MemoryButton({ variant = 'secondary', ...props }: ButtonProps) {
 }
 
 function MemoryInput(props: ComponentProps<'input'>) {
-  const renderer = useContext(MemoryRendererContext)
-  const ShadcnInput = useM7SurfacePrimitives()?.Input
-  return renderer === 'shadcn' && ShadcnInput ? <ShadcnInput {...props} /> : <input {...props} />
+  return <Input {...props} />
 }
 
 function MemoryTextarea(props: ComponentProps<'textarea'>) {
-  const renderer = useContext(MemoryRendererContext)
-  const ShadcnTextarea = useM7SurfacePrimitives()?.Textarea
-  return renderer === 'shadcn' && ShadcnTextarea ? (
-    <ShadcnTextarea {...props} />
-  ) : (
-    <textarea {...props} />
-  )
+  return <Textarea {...props} />
 }
 
 function MemoryCard(props: ComponentProps<'div'>) {
-  const renderer = useContext(MemoryRendererContext)
-  const ShadcnCard = useM7SurfacePrimitives()?.Card
-  return renderer === 'shadcn' && ShadcnCard ? (
-    <ShadcnCard size="sm" {...props} />
-  ) : (
-    <div {...props} />
-  )
+  return <Card size="sm" {...props} />
 }
 
 function MemoryBadge(props: ComponentProps<'span'>) {
-  const renderer = useContext(MemoryRendererContext)
-  const ShadcnBadge = useM7SurfacePrimitives()?.Badge
-  return renderer === 'shadcn' && ShadcnBadge ? (
-    <ShadcnBadge variant="secondary" {...props} />
-  ) : (
-    <span {...props} />
-  )
+  return <Badge variant="secondary" {...props} />
 }
 
 export type MemoryReviewClient = {
@@ -188,8 +167,6 @@ function CandidateQueue({
   onCheck: (ids: Set<string>) => void
   onBulk: (action: MemoryCandidateAction, ids: string[]) => void
 }) {
-  const renderer = useContext(MemoryRendererContext)
-  const ShadcnCheckbox = useM7SurfacePrimitives()?.Checkbox
   const updateSelection = (candidate: MemoryCandidate, checked: boolean) => {
     const next = new Set(selectedIds)
     if (checked && next.size < MAX_BULK_ACTIONS) next.add(candidate.id)
@@ -214,20 +191,11 @@ function CandidateQueue({
                 role="listitem"
                 className={`memory-candidate-row ${selectedId === candidate.id ? 'selected' : ''}`}
               >
-                {renderer === 'shadcn' && ShadcnCheckbox ? (
-                  <ShadcnCheckbox
-                    aria-label={`Select ${candidate.title}`}
-                    checked={selectedIds.has(candidate.id)}
-                    onCheckedChange={(checked) => updateSelection(candidate, checked)}
-                  />
-                ) : (
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${candidate.title}`}
-                    checked={selectedIds.has(candidate.id)}
-                    onChange={(event) => updateSelection(candidate, event.target.checked)}
-                  />
-                )}
+                <Checkbox
+                  aria-label={`Select ${candidate.title}`}
+                  checked={selectedIds.has(candidate.id)}
+                  onCheckedChange={(checked) => updateSelection(candidate, checked)}
+                />
                 <MemoryButton
                   variant="ghost"
                   type="button"
@@ -312,18 +280,12 @@ export function MemoryReview({
   project,
   maxActive = DEFAULT_POLICY.maxActive,
   client = defaultClient,
-  renderer = 'legacy',
 }: {
   project?: string
   maxActive?: number
   client?: MemoryReviewClient
-  renderer?: 'legacy' | 'shadcn'
 }) {
-  const primitives = useM7SurfacePrimitives()
-  const ShadcnAlert = primitives?.Alert
-  const ShadcnAlertDescription = primitives?.AlertDescription
-  const ShadcnSpinner = primitives?.Spinner
-  const ShadcnToggle = primitives?.Toggle
+  const confirm = useSettingsConfirm()
   const [candidates, setCandidates] = useState<MemoryCandidate[]>([])
   const [canonical, setCanonical] = useState<AgentMemory[]>([])
   const [derived, setDerived] = useState<DerivedMemoryResponse | null>(null)
@@ -423,9 +385,9 @@ export function MemoryReview({
     )
     if (
       canonicalWrite &&
-      !window.confirm(
+      !(await confirm(
         `Confirm ${action.replace('-', ' ')} for ${boundedIds.length} candidate${boundedIds.length === 1 ? '' : 's'}? Canonical memory may change only if backend policy approves.`
-      )
+      ))
     ) {
       return
     }
@@ -473,128 +435,105 @@ export function MemoryReview({
   }
 
   return (
-    <MemoryRendererContext.Provider value={renderer}>
-      <section
-        className={`memory-review ${renderer === 'shadcn' ? 'm7-memory-review' : ''}`}
-        aria-labelledby="memory-review-title"
-        data-m7-memory-review={renderer === 'shadcn' ? '' : undefined}
-      >
-        <header className="memory-review-header">
-          <div>
-            <span className="eyebrow">Review before retention</span>
-            <h3 id="memory-review-title">Memory control center</h3>
-            <p>Inspect candidates, canonical recall, and derived reasoning as separate layers.</p>
-          </div>
-          <div className="memory-review-header-actions">
-            <MemoryButton
-              type="button"
-              variant="secondary"
-              disabled={busy || !canControl}
-              title={canControl ? undefined : 'Owner authorization is required'}
-              onClick={() => void togglePause()}
-            >
-              {paused ? <Play size={14} /> : <Pause size={14} />}
-              {paused ? 'Resume consolidation' : 'Pause consolidation'}
-            </MemoryButton>
-            <MemoryButton
-              type="button"
-              variant="secondary"
-              disabled={loading}
-              onClick={() => void refresh()}
-            >
-              {renderer === 'shadcn' && loading && ShadcnSpinner ? (
-                <ShadcnSpinner />
-              ) : (
-                <RefreshCw size={14} />
-              )}{' '}
-              Refresh
-            </MemoryButton>
-          </div>
-        </header>
-
-        <MemoryPolicy policy={policy} onChange={setPolicy} />
-        <div className="memory-review-filters">
-          <label className="memory-review-search">
-            <Search size={14} aria-hidden="true" />
-            <span className="sr-only">Search memory candidates</span>
-            <MemoryInput
-              type="search"
-              aria-label="Search memory candidates"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search candidate content, project, or source"
-            />
-          </label>
-          <div className="memory-status-tabs" role="group" aria-label="Candidate status views">
-            {QUEUE_VIEWS.map((status) =>
-              renderer === 'shadcn' && ShadcnToggle ? (
-                <ShadcnToggle
-                  key={status}
-                  size="sm"
-                  pressed={view === status}
-                  onPressedChange={(pressed) => pressed && setView(status)}
-                >
-                  {status.replace('-', ' ')}
-                </ShadcnToggle>
-              ) : (
-                <MemoryButton
-                  key={status}
-                  type="button"
-                  variant={view === status ? 'primary' : 'ghost'}
-                  aria-pressed={view === status}
-                  onClick={() => setView(status)}
-                >
-                  {status.replace('-', ' ')}
-                </MemoryButton>
-              )
-            )}
-          </div>
+    <section
+      className="memory-review m7-memory-review"
+      aria-labelledby="memory-review-title"
+      data-m7-memory-review=""
+    >
+      <header className="memory-review-header">
+        <div>
+          <span className="eyebrow">Review before retention</span>
+          <h3 id="memory-review-title">Memory control center</h3>
+          <p>Inspect candidates, canonical recall, and derived reasoning as separate layers.</p>
         </div>
+        <div className="memory-review-header-actions">
+          <MemoryButton
+            type="button"
+            variant="secondary"
+            disabled={busy || !canControl}
+            title={canControl ? undefined : 'Owner authorization is required'}
+            onClick={() => void togglePause()}
+          >
+            {paused ? <Play size={14} /> : <Pause size={14} />}
+            {paused ? 'Resume consolidation' : 'Pause consolidation'}
+          </MemoryButton>
+          <MemoryButton
+            type="button"
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void refresh()}
+          >
+            {loading ? <Spinner /> : <RefreshCw size={14} />} Refresh
+          </MemoryButton>
+        </div>
+      </header>
 
-        {(error || notice) &&
-          (renderer === 'shadcn' && error && ShadcnAlert && ShadcnAlertDescription ? (
-            <ShadcnAlert variant="destructive">
-              <ShadcnAlertDescription>{error}</ShadcnAlertDescription>
-            </ShadcnAlert>
-          ) : (
-            <div
-              role={error ? 'alert' : 'status'}
-              className={`memory-review-message ${error ? 'error' : ''}`}
+      <MemoryPolicy policy={policy} onChange={setPolicy} />
+      <div className="memory-review-filters">
+        <label className="memory-review-search">
+          <Search size={14} aria-hidden="true" />
+          <span className="sr-only">Search memory candidates</span>
+          <MemoryInput
+            type="search"
+            aria-label="Search memory candidates"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search candidate content, project, or source"
+          />
+        </label>
+        <div className="memory-status-tabs" role="group" aria-label="Candidate status views">
+          {QUEUE_VIEWS.map((status) => (
+            <Toggle
+              key={status}
+              size="sm"
+              pressed={view === status}
+              onPressedChange={(pressed) => pressed && setView(status)}
             >
-              {error || notice}
-            </div>
+              {status.replace('-', ' ')}
+            </Toggle>
           ))}
-
-        <div className="memory-review-layout">
-          <CandidateQueue
-            filtered={filtered}
-            range={range}
-            selectedId={selectedId}
-            selectedIds={selectedIds}
-            loading={loading}
-            busy={busy}
-            onScroll={setScrollTop}
-            onSelect={setSelectedId}
-            onCheck={setSelectedIds}
-            onBulk={(action, ids) => void runAction(action, ids)}
-          />
-          <CandidateDetail
-            selected={selected}
-            classification={classification}
-            busy={busy}
-            editing={editing}
-            editTitle={editTitle}
-            editContent={editContent}
-            onEditing={setEditing}
-            onTitle={setEditTitle}
-            onContent={setEditContent}
-            onAction={(action, edit) => void runAction(action, undefined, edit)}
-          />
         </div>
+      </div>
 
-        <MemoryLayers canonical={canonical} derived={derived} />
-      </section>
-    </MemoryRendererContext.Provider>
+      {error ? (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : notice ? (
+        <div role="status" className="memory-review-message">
+          {notice}
+        </div>
+      ) : null}
+
+      <div className="memory-review-layout">
+        <CandidateQueue
+          filtered={filtered}
+          range={range}
+          selectedId={selectedId}
+          selectedIds={selectedIds}
+          loading={loading}
+          busy={busy}
+          onScroll={setScrollTop}
+          onSelect={setSelectedId}
+          onCheck={setSelectedIds}
+          onBulk={(action, ids) => void runAction(action, ids)}
+        />
+        <CandidateDetail
+          selected={selected}
+          classification={classification}
+          busy={busy}
+          editing={editing}
+          editTitle={editTitle}
+          editContent={editContent}
+          onEditing={setEditing}
+          onTitle={setEditTitle}
+          onContent={setEditContent}
+          onAction={(action, edit) => void runAction(action, undefined, edit)}
+        />
+      </div>
+
+      <MemoryLayers canonical={canonical} derived={derived} />
+    </section>
   )
 }
 

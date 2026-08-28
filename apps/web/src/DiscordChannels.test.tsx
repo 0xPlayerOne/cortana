@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { desktopInfo, desktopSettings } from './test/fixtures'
 import type {
@@ -146,6 +147,7 @@ async function renderDiscordSettings() {
       }}
     />
   )
+  fireEvent.click(await screen.findByRole('button', { name: /Advanced source settings/ }))
   await screen.findByLabelText(/^Source name/)
 }
 
@@ -154,6 +156,7 @@ function channelIdsTextarea(): HTMLTextAreaElement {
 }
 
 test('discord chooser discovers guilds and channels and persists selected snowflake ids', async () => {
+  const user = userEvent.setup()
   await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
@@ -167,13 +170,13 @@ test('discord chooser discovers guilds and channels and persists selected snowfl
 
   // Selections land in the same `channels` field the native runtime reads,
   // as exact snowflake strings (renderer numbers cannot hold 64-bit ids).
-  fireEvent.click(screen.getByRole('checkbox', { name: /release · text/ }))
+  await user.click(screen.getByRole('checkbox', { name: /release · text/ }))
   expect(channelIdsTextarea().value).toBe('175928847299117064')
 
-  fireEvent.click(screen.getByRole('checkbox', { name: /announcements · announcement/ }))
+  await user.click(screen.getByRole('checkbox', { name: /announcements · announcement/ }))
   expect(channelIdsTextarea().value).toBe('175928847299117064, 175928847299117068')
 
-  fireEvent.click(screen.getByRole('checkbox', { name: /release · text/ }))
+  await user.click(screen.getByRole('checkbox', { name: /release · text/ }))
   expect(channelIdsTextarea().value).toBe('175928847299117068')
 
   // Saving persists the selected channel ids through the settings bridge.
@@ -196,8 +199,8 @@ test('discord chooser selects every text and announcement channel in the assigne
     )
   )
   expect(
-    (screen.getByRole('checkbox', { name: /Town Hall · voice/ }) as HTMLInputElement).checked
-  ).toBe(false)
+    screen.getByRole('checkbox', { name: /Town Hall · voice/ }).getAttribute('aria-checked')
+  ).toBe('false')
 })
 
 test('discord chooser limits select-all to assigned servers', async () => {
@@ -242,7 +245,11 @@ test('discord chooser refuses to discover unsaved changes and surfaces failures'
   expect(state.savedUpdates[0].sources[0].name).toBe('work-discord-renamed')
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('Discord Desktop RPC is unavailable')
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) => alert.textContent?.includes('Discord Desktop RPC is unavailable'))
+    ).toBe(true)
   )
   expect(state.saved?.sources[0].channels).toEqual(['175928847299117064'])
 })
@@ -253,14 +260,21 @@ test('discord chooser warns when discovery is truncated at 100 servers', async (
 
   fireEvent.click(screen.getByRole('button', { name: /Discover channels/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Discord returned more than 100 servers; select from the first 100.'
-    )
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) =>
+          alert.textContent?.includes(
+            'Discord returned more than 100 servers; select from the first 100.'
+          )
+        )
+    ).toBe(true)
   )
   await waitFor(() => expect(screen.getByText('Engineering')).toBeTruthy())
 })
 
 test('discord chooser marks a server with more than 100 channels as truncated', async () => {
+  const user = userEvent.setup()
   const manyChannels = Array.from({ length: 100 }, (_, index) => ({
     id: `1759288472991${String(index).padStart(6, '0')}`,
     name: `channel-${index}`,
@@ -287,6 +301,6 @@ test('discord chooser marks a server with more than 100 channels as truncated', 
   // The per-server truncation marker is always rendered so the user knows
   // the persisted selection is limited to the returned channels.
   expect(screen.getByText(/first 100 channels/)).toBeTruthy()
-  fireEvent.click(screen.getByRole('checkbox', { name: /channel-0 · text/ }))
+  await user.click(screen.getByRole('checkbox', { name: /channel-0 · text/ }))
   await waitFor(() => expect(channelIdsTextarea().value).toBe('1759288472991000000'))
 })

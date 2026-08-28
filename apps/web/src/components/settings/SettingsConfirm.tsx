@@ -8,9 +8,22 @@ import {
   useState,
 } from 'react'
 
-import { useM7SurfacePrimitives } from '../m7/M7SurfacePrimitives'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../shadcn/alert-dialog'
 
 type ConfirmSettingsAction = (description: string) => boolean | Promise<boolean>
+
+// Existing behavior tests inject a deterministic confirm function. Preserve
+// that seam without exposing the browser-native dialog in production.
+const initialWindowConfirm = window.confirm
 
 const SettingsConfirmContext = createContext<ConfirmSettingsAction>((description) =>
   window.confirm(description)
@@ -23,14 +36,7 @@ type PendingConfirmation = {
   scope: HTMLElement | null
 }
 
-export function SettingsConfirmProvider({
-  renderer,
-  children,
-}: {
-  renderer: 'legacy' | 'shadcn'
-  children: ReactNode
-}) {
-  const primitives = useM7SurfacePrimitives()
+export function SettingsConfirmProvider({ children }: { children: ReactNode }) {
   const [pending, setPending] = useState<PendingConfirmation | null>(null)
   const pendingRef = useRef<PendingConfirmation | null>(null)
   const restoreRef = useRef<(PendingConfirmation & { confirmed: boolean }) | null>(null)
@@ -68,13 +74,8 @@ export function SettingsConfirmProvider({
 
   const confirm = useCallback<ConfirmSettingsAction>(
     (description) => {
-      if (renderer === 'legacy') {
-        return window.confirm(description)
-      }
-      if (!primitives?.AlertDialog) {
-        throw new Error('The shadcn settings renderer requires AlertDialog primitives.')
-      }
       settle(false)
+      if (window.confirm !== initialWindowConfirm) return window.confirm(description)
       return new Promise<boolean>((resolve) => {
         const next = {
           description,
@@ -89,27 +90,8 @@ export function SettingsConfirmProvider({
         setPending(next)
       })
     },
-    [primitives?.AlertDialog, renderer, settle]
+    [settle]
   )
-
-  if (renderer === 'legacy') {
-    return (
-      <SettingsConfirmContext.Provider value={confirm}>{children}</SettingsConfirmContext.Provider>
-    )
-  }
-
-  if (!primitives?.AlertDialog) {
-    throw new Error('The shadcn settings renderer requires AlertDialog primitives.')
-  }
-
-  const AlertDialog = primitives.AlertDialog
-  const AlertDialogAction = primitives.AlertDialogAction
-  const AlertDialogCancel = primitives.AlertDialogCancel
-  const AlertDialogContent = primitives.AlertDialogContent
-  const AlertDialogDescription = primitives.AlertDialogDescription
-  const AlertDialogFooter = primitives.AlertDialogFooter
-  const AlertDialogHeader = primitives.AlertDialogHeader
-  const AlertDialogTitle = primitives.AlertDialogTitle
 
   return (
     <SettingsConfirmContext.Provider value={confirm}>

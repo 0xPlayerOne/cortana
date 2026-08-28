@@ -46,18 +46,11 @@ jobs:
           done
           cat "$RUNNER_TEMP/cortana-vite.log"
           exit 1
-      - name: Capture legacy baseline
+      - name: Capture final shadcn application
         run: >-
           bun scripts/capture-m7-visuals.mjs
-          --renderer legacy
           --base-url http://127.0.0.1:4173
-          --output artifacts/m7-shadcn/before
-      - name: Capture production shadcn shell
-        run: >-
-          bun scripts/capture-m7-visuals.mjs
-          --renderer shadcn
-          --base-url http://127.0.0.1:4173
-          --output artifacts/m7-shadcn/production-shell
+          --output artifacts/m7-shadcn/final
       - name: Stop deterministic renderer
         if: always()
         run: kill "$VITE_PID" 2>/dev/null || true

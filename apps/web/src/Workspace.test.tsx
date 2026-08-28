@@ -2,8 +2,6 @@ import { afterEach, expect, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 
 import { Workspace } from './components/Workspace'
-import { m7SurfacePrimitives } from './components/m7/M7SurfacePrimitives.shadcn'
-import { M7SurfacePrimitivesProvider } from './components/m7/M7SurfacePrimitives'
 import { safeSourceLink } from './sourceLinks'
 import { canonicalDocument } from './test/fixtures'
 
@@ -69,11 +67,7 @@ test('unsafe document links are not rendered into the web shell', () => {
 })
 
 test('shadcn renderer composes workspace navigation and empty states from shared primitives', () => {
-  render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <Workspace {...props} renderer="shadcn" />
-    </M7SurfacePrimitivesProvider>
-  )
+  render(<Workspace {...props} />)
 
   expect(document.querySelector('[data-m7-knowledge-workspace]')).toBeTruthy()
   expect(document.querySelector('[data-slot="tabs"]')).toBeTruthy()
@@ -86,16 +80,13 @@ test('shadcn renderer composes workspace navigation and empty states from shared
 test('shadcn workspace names revoked, loading, and malformed-content states without widening scope', () => {
   let retries = 0
   render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <Workspace
-        {...props}
-        renderer="shadcn"
-        error="Workspace access revoked"
-        onRetry={() => {
-          retries += 1
-        }}
-      />
-    </M7SurfacePrimitivesProvider>
+    <Workspace
+      {...props}
+      error="Workspace access revoked"
+      onRetry={() => {
+        retries += 1
+      }}
+    />
   )
   expect(screen.getByText(/Workspace access revoked/)).toBeTruthy()
   const retry = screen.getByRole('button', { name: 'Try again' })
@@ -104,11 +95,7 @@ test('shadcn workspace names revoked, loading, and malformed-content states with
   expect(retries).toBe(1)
 
   cleanup()
-  render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <Workspace {...props} renderer="shadcn" tab="answer" loading />
-    </M7SurfacePrimitivesProvider>
-  )
+  render(<Workspace {...props} tab="answer" loading />)
   expect(screen.getByText('Searching your brain')).toBeTruthy()
 
   cleanup()
@@ -116,11 +103,7 @@ test('shadcn workspace names revoked, loading, and malformed-content states with
     ...canonicalDocument,
     content: '<script>window.location="https://example.test"</script>',
   }
-  render(
-    <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>
-      <Workspace {...props} renderer="shadcn" document={malformed} />
-    </M7SurfacePrimitivesProvider>
-  )
+  render(<Workspace {...props} document={malformed} />)
   expect(screen.getByText(malformed.content)).toBeTruthy()
   expect(document.querySelector('.canonical-content script')).toBeNull()
 })
@@ -161,8 +144,7 @@ test('supported app source links keep an explicit open-source affordance', () =>
     render(<Workspace {...props} document={{ ...canonicalDocument, uri }} />)
     const link = screen.getByRole('link', { name: 'Open original source' })
     expect(link.getAttribute('href')).toBe(uri)
-    expect(link.getAttribute('title')).toBeNull()
-    expect(link.getAttribute('data-tooltip')).toBe('Open original source')
+    expect(link.getAttribute('title')).toBe('Open original source')
   }
 })
 
@@ -181,9 +163,7 @@ test('graph failures expose a retry action', () => {
   )
 
   expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
-  expect(screen.getByRole('button', { name: 'Try again' }).className).toContain(
-    'cortana-button--primary'
-  )
+  expect(screen.getByRole('button', { name: 'Try again' }).className).toContain('bg-primary')
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
   expect(retries).toBe(1)
 })
@@ -218,7 +198,7 @@ test('graph retries stay outside the live summary and document nodes describe th
   expect(summary.querySelector('button')).toBeNull()
   expect(screen.getByRole('button', { name: 'Retry graph' })).toBeTruthy()
   expect(screen.getByRole('button', { name: /Open document:/ })).toBeTruthy()
-  expect(screen.getByRole('button', { name: /Open document:/ }).getAttribute('data-tooltip')).toBe(
+  expect(screen.getByRole('button', { name: /Open document:/ }).getAttribute('title')).toBe(
     'Open document'
   )
   expect(document.querySelector('.graph-links line')).toBeTruthy()
@@ -252,7 +232,7 @@ test('graph exposes bounded pagination when another page is available', () => {
 
   expect(screen.getByText('Showing 12 of 13 documents · 0 links')).toBeTruthy()
   const loadMore = screen.getByRole('button', { name: 'Load more nodes' })
-  expect(loadMore.className).toContain('cortana-button--secondary')
+  expect(loadMore.className).toContain('bg-secondary')
   fireEvent.click(loadMore)
   expect(loads).toBe(1)
 })

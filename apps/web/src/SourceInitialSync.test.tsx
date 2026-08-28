@@ -282,6 +282,11 @@ function openSources() {
   render(<SettingsView onSaved={() => {}} initialSection="sources" />)
 }
 
+async function openAdvancedSource(index = 0) {
+  const triggers = await screen.findAllByRole('button', { name: /Advanced source settings/ })
+  fireEvent.click(triggers[index])
+}
+
 test('service action result is not overwritten by stale local refresh', async () => {
   const originalSetInterval = window.setInterval
   const originalClearInterval = window.clearInterval
@@ -375,6 +380,7 @@ test('a shared active source job locks source actions until it finishes', async 
   render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
 
   await waitFor(() => expect(screen.getByRole('button', { name: 'Initial sync' })).toBeTruthy())
+  await openAdvancedSource()
   expect(screen.getByText('work-code · trial-sync · running')).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: /Cancel/ }))
   await waitFor(() => expect(state.cancelCalls).toEqual(['source-1-1']))
@@ -440,11 +446,13 @@ test('an active source job locks only that source configuration', async () => {
   render(<SettingsView onSaved={() => {}} initialSection="sources" sourceJobs={[activeJob]} />)
 
   await waitFor(() => expect(screen.getByText(/Settings for work-code are locked/)).toBeTruthy())
+  await openAdvancedSource()
   const workNames = screen.getAllByLabelText(/^Source name/) as HTMLInputElement[]
   expect(workNames).toHaveLength(1)
   expect(workNames[0].disabled).toBe(true)
 
   fireEvent.click(screen.getByRole('tab', { name: /Personal/ }))
+  await openAdvancedSource()
   const personalName = screen.getByLabelText(/^Source name/) as HTMLInputElement
   expect(personalName.disabled).toBe(false)
   expect(
@@ -518,6 +526,8 @@ test('editing the selected source invalidates its initial-sync plan', async () =
   fireEvent.click(screen.getByRole('button', { name: 'Initial sync' }))
   await waitFor(() => expect(screen.getByText('Guided initial sync')).toBeTruthy())
   await waitFor(() => expect(screen.getByText('100 documents · 25 MiB · 15 minutes')).toBeTruthy())
+
+  await openAdvancedSource()
 
   await act(async () => {
     fireEvent.change(screen.getByLabelText(/^Source name/), { target: { value: 'work-code-v2' } })

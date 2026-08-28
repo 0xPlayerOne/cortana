@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { desktopInfo, desktopSettings } from './test/fixtures'
 import type {
@@ -138,10 +139,12 @@ async function renderSlackSettings() {
       }}
     />
   )
+  fireEvent.click(await screen.findByRole('button', { name: /Advanced source settings/ }))
   await screen.findByLabelText(/^Source name/)
 }
 
 test('slack workspace chooser discovers teams and persists per-workspace assignment', async () => {
+  const user = userEvent.setup()
   await renderSlackSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover workspaces/ }))
@@ -153,8 +156,8 @@ test('slack workspace chooser discovers teams and persists per-workspace assignm
   // index-aligned in `team_names`, persisted per source (each Slack source
   // belongs to exactly one workspace). A Slack user token is scoped to
   // exactly one workspace, so assigning a second team replaces the first.
-  fireEvent.click(screen.getByRole('checkbox', { name: /Acme Engineering/ }))
-  fireEvent.click(screen.getByRole('checkbox', { name: /Acme Community/ }))
+  await user.click(screen.getByRole('checkbox', { name: /Acme Engineering/ }))
+  await user.click(screen.getByRole('checkbox', { name: /Acme Community/ }))
 
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
@@ -187,7 +190,11 @@ test('slack workspace chooser refuses to discover unsaved changes and surfaces f
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
   fireEvent.click(screen.getByRole('button', { name: /Discover workspaces/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('requires browser authorization')
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) => alert.textContent?.includes('requires browser authorization'))
+    ).toBe(true)
   )
 })
 
@@ -197,9 +204,15 @@ test('slack workspace chooser warns when discovery is truncated at 100 teams', a
 
   fireEvent.click(screen.getByRole('button', { name: /Discover workspaces/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Slack returned more than 100 teams; select from the first 100.'
-    )
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) =>
+          alert.textContent?.includes(
+            'Slack returned more than 100 teams; select from the first 100.'
+          )
+        )
+    ).toBe(true)
   )
 })
 

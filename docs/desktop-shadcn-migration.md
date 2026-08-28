@@ -7,22 +7,23 @@ apply it.
 
 ## Locked foundation
 
-| Decision            | M7 contract                                                                                                                                                                    |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Registry            | Official `@shadcn` registry only                                                                                                                                               |
-| Component base      | Base UI                                                                                                                                                                        |
-| Style               | Nova (`base-nova` in `components.json`)                                                                                                                                        |
-| Icons               | Lucide; decorative icons are hidden and action icons retain accessible names                                                                                                   |
-| Font                | Geist Variable for the renderer heading and sans contracts                                                                                                                     |
-| Styling             | Tailwind CSS 4 with CSS variables and semantic Cortana tokens                                                                                                                  |
-| Generated UI alias  | `@/components/shadcn`                                                                                                                                                          |
-| Utilities and hooks | `@/lib`, `@/lib/utils`, and `@/hooks`                                                                                                                                          |
-| Renderer transition | Legacy is the packaged default until M7 cleanup; `VITE_CORTANA_RENDERER=shadcn` enables the migration renderer, and `?renderer=shadcn` is accepted only by a development build |
+| Decision            | M7 contract                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------ |
+| Registry            | Official `@shadcn` registry only                                                           |
+| Component base      | Base UI                                                                                    |
+| Style               | Nova (`base-nova` in `components.json`)                                                    |
+| Icons               | Lucide; decorative icons are hidden and action icons retain accessible names               |
+| Font                | Geist Variable for the renderer heading and sans contracts                                 |
+| Styling             | Tailwind CSS 4 with CSS variables and semantic Cortana tokens                              |
+| Generated UI alias  | `@/components/shadcn`                                                                      |
+| Utilities and hooks | `@/lib`, `@/lib/utils`, and `@/hooks`                                                      |
+| Renderer            | One production shadcn renderer; no build flag, query override, or packaged legacy fallback |
 
-The generated directory is deliberately separate from the temporary `components/ui/Button.tsx`
-legacy owner. This prevents registry updates from overwriting the renderer that remains packaged
-during the transition. Issue #2167 removes that legacy directory and the flag after all callers
-have migrated.
+Generated registry components live under `components/shadcn`. Product composition imports them
+directly or through the bounded `components/cortana` compositions; the temporary legacy Button,
+renderer resolver, duplicate renderer entries, and runtime surface adapters have been removed.
+`scripts/check-web-ui-contract.mjs` prevents those contracts and ordinary raw form controls from
+returning outside the documented graph, root-failure, and generated-component exceptions.
 
 All four Cortana themes map the same semantic variables. `background`, `foreground`, `card`,
 `popover`, `primary`, `secondary`, `muted`, `accent`, `destructive`, `border`, `input`, `ring`,
@@ -39,18 +40,16 @@ From a checkout with dependencies installed:
 ```sh
 bun run dev -- --host 127.0.0.1 --port 4173
 bun scripts/capture-m7-visuals.mjs \
-  --renderer legacy \
   --base-url http://127.0.0.1:4173 \
-  --output artifacts/m7-shadcn/before
-VITE_CORTANA_RENDERER=shadcn bun run build
+  --output artifacts/m7-shadcn/final
+bun run build
 bun run --cwd apps/web preview -- --host 127.0.0.1 --port 4174
 bun scripts/capture-m7-visuals.mjs \
-  --renderer shadcn \
   --base-url http://127.0.0.1:4174 \
-  --output artifacts/m7-shadcn/production-shell
+  --output artifacts/m7-shadcn/final-production
 ```
 
-The preview command is the production-shell evidence source and bundles Geist locally. The pull
+The preview command is the final production evidence source and bundles Geist locally. The pull
 request workflow may use Vite development mode because its clean Linux install resolves font assets
 inside the checkout; local Bun cache symlinks on macOS can otherwise produce a dev-only font 403 that
 does not exist in the production build.
@@ -59,7 +58,7 @@ Install the matching browser once with `bunx playwright install chromium` when P
 that it is missing. The capture fails on browser console errors. The legacy run records 56 images:
 all primary wide-screen destinations; the default and accessibility themes at 320, 768, 1024,
 and 1440 CSS pixels; Forest and Plum at compact and desktop widths; command, source-sheet,
-settings, and graph states. The production-shell run records 95 images: the real data-backed shell
+settings, and graph states. The final run records 95 images: the real data-backed shell
 at five widths from 320 through 1920 CSS pixels in all four themes, mobile navigation, tablet
 source/context panels, command and
 workspace overlays, collapsed and expanded desktop navigation, Inbox, Conversations, Agent tools,
@@ -74,7 +73,7 @@ first-run, busy, success, warning, failure, cancellation, retry, and recovery st
 use `/example` and no secret value is present in the DOM or screenshots.
 
 `.github/workflows/m7-visual-evidence.yml` runs the same capture on the exact pull-request revision,
-audits every production-shell theme/width against WCAG 2.2 AA automation, and uploads the complete
+audits every final-renderer theme/width against WCAG 2.2 AA automation, and uploads the complete
 non-secret matrix as a 30-day GitHub Actions artifact. Link the exact run from the issue or pull
 request; local artifact paths alone are not acceptance evidence. Final packaged evidence uses the
 longer-lived release record required by the Desktop UX audit.
@@ -85,7 +84,7 @@ behavior, and a 720-CSS-pixel layout at 2x density as the reflow equivalent of a
 1,440-physical-pixel window at 200% zoom. Issue #2168 retains the real packaged 200% zoom and
 assistive-technology checks.
 
-The baseline exposed acceptance failures that M7 must not preserve:
+The baseline exposed acceptance failures that the final renderer corrects:
 
 - the primary navigation is absent below 781 CSS pixels, leaving Settings, Help, Inbox, Graph,
   Memory, and Agent tools unreachable;
@@ -119,21 +118,13 @@ shared primitive CSS contract at 121.35 kB (18.83 kB gzip). Issue #2167 must com
 single renderer to the baseline and remove transition-only
 code before issue #2168 can accept performance.
 
-`bun run build` enforces reviewed uncompressed budgets from the Vite manifest: 475,000 bytes for
-the complete legacy-default initial JavaScript graph, 80,000 bytes for its CSS, 50,000 bytes for
-the lazy production-shell entry, 650,000 bytes for its complete incremental static import graph
-beyond the mode resolver, and 210,000 bytes for its complete CSS graph. The earlier #2163 overlay
-slice measured 40.55 kB for the prototype renderer entry and 322.59 kB for its complete incremental
-graph; recursive graph measurement continues to prevent manual chunking from hiding imported
-JavaScript. The first real production-shell build replaces the static
-prototype entry while preserving the legacy default. After the #2165 knowledge-workspace slice, the
-legacy default is 468.449 kB JavaScript and 72.299 kB CSS. Its 1.149 kB lazy entry reaches a
-621.839 kB incremental static graph containing the complete real application plus the injected
-shadcn surface primitives, and its combined legacy-content plus semantic-shell CSS graph is
-206.680 kB. The reviewed transition caps are therefore 650,000 bytes for that production graph and
-210,000 bytes for its CSS; #2165 through #2167 must reduce those numbers as legacy surfaces and
-styles leave the graph. The final migration replaces all transition budgets rather than silently
-carrying them forward.
+`bun run build` walks the Vite manifest recursively and enforces final single-renderer budgets:
+800,000 bytes for the application entry and its initial static graph, 950,000 bytes for the full
+production JavaScript graph excluding the demo-only fixture, and 210,000 bytes for application CSS.
+The #2167 cleanup measurement is 788,156 bytes initial JavaScript, 933,738 bytes complete production
+JavaScript, and 208,515 bytes CSS before minifier hash variation. These are uncompressed review
+ceilings, not performance claims; recursive measurement prevents manual chunking from hiding
+imports. The earlier transition measurements remain the historical comparison above.
 
 The added JavaScript packages use MIT or Apache-2.0 licenses. The bundled Geist font package uses
 OFL-1.1. No copyleft runtime, native library, hosted font request, or new executable is introduced.
@@ -159,13 +150,13 @@ generated icon sizes and always require an accessible name at the call site.
 
 ## Legacy control and CSS inventory
 
-The production renderer starts with 18 raw `button` elements, 139 uses of the temporary shared
-`Button`, 60 raw inputs, seven raw selects, and four raw textareas. The generated shadcn directory
-is excluded from those counts. Manual dialog, tablist, tooltip, confirmation, and menu behavior is
-owned across `App.tsx`, `Workspace.tsx`, `SettingsView.tsx`, `MemoryReview.tsx`, `SourcePanel.tsx`,
-`ContextPanel.tsx`, and `Navigation.tsx`.
+The final production source has no temporary Button, raw input, raw select, or raw textarea outside
+generated shadcn components. Two raw button exceptions remain: the root chunk-failure recovery
+control, which must work before shared chunks load, and the custom graph node canvas. The generated
+Sidebar retains its registry-owned native trigger. Static enforcement verifies these exact
+exceptions.
 
-The legacy stylesheet contract is 5,005 lines:
+The migration began with this 5,087-line stylesheet contract:
 
 | Owner                   | Lines | Current responsibility                                  | Replacement                                                          |
 | ----------------------- | ----: | ------------------------------------------------------- | -------------------------------------------------------------------- |
@@ -174,7 +165,7 @@ The legacy stylesheet contract is 5,005 lines:
 | `styles/shell.css`      | 1,068 | title bar, rail, panes, status, overlays                | Sidebar, Sheet, Tooltip, Command, shell composition; #2163 and #2164 |
 | `styles/workspace.css`  |   809 | document, answer, graph, timeline, tabs                 | Card, Tabs, ScrollArea, Empty, Skeleton, renderer wrapper; #2165     |
 | `styles/context.css`    |   159 | agent-context pane                                      | Card, Sheet, Badge, Progress; #2165                                  |
-| `styles/settings.css`   | 1,845 | setup, sources, forms, services, updates                | Field system and shared feedback/overlays; #2162 and #2166           |
+| `styles/settings.css`   | 1,927 | setup, sources, forms, services, updates                | Field system and shared feedback/overlays; #2162 and #2166           |
 | `styles/utility.css`    |   470 | inbox, conversations, agent tools, memory               | shared cards, tables, status, menus; #2165 and #2166                 |
 | `styles/responsive.css` |   203 | 1280, 1000, and 780 pixel shell forks                   | component-owned responsive composition; #2164 through #2167          |
 
@@ -201,12 +192,11 @@ native commands, source approval, credential handling, retrieval behavior, or st
 ## Knowledge workspace migration
 
 Issue #2165 keeps retrieval, ACL, pagination, cancellation, virtualization, and graph traversal in
-the existing data owners while replacing their presentation boundary in the shadcn renderer. The
-live renderer now uses shared Tabs, Button, Input, Select, Toggle, Card, Badge, Empty, ScrollArea,
-and Textarea primitives across workspace navigation and feedback, source and document navigation,
-the context inspector, bounded graph controls, and native-memory review. The legacy renderer still
-receives its original markup and styles through the renderer flag until #2167 removes the rollback
-path.
+the existing data owners while replacing their presentation boundary with shadcn. The live renderer
+uses shared Tabs, Button, Input, Select, Toggle, Card, Badge, Empty, ScrollArea, and Textarea
+primitives across workspace navigation and feedback, source and document navigation, the context
+inspector, bounded graph controls, and native-memory review. There is no alternate renderer or
+rollback flag.
 
 The canonical document body, radial graph canvas, and virtualized list math remain purpose-built.
 Their interactive rows, filters, pagination, status, selected-node inspector, theme colors, and
@@ -217,15 +207,12 @@ loading without disguising custom renderers as ordinary component primitives.
 
 Issue #2166 routes settings text fields, textareas, checkboxes, switches, radio budgets, selects,
 buttons, cards, alerts, workspace/source tabs, advanced disclosures, destructive confirmations,
-and the toast host through generated shadcn primitives. `SettingsSurface.tsx` keeps the common
-renderer adapter component types module-scoped so ordinary parent updates preserve control
-identity; the model Combobox and provider-secret InputGroup import their generated primitives from
-lazy workflow modules. Section navigation intentionally mounts only the active workflow, and the
-complete Settings view, source workflow, advanced workflow, Combobox, and InputGroup are split from
-the initial application bundle. `SettingsConfirm.tsx` owns the shared
-AlertDialog promise boundary and restores focus to the initiating action after Cancel, Escape, or
-Continue. A shadcn render fails closed when its primitive provider is absent instead of silently
-falling back to the legacy system.
+and the toast host through generated shadcn primitives. `SettingsSurface.tsx` exposes the shared
+composition directly; the model Combobox and provider-secret InputGroup remain lazy workflow
+modules. Section navigation intentionally mounts only the active workflow, and the complete
+Settings view, source workflow, advanced workflow, Combobox, and InputGroup are split from the
+initial application bundle. `SettingsConfirm.tsx` owns the shared AlertDialog promise boundary and
+restores focus to the initiating action after Cancel, Escape, or Continue.
 
 Settings layout and validation association now live in `SettingsLayout.tsx`; portable settings,
 secret-file access, and secure-storage migration live in `AdvancedSettingsSection.tsx`. The

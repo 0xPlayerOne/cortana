@@ -3,7 +3,7 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { BrainDocumentSummary } from '../types'
 import { virtualRange } from '../virtualization'
-import { useM7SurfacePrimitives } from './m7/M7SurfacePrimitives'
+import { Button } from './shadcn/button'
 
 const ROW_HEIGHT = 32
 
@@ -14,7 +14,6 @@ export function VirtualDocumentList({
   hasMore,
   onSelect,
   onLoadMore,
-  renderer = 'legacy',
 }: {
   documents: BrainDocumentSummary[]
   selectedDocument: string
@@ -22,9 +21,7 @@ export function VirtualDocumentList({
   hasMore: boolean
   onSelect: (id: string) => void
   onLoadMore: () => void
-  renderer?: 'legacy' | 'shadcn'
 }) {
-  const ShadcnButton = useM7SurfacePrimitives()?.Button
   const viewportRef = useRef<HTMLDivElement>(null)
   const loadRequested = useRef(false)
   const [scrollTop, setScrollTop] = useState(0)
@@ -135,8 +132,8 @@ export function VirtualDocumentList({
               onClick: () => onSelect(document.id),
               title: `${document.title} · ${document.source}`,
             } as const
-            return renderer === 'shadcn' && ShadcnButton ? (
-              <ShadcnButton
+            return (
+              <Button
                 key={document.id}
                 {...sharedProps}
                 variant="ghost"
@@ -144,11 +141,7 @@ export function VirtualDocumentList({
                 data-m7-document-row=""
               >
                 {content}
-              </ShadcnButton>
-            ) : (
-              <button key={document.id} {...sharedProps} type="button">
-                {content}
-              </button>
+              </Button>
             )
           })}
         </div>

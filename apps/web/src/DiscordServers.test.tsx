@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, mock, test } from 'bun:test'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 import { desktopInfo, desktopSettings } from './test/fixtures'
 import type {
@@ -158,10 +159,12 @@ async function renderDiscordSettings() {
       }}
     />
   )
+  fireEvent.click(await screen.findByRole('button', { name: /Advanced source settings/ }))
   await screen.findByLabelText(/^Source name/)
 }
 
 test('discord server chooser discovers guilds and persists per-workspace assignment', async () => {
+  const user = userEvent.setup()
   await renderDiscordSettings()
 
   fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
@@ -171,8 +174,8 @@ test('discord server chooser discovers guilds and persists per-workspace assignm
 
   // Server selection lands in the `servers` field, which is persisted per
   // source (each Discord source belongs to exactly one workspace).
-  fireEvent.click(screen.getByRole('checkbox', { name: /Engineering/ }))
-  fireEvent.click(screen.getByRole('checkbox', { name: /Community/ }))
+  await user.click(screen.getByRole('checkbox', { name: /Engineering/ }))
+  await user.click(screen.getByRole('checkbox', { name: /Community/ }))
 
   fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
@@ -206,7 +209,11 @@ test('discord server chooser refuses to discover unsaved changes and surfaces fa
   await waitFor(() => expect(state.savedUpdates).toHaveLength(1))
   fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain('Discord Desktop RPC is unavailable')
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) => alert.textContent?.includes('Discord Desktop RPC is unavailable'))
+    ).toBe(true)
   )
 })
 
@@ -216,9 +223,15 @@ test('discord server chooser warns when discovery is truncated at 100 servers', 
 
   fireEvent.click(screen.getByRole('button', { name: /Discover servers/ }))
   await waitFor(() =>
-    expect(screen.getByRole('alert').textContent).toContain(
-      'Discord returned more than 100 servers; select from the first 100.'
-    )
+    expect(
+      screen
+        .getAllByRole('alert')
+        .some((alert) =>
+          alert.textContent?.includes(
+            'Discord returned more than 100 servers; select from the first 100.'
+          )
+        )
+    ).toBe(true)
   )
 })
 

@@ -11,13 +11,8 @@ for (let index = 2; index < process.argv.length; index += 2) {
   args.set(process.argv[index], process.argv[index + 1])
 }
 
-const renderer = args.get('--renderer') ?? 'legacy'
-if (!['legacy', 'shadcn'].includes(renderer)) {
-  throw new Error('--renderer must be legacy or shadcn')
-}
-
 const baseUrl = args.get('--base-url') ?? 'http://127.0.0.1:4173'
-const output = resolve(args.get('--output') ?? `artifacts/m7-shadcn/${renderer}`)
+const output = resolve(args.get('--output') ?? 'artifacts/m7-shadcn/final')
 const widths = [320, 768, 1024, 1440, 1920]
 const themes = ['blue', 'accessible', 'forest', 'plum']
 const consoleErrors = []
@@ -33,17 +28,12 @@ async function openPage(theme, width, state = 'configured') {
   page.setDefaultTimeout(60_000)
   page.on('console', (message) => {
     if (message.type() === 'error') {
-      consoleErrors.push(`${renderer}/${theme}/${width}: ${message.text()}`)
+      consoleErrors.push(`${theme}/${width}: ${message.text()}`)
     }
   })
-  const query = renderer === 'shadcn' ? `?demo=1&renderer=shadcn&demo-state=${state}` : '?demo=1'
-  await page.goto(`${baseUrl}/${query}`, { waitUntil: 'domcontentloaded' })
-  if (renderer === 'shadcn') {
-    await page.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
-    await page.getByRole('textbox', { name: 'Search your knowledge' }).waitFor()
-  } else {
-    await page.getByRole('main').waitFor()
-  }
+  await page.goto(`${baseUrl}/?demo=1&demo-state=${state}`, { waitUntil: 'domcontentloaded' })
+  await page.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
+  await page.getByRole('textbox', { name: 'Search your knowledge' }).waitFor()
   return { context, page }
 }
 
@@ -93,7 +83,7 @@ async function auditAccessibility(page, label) {
   }
 }
 
-if (renderer === 'shadcn') {
+{
   for (const theme of themes) {
     for (const width of widths) {
       const { context, page } = await openPage(theme, width)
@@ -469,7 +459,7 @@ if (renderer === 'shadcn') {
     reducedMotion: 'reduce',
   })
   const motionPage = await motionContext.newPage()
-  await motionPage.goto(`${baseUrl}/?demo=1&renderer=shadcn`, {
+  await motionPage.goto(`${baseUrl}/?demo=1`, {
     waitUntil: 'domcontentloaded',
   })
   await motionPage.locator('[data-m7-production-shell-ready]').waitFor({ state: 'attached' })
@@ -492,58 +482,10 @@ if (renderer === 'shadcn') {
   await motionContext.close()
 }
 
-if (renderer === 'legacy') {
-  const labels = {
-    inbox: 'Inbox',
-    conversations: 'Conversations',
-    'agent-tools': 'Agent tools',
-    index: 'Index',
-    settings: 'Settings',
-    help: 'Help',
-  }
-  for (const [surface, label] of Object.entries(labels)) {
-    const { context, page } = await openPage('blue', 1440)
-    await page.getByRole('button', { name: label, exact: true }).click()
-    await screenshot(page, `${surface}-blue-1440`)
-    await context.close()
-  }
-
-  for (const theme of themes) {
-    for (const width of widths) {
-      // Secondary themes are required at compact and desktop widths only.
-      if (['forest', 'plum'].includes(theme) && ![320, 1024, 1440].includes(width)) continue
-      const { context, page } = await openPage(theme, width)
-      await screenshot(page, `knowledge-${theme}-${width}`)
-
-      await page.keyboard.press('Control+p')
-      await page.getByRole('dialog', { name: 'Command palette' }).waitFor()
-      await screenshot(page, `command-${theme}-${width}`)
-      await page.keyboard.press('Escape')
-
-      if (width <= 768) {
-        await page.getByRole('button', { name: 'Open sources', exact: true }).click()
-        await screenshot(page, `source-sheet-${theme}-${width}`)
-      } else {
-        for (const surface of ['settings', 'graph']) {
-          await page.goto(`${baseUrl}/?demo=1`, { waitUntil: 'domcontentloaded' })
-          await page
-            .getByRole('button', {
-              name: surface[0].toUpperCase() + surface.slice(1),
-              exact: true,
-            })
-            .click()
-          await screenshot(page, `${surface}-${theme}-${width}`)
-        }
-      }
-      await context.close()
-    }
-  }
-}
-
 await browser.close()
 
 if (consoleErrors.length > 0) {
   throw new Error(`Browser console errors:\n${consoleErrors.join('\n')}`)
 }
 
-console.log(`Captured ${screenshotCount} ${renderer} screenshots in ${output}`)
+console.log(`Captured ${screenshotCount} final-renderer screenshots in ${output}`)

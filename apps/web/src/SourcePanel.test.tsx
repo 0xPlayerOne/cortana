@@ -10,8 +10,6 @@ import type {
 } from './types'
 import { demoStatus } from './demo'
 import { SourcePanel } from './components/SourcePanel'
-import { m7SurfacePrimitives } from './components/m7/M7SurfacePrimitives.shadcn'
-import { M7SurfacePrimitivesProvider } from './components/m7/M7SurfacePrimitives'
 import { SourceIcon } from './components/sourceIcons'
 import { sourceBrandForKind, sourceIconForKind } from './components/sourceIconData'
 
@@ -37,14 +35,12 @@ function renderPanel(
   sourceJobError = '',
   onRetryStatus?: () => void,
   workspaceId = 'work',
-  hasMoreDocuments = false,
-  renderer: 'legacy' | 'shadcn' = 'legacy'
+  hasMoreDocuments = false
 ) {
   const docs: BrainDocumentSummary[] = []
   const noJobs: DesktopSourceJob[] = []
   const panel = (
     <SourcePanel
-      renderer={renderer}
       open={false}
       status={statusValue}
       statusError={statusError}
@@ -60,7 +56,6 @@ function renderPanel(
       documentsError=""
       hasMoreDocuments={hasMoreDocuments}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -70,17 +65,11 @@ function renderPanel(
       jobs={noJobs}
     />
   )
-  render(
-    renderer === 'shadcn' ? (
-      <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>{panel}</M7SurfacePrimitivesProvider>
-    ) : (
-      panel
-    )
-  )
+  render(panel)
 }
 
 test('shadcn renderer uses shared source controls without a redundant workspace selector', () => {
-  renderPanel(demoStatus, '', '', undefined, 'work', true, 'shadcn')
+  renderPanel(demoStatus, '', '', undefined, 'work', true)
 
   expect(document.querySelector('[data-m7-source-panel]')).toBeTruthy()
   expect(screen.queryByLabelText('Workspace')).toBeNull()
@@ -91,7 +80,7 @@ test('shadcn renderer uses shared source controls without a redundant workspace 
 })
 
 test('source disclosure keeps keyboard focus when local state rerenders the panel', () => {
-  renderPanel(demoStatus, '', '', undefined, 'work', true, 'shadcn')
+  renderPanel(demoStatus, '', '', undefined, 'work', true)
 
   const disclosure = screen.getAllByRole('button', { name: /^Collapse / })[0]
   disclosure.focus()
@@ -104,9 +93,7 @@ test('source disclosure keeps keyboard focus when local state rerenders the pane
 test('SourcePanel uses the shared secondary action style for pagination', () => {
   renderPanel(demoStatus, '', '', undefined, 'work', true)
 
-  expect(screen.getByRole('button', { name: 'Load next page' }).className).toContain(
-    'cortana-button--secondary'
-  )
+  expect(screen.getByRole('button', { name: 'Load next page' }).className).toContain('bg-secondary')
 })
 
 test('SourcePanel reports loading while status is still resolving', () => {
@@ -114,12 +101,10 @@ test('SourcePanel reports loading while status is still resolving', () => {
   expect(screen.getByText('Loading source index and health…')).toBeTruthy()
 })
 
-test('workspace picker shows the display scope without account metadata', () => {
+test('source panel uses the shell workspace scope without a duplicate picker', () => {
   renderPanel(demoStatus, '')
-  const picker = screen.getByRole('combobox', { name: 'Workspace' }) as HTMLSelectElement
-  expect(picker.textContent).toContain('Work')
-  expect(picker.textContent).not.toContain('All workspaces')
-  expect(document.querySelector('.workspace-picker-mark')).toBeTruthy()
+  expect(screen.queryByRole('combobox', { name: 'Workspace' })).toBeNull()
+  expect(screen.getByLabelText('Documents in Work / All sources')).toBeTruthy()
 })
 
 test('SourcePanel never falls back to an all-workspaces source tree', () => {
@@ -138,7 +123,6 @@ test('SourcePanel never falls back to an all-workspaces source tree', () => {
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -191,7 +175,6 @@ test('SourcePanel exposes a retry action for document list failures', () => {
       documentsError="Document list unavailable"
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -231,7 +214,6 @@ test('document filter exposes a clear action only when text is present', () => {
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={(query) => {
         nextQuery = query
       }}
@@ -272,7 +254,6 @@ test('SourcePanel source and settings shortcuts open the Sources settings sectio
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -284,9 +265,9 @@ test('SourcePanel source and settings shortcuts open the Sources settings sectio
   const add = screen.getByLabelText('Add source')
   const settings = screen.getByLabelText('Source settings')
   expect(add.getAttribute('title')).toBeNull()
-  expect(add.getAttribute('data-tooltip')).toBe('Add source')
+  expect(add.hasAttribute('data-base-ui-tooltip-trigger')).toBe(true)
   expect(settings.getAttribute('title')).toBeNull()
-  expect(settings.getAttribute('data-tooltip')).toBe('Source settings')
+  expect(settings.hasAttribute('data-base-ui-tooltip-trigger')).toBe(true)
   fireEvent.click(add)
   fireEvent.click(settings)
   expect(sourcesOpenCalls).toBe(2)
@@ -358,7 +339,6 @@ test('source selection is scoped to the active workspace when names repeat', () 
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -388,7 +368,6 @@ test('source-select button is rendered as a button control', () => {
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -459,7 +438,6 @@ test('source panel exposes setup and browser authorization actions only when req
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -500,7 +478,6 @@ test('source panel exposes setup and browser authorization actions only when req
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -554,7 +531,6 @@ test('Google setup action identifies the source editor instead of a provider URL
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -569,7 +545,7 @@ test('Google setup action identifies the source editor instead of a provider URL
 
   const setup = screen.getByRole('button', { name: 'Open personal-drive setup' })
   expect(setup.getAttribute('title')).toBeNull()
-  expect(setup.getAttribute('data-tooltip')).toBe('Open Google source settings')
+  expect(setup.hasAttribute('data-base-ui-tooltip-trigger')).toBe(true)
   fireEvent.click(setup)
   expect(setupSource).toBe('personal-drive')
 })
@@ -608,7 +584,6 @@ test('active source jobs expose a cancellation control in the source panel', () 
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -665,7 +640,6 @@ function renderExplorer(selected: string) {
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -764,7 +738,6 @@ test('active source jobs lock a source that uses a canonical label', () => {
       documentsError=""
       hasMoreDocuments={false}
       onSelect={() => {}}
-      onSelectWorkspace={() => {}}
       onDocumentQueryChange={() => {}}
       onSelectDocument={() => {}}
       onLoadMoreDocuments={() => {}}
@@ -774,6 +747,6 @@ test('active source jobs lock a source that uses a canonical label', () => {
       jobs={[job]}
     />
   )
-  const toggle = screen.getByRole('switch', { name: 'Disable work-code' }) as HTMLButtonElement
-  expect(toggle.disabled).toBe(true)
+  const toggle = screen.getByRole('switch', { name: 'Disable work-code' })
+  expect(toggle.hasAttribute('data-disabled')).toBe(true)
 })

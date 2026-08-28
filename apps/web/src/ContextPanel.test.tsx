@@ -3,8 +3,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 
 import type { AnswerResponse, ContextBundle, Evidence } from './types'
 import { ContextPanel } from './components/ContextPanel'
-import { m7SurfacePrimitives } from './components/m7/M7SurfacePrimitives.shadcn'
-import { M7SurfacePrimitivesProvider } from './components/m7/M7SurfacePrimitives'
 
 afterEach(cleanup)
 
@@ -37,10 +35,7 @@ const baseAnswer: AnswerResponse = {
   },
 }
 
-function renderPanel(
-  overrides: Partial<ContextBundle | null> = {},
-  renderer: 'legacy' | 'shadcn' = 'legacy'
-) {
+function renderPanel(overrides: Partial<ContextBundle | null> = {}) {
   const contextBundle: ContextBundle | null =
     overrides === null
       ? null
@@ -58,9 +53,8 @@ function renderPanel(
           ...overrides,
         }
 
-  const panel = (
+  return render(
     <ContextPanel
-      renderer={renderer}
       open
       query="How do releases work?"
       evidence={baseEvidence}
@@ -77,18 +71,11 @@ function renderPanel(
       onClose={() => {}}
     />
   )
-  return render(
-    renderer === 'shadcn' ? (
-      <M7SurfacePrimitivesProvider value={m7SurfacePrimitives}>{panel}</M7SurfacePrimitivesProvider>
-    ) : (
-      panel
-    )
-  )
 }
 
 test('shadcn renderer composes the context inspector from shared primitives', async () => {
   await act(async () => {
-    renderPanel({}, 'shadcn')
+    renderPanel()
   })
 
   expect(document.querySelector('[data-m7-context-panel]')).toBeTruthy()
@@ -129,7 +116,7 @@ test('Context panel copy action confirms successful copy', async () => {
   renderPanel()
   const button = screen.getByRole('button', { name: 'Copy agent context' })
   expect(button.getAttribute('title')).toBeNull()
-  expect(button.getAttribute('data-tooltip')).toBe('Copy agent context')
+  expect(button.hasAttribute('data-base-ui-tooltip-trigger')).toBe(true)
   fireEvent.click(button)
   await waitFor(() => expect(screen.getByText('Context copied')).toBeTruthy())
   expect(copiedText).toBe('server-context')
@@ -167,13 +154,11 @@ test('Context panel copy falls back when the async clipboard API is unavailable'
 test('Context panel uses the shared action button contract', () => {
   renderPanel({ context: 'server context' })
 
-  expect(screen.getByRole('button', { name: 'Close agent context' }).className).toContain(
-    'cortana-button--icon'
-  )
+  expect(screen.getByRole('button', { name: 'Close agent context' }).className).toContain('size-8')
   expect(
     screen.getByRole('button', { name: 'Refresh MCP-equivalent context' }).className
-  ).toContain('cortana-button--secondary')
+  ).toContain('bg-secondary')
   expect(screen.getByRole('button', { name: 'Copy agent context' }).className).toContain(
-    'cortana-button--primary'
+    'bg-primary'
   )
 })

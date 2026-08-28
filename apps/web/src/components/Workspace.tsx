@@ -9,21 +9,25 @@ import {
   Search,
   Star,
 } from 'lucide-react'
-import {
-  createContext,
-  type ComponentProps,
-  type CSSProperties,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { type ComponentProps, type CSSProperties, useEffect, useMemo, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
 import { isFavoriteDocument, toggleFavoriteDocument } from '../favoriteDocuments'
 import { safeSourceLink } from '../sourceLinks'
-import { useM7SurfacePrimitives } from './m7/M7SurfacePrimitives'
-import { Button, type ButtonProps } from './ui/Button'
+import { Badge } from './shadcn/badge'
+import { TooltipButton as Button } from './cortana/TooltipButton'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from './shadcn/empty'
+import { Input } from './shadcn/input'
+import { Spinner } from './shadcn/spinner'
+import { Tabs, TabsList, TabsTrigger } from './shadcn/tabs'
+import { Toggle } from './shadcn/toggle'
 import type {
   AnswerResponse,
   BrainDocument,
@@ -46,14 +50,13 @@ export type WorkspaceTab = (typeof tabs)[number]['id'] | 'graph'
 // The Document tab is the default primary view and Graph remains an explicit
 // separate view, so neither is gated.
 const resultGatedTabs = new Set<WorkspaceTab>(['answer', 'sources', 'timeline'])
-const WorkspaceRendererContext = createContext<'legacy' | 'shadcn'>('legacy')
+type WorkspaceButtonProps = Omit<ComponentProps<typeof Button>, 'variant' | 'size'> & {
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon' | 'compact'
+}
 
-function WorkspaceButton({ variant = 'secondary', ...props }: ButtonProps) {
-  const renderer = useContext(WorkspaceRendererContext)
-  const ShadcnButton = useM7SurfacePrimitives()?.Button
-  if (renderer === 'legacy' || !ShadcnButton) return <Button variant={variant} {...props} />
+function WorkspaceButton({ variant = 'secondary', ...props }: WorkspaceButtonProps) {
   return (
-    <ShadcnButton
+    <Button
       {...props}
       variant={
         variant === 'primary'
@@ -70,23 +73,11 @@ function WorkspaceButton({ variant = 'secondary', ...props }: ButtonProps) {
 }
 
 function WorkspaceInteractive(props: ComponentProps<'button'>) {
-  const renderer = useContext(WorkspaceRendererContext)
-  const ShadcnButton = useM7SurfacePrimitives()?.Button
-  return renderer === 'shadcn' && ShadcnButton ? (
-    <ShadcnButton variant="ghost" {...props} />
-  ) : (
-    <button type="button" {...props} />
-  )
+  return <Button variant="ghost" {...props} />
 }
 
 function WorkspaceBadge(props: ComponentProps<'span'>) {
-  const renderer = useContext(WorkspaceRendererContext)
-  const ShadcnBadge = useM7SurfacePrimitives()?.Badge
-  return renderer === 'shadcn' && ShadcnBadge ? (
-    <ShadcnBadge variant="secondary" {...props} />
-  ) : (
-    <span {...props} />
-  )
+  return <Badge variant="secondary" {...props} />
 }
 
 async function openSourceLink(href: string): Promise<boolean> {
@@ -124,7 +115,6 @@ export function Workspace({
   onSelectDocument,
   onFocusGraphNode,
   onRetry,
-  renderer = 'legacy',
 }: {
   query: string
   answer: AnswerResponse | null
@@ -147,13 +137,7 @@ export function Workspace({
   onSelectDocument: (id: string) => void
   onFocusGraphNode?: (node: BrainGraphNode) => void
   onRetry: () => void
-  renderer?: 'legacy' | 'shadcn'
 }) {
-  const primitives = useM7SurfacePrimitives()
-  const ShadcnBadge = primitives?.Badge
-  const ShadcnTabs = primitives?.Tabs
-  const ShadcnTabsList = primitives?.TabsList
-  const ShadcnTabsTrigger = primitives?.TabsTrigger
   const active = evidence[selected] ?? null
   const hasResults = answer !== null || reflection !== null || evidence.length > 0
   const selectEvidenceByChunkId = (chunkId: string) => {
@@ -180,128 +164,87 @@ export function Workspace({
 
   const availableTabs = tabs.filter(({ id }) => id === 'document' || hasResults)
   return (
-    <WorkspaceRendererContext.Provider value={renderer}>
-      <main
-        id="main-content"
-        className={renderer === 'shadcn' ? 'workspace m7-knowledge-workspace' : 'workspace'}
-        data-m7-knowledge-workspace={renderer === 'shadcn' ? '' : undefined}
-      >
-        {tab !== 'graph' &&
-          (renderer === 'shadcn' &&
-          ShadcnBadge &&
-          ShadcnTabs &&
-          ShadcnTabsList &&
-          ShadcnTabsTrigger ? (
-            <ShadcnTabs
-              className="shrink-0 border-b px-3 pt-2"
-              value={tab}
-              onValueChange={(value) => onTabChange(value as WorkspaceTab)}
-            >
-              <ShadcnTabsList variant="line" aria-label="Result views">
-                {availableTabs.map(({ id, label, icon: Icon }) => (
-                  <ShadcnTabsTrigger key={id} value={id}>
-                    <Icon size={15} />
-                    {label}
-                    {id === 'document' && document && (
-                      <ShadcnBadge variant="secondary">1</ShadcnBadge>
-                    )}
-                    {id === 'sources' && evidence.length > 0 && (
-                      <ShadcnBadge variant="secondary">{evidence.length}</ShadcnBadge>
-                    )}
-                  </ShadcnTabsTrigger>
-                ))}
-              </ShadcnTabsList>
-            </ShadcnTabs>
-          ) : (
-            <div className="workspace-tabs" role="tablist" aria-label="Result views">
-              {availableTabs.map(({ id, label, icon: Icon }) => (
-                <button
-                  type="button"
-                  key={id}
-                  role="tab"
-                  aria-selected={tab === id}
-                  className={tab === id ? 'active' : ''}
-                  onClick={() => onTabChange(id)}
-                >
-                  <Icon size={15} />
-                  {label}
-                  {id === 'document' && document && <span className="count-pill">1</span>}
-                  {id === 'sources' && evidence.length > 0 && (
-                    <span className="count-pill">{evidence.length}</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          ))}
-        {documentLoading ? (
-          <EmptyState
-            title="Opening document"
-            detail="Loading the canonical indexed content…"
-            renderer={renderer}
-            busy
-          />
-        ) : tab === 'document' && document ? (
-          <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
-        ) : tab === 'graph' ? (
-          <GraphView
-            graph={graph}
-            graphLoading={graphLoading}
-            graphAppendLoading={graphAppendLoading}
-            graphError={graphError}
-            onLoadMore={onLoadMoreGraph}
-            onRetry={onRetryGraph}
-            evidence={evidence}
-            onSelect={selectEvidenceByChunkId}
-            onSelectDocument={onSelectDocument}
-            onFocusGraphNode={onFocusGraphNode}
-          />
-        ) : error ? (
-          <EmptyState
-            title="Cortana could not reach the brain"
-            detail={`${error}. Start the Rust API or add ?demo=1 to preview the workspace.`}
-            action={onRetry}
-            renderer={renderer}
-          />
-        ) : tab === 'document' ? (
-          <EmptyState
-            title="Choose a document"
-            detail="Open a workspace and source in the sidebar, then select any indexed document."
-            renderer={renderer}
-          />
-        ) : loading && evidence.length === 0 ? (
-          <EmptyState
-            title="Searching your brain"
-            detail="Fusing semantic and exact-term evidence…"
-            renderer={renderer}
-            busy
-          />
-        ) : evidence.length === 0 && !hasResults ? (
-          <EmptyState
-            title="No evidence found"
-            detail="Try a broader phrase or another source."
-            renderer={renderer}
-          />
-        ) : tab === 'timeline' ? (
-          <TimelineView evidence={evidence} onSelect={selectEvidenceByChunkId} />
-        ) : tab === 'answer' ? (
-          reflection ? (
-            <ReflectionView response={reflection} />
-          ) : (
-            <AnswerView
-              query={query}
-              response={answer}
-              evidence={evidence}
-              onSelect={(index) => {
-                onSelect(index)
-                onTabChange('sources')
-              }}
-            />
-          )
+    <main
+      id="main-content"
+      className="workspace m7-knowledge-workspace"
+      data-m7-knowledge-workspace=""
+    >
+      {tab !== 'graph' && (
+        <Tabs
+          className="shrink-0 border-b px-3 pt-2"
+          value={tab}
+          onValueChange={(value) => onTabChange(value as WorkspaceTab)}
+        >
+          <TabsList variant="line" aria-label="Result views">
+            {availableTabs.map(({ id, label, icon: Icon }) => (
+              <TabsTrigger key={id} value={id}>
+                <Icon size={15} />
+                {label}
+                {id === 'document' && document && <Badge variant="secondary">1</Badge>}
+                {id === 'sources' && evidence.length > 0 && (
+                  <Badge variant="secondary">{evidence.length}</Badge>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+      )}
+      {documentLoading ? (
+        <EmptyState title="Opening document" detail="Loading the canonical indexed content…" busy />
+      ) : tab === 'document' && document ? (
+        <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
+      ) : tab === 'graph' ? (
+        <GraphView
+          graph={graph}
+          graphLoading={graphLoading}
+          graphAppendLoading={graphAppendLoading}
+          graphError={graphError}
+          onLoadMore={onLoadMoreGraph}
+          onRetry={onRetryGraph}
+          evidence={evidence}
+          onSelect={selectEvidenceByChunkId}
+          onSelectDocument={onSelectDocument}
+          onFocusGraphNode={onFocusGraphNode}
+        />
+      ) : error ? (
+        <EmptyState
+          title="Cortana could not reach the brain"
+          detail={`${error}. Start the Rust API or add ?demo=1 to preview the workspace.`}
+          action={onRetry}
+        />
+      ) : tab === 'document' ? (
+        <EmptyState
+          title="Choose a document"
+          detail="Open a workspace and source in the sidebar, then select any indexed document."
+        />
+      ) : loading && evidence.length === 0 ? (
+        <EmptyState
+          title="Searching your brain"
+          detail="Fusing semantic and exact-term evidence…"
+          busy
+        />
+      ) : evidence.length === 0 && !hasResults ? (
+        <EmptyState title="No evidence found" detail="Try a broader phrase or another source." />
+      ) : tab === 'timeline' ? (
+        <TimelineView evidence={evidence} onSelect={selectEvidenceByChunkId} />
+      ) : tab === 'answer' ? (
+        reflection ? (
+          <ReflectionView response={reflection} />
         ) : (
-          active && <DocumentView active={active} evidence={evidence} onSelect={onSelect} />
-        )}
-      </main>
-    </WorkspaceRendererContext.Provider>
+          <AnswerView
+            query={query}
+            response={answer}
+            evidence={evidence}
+            onSelect={(index) => {
+              onSelect(index)
+              onTabChange('sources')
+            }}
+          />
+        )
+      ) : (
+        active && <DocumentView active={active} evidence={evidence} onSelect={onSelect} />
+      )}
+    </main>
   )
 }
 
@@ -330,8 +273,8 @@ function BrainDocumentView({
             type="button"
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
-            data-tooltip={favorite ? 'Remove favorite' : 'Add favorite'}
-            className="quick-tooltip"
+            title={favorite ? 'Remove favorite' : 'Add favorite'}
+            className=""
             onClick={() => setFavorite(toggleFavoriteDocument(document.id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
@@ -342,8 +285,8 @@ function BrainDocumentView({
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
-              data-tooltip="Open original source"
-              className="quick-tooltip"
+              title="Open original source"
+              className=""
               onClick={(event) => {
                 if (!isDesktopApp) return
                 const uri = sourceHref
@@ -489,8 +432,8 @@ function DocumentView({
             type="button"
             aria-label={favorite ? 'Remove favorite' : 'Add favorite'}
             aria-pressed={favorite}
-            data-tooltip={favorite ? 'Remove favorite' : 'Add favorite'}
-            className="quick-tooltip"
+            title={favorite ? 'Remove favorite' : 'Add favorite'}
+            className=""
             onClick={() => setFavorite(toggleFavoriteDocument(active.chunk_id))}
           >
             <Star size={17} fill={favorite ? 'currentColor' : 'none'} />
@@ -501,8 +444,8 @@ function DocumentView({
               target={isDesktopApp ? undefined : '_blank'}
               rel={isDesktopApp ? undefined : 'noreferrer'}
               aria-label="Open original source"
-              data-tooltip="Open original source"
-              className="quick-tooltip"
+              title="Open original source"
+              className=""
               onClick={(event) => {
                 if (!isDesktopApp) return
                 event.preventDefault()
@@ -755,10 +698,6 @@ function GraphView({
   onSelectDocument: (id: string) => void
   onFocusGraphNode?: (node: BrainGraphNode) => void
 }) {
-  const renderer = useContext(WorkspaceRendererContext)
-  const primitives = useM7SurfacePrimitives()
-  const ShadcnInput = primitives?.Input
-  const ShadcnToggle = primitives?.Toggle
   const [visibleCount, setVisibleCount] = useState(12)
   const [filter, setFilter] = useState('')
   const [kindFilter, setKindFilter] = useState<BrainGraphNode['kind'] | 'all'>('all')
@@ -860,23 +799,13 @@ function GraphView({
       </div>
       <div className="graph-toolbar" role="search">
         <Search size={14} aria-hidden="true" />
-        {renderer === 'shadcn' && ShadcnInput ? (
-          <ShadcnInput
-            type="search"
-            aria-label="Filter graph nodes"
-            placeholder="Filter nodes…"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-          />
-        ) : (
-          <input
-            type="search"
-            aria-label="Filter graph nodes"
-            placeholder="Filter nodes…"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-          />
-        )}
+        <Input
+          type="search"
+          aria-label="Filter graph nodes"
+          placeholder="Filter nodes…"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+        />
         {filter && (
           <WorkspaceButton
             variant="ghost"
@@ -890,41 +819,23 @@ function GraphView({
       </div>
       {graph && !usingEvidenceFallback && (
         <div className="graph-kind-filter" role="group" aria-label="Filter graph node types">
-          {(['all', 'workspace', 'source', 'document'] as const).map((kind) =>
-            renderer === 'shadcn' && ShadcnToggle ? (
-              <ShadcnToggle
-                key={kind}
-                size="sm"
-                variant="outline"
-                pressed={kindFilter === kind}
-                onPressedChange={(pressed) => pressed && setKindFilter(kind)}
-              >
-                {kind === 'all'
-                  ? 'All'
-                  : kind === 'workspace'
-                    ? 'Workspaces'
-                    : kind === 'source'
-                      ? 'Sources'
-                      : 'Documents'}
-              </ShadcnToggle>
-            ) : (
-              <button
-                type="button"
-                key={kind}
-                className={kindFilter === kind ? 'active' : ''}
-                aria-pressed={kindFilter === kind}
-                onClick={() => setKindFilter(kind)}
-              >
-                {kind === 'all'
-                  ? 'All'
-                  : kind === 'workspace'
-                    ? 'Workspaces'
-                    : kind === 'source'
-                      ? 'Sources'
-                      : 'Documents'}
-              </button>
-            )
-          )}
+          {(['all', 'workspace', 'source', 'document'] as const).map((kind) => (
+            <Toggle
+              key={kind}
+              size="sm"
+              variant="outline"
+              pressed={kindFilter === kind}
+              onPressedChange={(pressed) => pressed && setKindFilter(kind)}
+            >
+              {kind === 'all'
+                ? 'All'
+                : kind === 'workspace'
+                  ? 'Workspaces'
+                  : kind === 'source'
+                    ? 'Sources'
+                    : 'Documents'}
+            </Toggle>
+          ))}
         </div>
       )}
       <div className="graph-summary" role="status">
@@ -970,7 +881,7 @@ function GraphView({
           type="button"
           key={node.id}
           aria-label={`${node.document_id ? 'Open document' : node.kind === 'workspace' ? 'Focus workspace' : node.kind === 'source' ? 'Focus source' : 'Open evidence'}: ${node.label}`}
-          data-tooltip={
+          title={
             node.document_id
               ? 'Open document'
               : node.kind === 'workspace'
@@ -979,7 +890,7 @@ function GraphView({
                   ? 'Focus source'
                   : 'Open retrieved evidence'
           }
-          className={`quick-tooltip graph-node graph-node--${node.kind}`}
+          className={` graph-node graph-node--${node.kind}`}
           data-kind={node.kind}
           style={
             {
@@ -1082,64 +993,30 @@ function EmptyState({
   title,
   detail,
   action,
-  renderer,
   busy = false,
 }: {
   title: string
   detail: string
   action?: () => void
-  renderer?: 'legacy' | 'shadcn'
   busy?: boolean
 }) {
-  const activeRenderer = renderer ?? useContext(WorkspaceRendererContext)
-  const primitives = useM7SurfacePrimitives()
-  const ShadcnButton = primitives?.Button
-  const ShadcnEmpty = primitives?.Empty
-  const ShadcnEmptyContent = primitives?.EmptyContent
-  const ShadcnEmptyDescription = primitives?.EmptyDescription
-  const ShadcnEmptyHeader = primitives?.EmptyHeader
-  const ShadcnEmptyMedia = primitives?.EmptyMedia
-  const ShadcnEmptyTitle = primitives?.EmptyTitle
-  const ShadcnSpinner = primitives?.Spinner
-  if (
-    activeRenderer === 'shadcn' &&
-    ShadcnButton &&
-    ShadcnEmpty &&
-    ShadcnEmptyContent &&
-    ShadcnEmptyDescription &&
-    ShadcnEmptyHeader &&
-    ShadcnEmptyMedia &&
-    ShadcnEmptyTitle &&
-    ShadcnSpinner
-  ) {
-    return (
-      <ShadcnEmpty className="m-4 min-h-64 border">
-        <ShadcnEmptyHeader>
-          <ShadcnEmptyMedia variant="icon">
-            {busy ? <ShadcnSpinner aria-label="Loading" /> : <Search aria-hidden="true" />}
-          </ShadcnEmptyMedia>
-          <ShadcnEmptyTitle>{title}</ShadcnEmptyTitle>
-          <ShadcnEmptyDescription>{detail}</ShadcnEmptyDescription>
-        </ShadcnEmptyHeader>
-        {action && (
-          <ShadcnEmptyContent>
-            <ShadcnButton onClick={action}>Try again</ShadcnButton>
-          </ShadcnEmptyContent>
-        )}
-      </ShadcnEmpty>
-    )
-  }
   return (
-    <div className="empty-state">
-      <AppIcon size={28} />
-      <h1>{title}</h1>
-      <p>{detail}</p>
+    <Empty className="m-4 min-h-64 border">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          {busy ? <Spinner aria-label="Loading" /> : <Search aria-hidden="true" />}
+        </EmptyMedia>
+        <EmptyTitle role="heading" aria-level={1}>
+          {title}
+        </EmptyTitle>
+        <EmptyDescription>{detail}</EmptyDescription>
+      </EmptyHeader>
       {action && (
-        <WorkspaceButton variant="primary" onClick={action}>
-          Try again
-        </WorkspaceButton>
+        <EmptyContent>
+          <Button onClick={action}>Try again</Button>
+        </EmptyContent>
       )}
-    </div>
+    </Empty>
   )
 }
 

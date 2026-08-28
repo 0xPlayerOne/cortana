@@ -744,7 +744,6 @@ export function SourcesSection({
                   value={kind.value}
                   checked={sourceType === kind.value}
                   onChange={() => setSourceType(kind.value)}
-                  aria-label={kind.label}
                 />
                 <span className={`source-service-icon source-service-icon--${kind.value}`}>
                   <SourceIcon kind={kind.value} size={18} />
@@ -851,7 +850,7 @@ export function SourcesSection({
                 (workspace) => workspace.id === source.project
               )
               return (
-                <SettingsCard className="source-settings-card" key={`${source.name}:${index}`}>
+                <SettingsCard className="source-settings-card" key={`source-${index}`}>
                   <header>
                     <label className="source-enable">
                       <SettingsCheckbox
@@ -904,9 +903,9 @@ export function SourcesSection({
                         <Button
                           variant="icon"
                           type="button"
-                          className="source-icon-button quick-tooltip"
+                          className="source-icon-button "
                           aria-label={setupActionLabel(source.kind)}
-                          data-tooltip={setupActionLabel(source.kind)}
+                          tooltip={setupActionLabel(source.kind)}
                           disabled={!canValidate || sourceLocked}
                           onClick={() => void openSetup(source)}
                         >
@@ -920,9 +919,9 @@ export function SourcesSection({
                         <Button
                           variant="icon"
                           type="button"
-                          className="source-icon-button quick-tooltip"
+                          className="source-icon-button "
                           aria-label="Authorize"
-                          data-tooltip="Authorize"
+                          tooltip="Authorize"
                           disabled={
                             !canValidate ||
                             (source.kind === 'discord' || source.kind === 'slack'
@@ -943,9 +942,9 @@ export function SourcesSection({
                       <Button
                         variant="icon"
                         type="button"
-                        className="source-icon-button quick-tooltip"
+                        className="source-icon-button "
                         aria-label="Validate"
-                        data-tooltip="Validate"
+                        tooltip="Validate"
                         disabled={!canValidate || Boolean(activeJob) || !workspaceAssigned}
                         onClick={() => void validateSource(source)}
                       >
@@ -958,9 +957,9 @@ export function SourcesSection({
                       <Button
                         variant="icon"
                         type="button"
-                        className="source-icon-button quick-tooltip"
+                        className="source-icon-button "
                         aria-label="Trial sync"
-                        data-tooltip="Trial sync"
+                        tooltip="Trial sync"
                         disabled={
                           !canValidate ||
                           !source.enabled ||
@@ -978,9 +977,9 @@ export function SourcesSection({
                       <Button
                         variant="icon"
                         type="button"
-                        className="source-icon-button quick-tooltip"
+                        className="source-icon-button "
                         aria-label="Initial sync"
-                        data-tooltip="Initial sync"
+                        tooltip="Initial sync"
                         disabled={
                           !canValidate ||
                           !source.enabled ||
@@ -998,9 +997,9 @@ export function SourcesSection({
                       <Button
                         variant="danger"
                         type="button"
-                        className="source-icon-button quick-tooltip"
+                        className="source-icon-button "
                         aria-label={`Remove ${source.name}`}
-                        data-tooltip={`Remove ${source.name}`}
+                        tooltip={`Remove ${source.name}`}
                         disabled={sourceLocked}
                         onClick={() => {
                           const remove = () => {
@@ -1042,7 +1041,7 @@ export function SourcesSection({
                   )}
 
                   <SettingsAccordion className="source-settings-details">
-                    <SettingsAccordionItem value={`source-${source.name}`}>
+                    <SettingsAccordionItem value={`source-${index}`}>
                       <SettingsAccordionTrigger className="source-settings-trigger">
                         <span>Advanced source settings</span>
                         <small>Workspace, credentials, filters, and safety limits</small>
@@ -1145,8 +1144,8 @@ export function SourcesSection({
                                   type="button"
                                   disabled={sourceLocked || !source.editable}
                                   aria-label="Choose source directory"
-                                  data-tooltip="Choose source directory"
-                                  className="quick-tooltip"
+                                  tooltip="Choose source directory"
+                                  className=""
                                   onClick={() => void choosePath(index, 'directory', 'root')}
                                 >
                                   <FolderOpen size={14} />
@@ -1260,8 +1259,8 @@ export function SourcesSection({
                                     type="button"
                                     disabled={sourceLocked || !source.editable}
                                     aria-label="Choose Google token destination"
-                                    data-tooltip="Choose Google token destination"
-                                    className="quick-tooltip"
+                                    tooltip="Choose Google token destination"
+                                    className=""
                                     onClick={() =>
                                       void choosePath(index, 'google-token', 'token_path')
                                     }
@@ -1291,8 +1290,8 @@ export function SourcesSection({
                                     type="button"
                                     disabled={sourceLocked || !source.editable}
                                     aria-label="Choose Google OAuth client JSON"
-                                    data-tooltip="Choose Google OAuth client JSON"
-                                    className="quick-tooltip"
+                                    tooltip="Choose Google OAuth client JSON"
+                                    className=""
                                     onClick={() =>
                                       void choosePath(index, 'oauth-client', 'oauth_client_path')
                                     }
@@ -1454,8 +1453,8 @@ export function SourcesSection({
                                     type="button"
                                     disabled={sourceLocked || !source.editable}
                                     aria-label="Choose GitHub token destination"
-                                    data-tooltip="Choose GitHub token destination"
-                                    className="quick-tooltip"
+                                    tooltip="Choose GitHub token destination"
+                                    className=""
                                     onClick={() =>
                                       void choosePath(index, 'github-token', 'token_path')
                                     }
@@ -1768,8 +1767,8 @@ export function SourcesSection({
                                         type="button"
                                         disabled={sourceLocked || !source.editable}
                                         aria-label="Choose Discord RPC token destination"
-                                        data-tooltip="Choose Discord RPC token destination"
-                                        className="quick-tooltip"
+                                        tooltip="Choose Discord RPC token destination"
+                                        className=""
                                         onClick={() =>
                                           void choosePath(index, 'discord-token', 'token_path')
                                         }
@@ -1799,8 +1798,8 @@ export function SourcesSection({
                                         type="button"
                                         disabled={sourceLocked || !source.editable}
                                         aria-label="Choose Discord RPC client JSON"
-                                        data-tooltip="Choose Discord RPC client JSON"
-                                        className="quick-tooltip"
+                                        tooltip="Choose Discord RPC client JSON"
+                                        className=""
                                         onClick={() =>
                                           void choosePath(
                                             index,
@@ -1892,8 +1891,8 @@ export function SourcesSection({
                                         type="button"
                                         disabled={sourceLocked || !source.editable}
                                         aria-label="Choose Slack OAuth token destination"
-                                        data-tooltip="Choose Slack OAuth token destination"
-                                        className="quick-tooltip"
+                                        tooltip="Choose Slack OAuth token destination"
+                                        className=""
                                         onClick={() =>
                                           void choosePath(index, 'slack-token', 'token_path')
                                         }
@@ -1923,8 +1922,8 @@ export function SourcesSection({
                                         type="button"
                                         disabled={sourceLocked || !source.editable}
                                         aria-label="Choose Slack OAuth client JSON"
-                                        data-tooltip="Choose Slack OAuth client JSON"
-                                        className="quick-tooltip"
+                                        tooltip="Choose Slack OAuth client JSON"
+                                        className=""
                                         onClick={() =>
                                           void choosePath(
                                             index,
@@ -2181,8 +2180,8 @@ function InitialSyncFlow({
           variant="icon"
           type="button"
           aria-label="Close initial sync plan"
-          data-tooltip="Close initial sync plan"
-          className="quick-tooltip"
+          tooltip="Close initial sync plan"
+          className=""
           onClick={onClose}
         >
           <X size={15} />
@@ -2198,7 +2197,6 @@ function InitialSyncFlow({
         {INITIAL_SYNC_BUDGETS.map((tier) => (
           <label key={tier.budget} className={flow.budget === tier.budget ? 'selected' : ''}>
             <SettingsRadio
-              aria-label={`${tier.budget[0].toUpperCase() + tier.budget.slice(1)} initial sync budget`}
               name="initial-sync-budget"
               value={tier.budget}
               checked={flow.budget === tier.budget}

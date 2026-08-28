@@ -1,48 +1,43 @@
 import {
   Children,
-  createContext,
   type ComponentProps,
   type ChangeEvent,
   isValidElement,
   type ReactNode,
-  useContext,
 } from 'react'
 
-import { useM7SurfacePrimitives } from '../m7/M7SurfacePrimitives'
-import { Button as LegacyButton, type ButtonProps } from '../ui/Button'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '../shadcn/accordion'
+import { Alert } from '../shadcn/alert'
+import { TooltipButton as Button } from '../cortana/TooltipButton'
+import { Card } from '../shadcn/card'
+import { Checkbox } from '../shadcn/checkbox'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '../shadcn/field'
+import { Input } from '../shadcn/input'
+import { RadioGroup, RadioGroupItem } from '../shadcn/radio-group'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../shadcn/select'
+import { Switch } from '../shadcn/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../shadcn/tabs'
+import { Textarea } from '../shadcn/textarea'
 
-type SettingsRenderer = 'legacy' | 'shadcn'
-
-const SettingsRendererContext = createContext<SettingsRenderer>('legacy')
-const SettingsTabsContext = createContext<{
-  value: string
-  onValueChange: (value: string) => void
-} | null>(null)
-
-export function SettingsSurfaceProvider({
-  renderer,
-  children,
-}: {
-  renderer: SettingsRenderer
-  children: ReactNode
-}) {
-  const primitives = useM7SurfacePrimitives()
-  if (renderer === 'shadcn' && !primitives) {
-    throw new Error('The shadcn settings renderer requires M7SurfacePrimitivesProvider.')
-  }
-  return (
-    <SettingsRendererContext.Provider value={renderer}>{children}</SettingsRendererContext.Provider>
-  )
+export function SettingsSurfaceProvider({ children }: { children: ReactNode }) {
+  return children
 }
 
-export function SettingsButton({ variant = 'secondary', ...props }: ButtonProps) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnButton = useM7SurfacePrimitives()?.Button
-  if (renderer === 'legacy' || !ShadcnButton) {
-    return <LegacyButton variant={variant} {...props} />
-  }
+type SettingsButtonProps = Omit<ComponentProps<typeof Button>, 'variant' | 'size'> & {
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'icon' | 'compact'
+}
+
+export function SettingsButton({ variant = 'secondary', ...props }: SettingsButtonProps) {
   return (
-    <ShadcnButton
+    <Button
       {...props}
       variant={
         variant === 'primary'
@@ -59,123 +54,55 @@ export function SettingsButton({ variant = 'secondary', ...props }: ButtonProps)
 }
 
 export function SettingsInput(props: ComponentProps<'input'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnInput = useM7SurfacePrimitives()?.Input
-  return renderer === 'shadcn' && ShadcnInput ? <ShadcnInput {...props} /> : <input {...props} />
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function useSettingsRenderer() {
-  return useContext(SettingsRendererContext)
+  return <Input {...props} />
 }
 
 export function SettingsTextarea(props: ComponentProps<'textarea'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnTextarea = useM7SurfacePrimitives()?.Textarea
-  return renderer === 'shadcn' && ShadcnTextarea ? (
-    <ShadcnTextarea {...props} />
-  ) : (
-    <textarea {...props} />
-  )
+  return <Textarea {...props} />
 }
 
 export function SettingsCard(props: ComponentProps<'div'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnCard = useM7SurfacePrimitives()?.Card
-  return renderer === 'shadcn' && ShadcnCard ? <ShadcnCard {...props} /> : <div {...props} />
+  return <Card {...props} />
 }
 
 export function SettingsAlert({
   variant = 'default',
   ...props
 }: ComponentProps<'div'> & { variant?: 'default' | 'destructive' }) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnAlert = useM7SurfacePrimitives()?.Alert
-  return renderer === 'shadcn' && ShadcnAlert ? (
-    <ShadcnAlert variant={variant} {...props} />
-  ) : (
-    <div {...props} />
-  )
+  return <Alert variant={variant} {...props} />
 }
 
-export function SettingsField({ children, ...props }: ComponentProps<'div'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnField = useM7SurfacePrimitives()?.Field
-  return renderer === 'shadcn' && ShadcnField ? (
-    <ShadcnField {...props}>{children}</ShadcnField>
-  ) : (
-    <div {...props}>{children}</div>
-  )
+export function SettingsField(props: ComponentProps<'div'>) {
+  return <Field {...props} />
 }
 
 export function SettingsFieldGroup(props: ComponentProps<'div'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnFieldGroup = useM7SurfacePrimitives()?.FieldGroup
-  return renderer === 'shadcn' && ShadcnFieldGroup ? (
-    <ShadcnFieldGroup {...props} />
-  ) : (
-    <div {...props} />
-  )
+  return <FieldGroup {...props} />
 }
 
 export function SettingsFieldSet(props: ComponentProps<'fieldset'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnFieldSet = useM7SurfacePrimitives()?.FieldSet
-  return renderer === 'shadcn' && ShadcnFieldSet ? (
-    <ShadcnFieldSet {...props} />
-  ) : (
-    <fieldset {...props} />
-  )
+  return <FieldSet {...props} />
 }
 
 export function SettingsFieldLegend(props: ComponentProps<'legend'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnFieldLegend = useM7SurfacePrimitives()?.FieldLegend
-  return renderer === 'shadcn' && ShadcnFieldLegend ? (
-    <ShadcnFieldLegend {...props} />
-  ) : (
-    <legend {...props} />
-  )
+  return <FieldLegend {...props} />
 }
 
 export function SettingsFieldLabel(props: ComponentProps<'label'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnFieldLabel = useM7SurfacePrimitives()?.FieldLabel
-  return renderer === 'shadcn' && ShadcnFieldLabel ? (
-    <ShadcnFieldLabel {...props} />
-  ) : (
-    <label {...props} />
-  )
+  return <FieldLabel {...props} />
 }
 
 export function SettingsFieldDescription(props: ComponentProps<'p'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnFieldDescription = useM7SurfacePrimitives()?.FieldDescription
-  return renderer === 'shadcn' && ShadcnFieldDescription ? (
-    <ShadcnFieldDescription {...props} />
-  ) : (
-    <small {...props} />
-  )
+  return <FieldDescription {...props} />
 }
 
 export function SettingsFieldError(props: ComponentProps<'div'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnFieldError = useM7SurfacePrimitives()?.FieldError
-  return renderer === 'shadcn' && ShadcnFieldError ? (
-    <ShadcnFieldError {...props} />
-  ) : (
-    <div role="alert" {...props} />
-  )
+  return <FieldError {...props} />
 }
 
 export function SettingsCheckbox({ onChange, ...props }: Omit<ComponentProps<'input'>, 'type'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnCheckbox = useM7SurfacePrimitives()?.Checkbox
-  if (renderer === 'legacy' || !ShadcnCheckbox) {
-    return <input type="checkbox" onChange={onChange} {...props} />
-  }
   return (
-    <ShadcnCheckbox
+    <Checkbox
       id={props.id}
       name={props.name}
       checked={Boolean(props.checked)}
@@ -196,13 +123,8 @@ export function SettingsCheckbox({ onChange, ...props }: Omit<ComponentProps<'in
 }
 
 export function SettingsSwitch({ onChange, ...props }: Omit<ComponentProps<'input'>, 'type'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnSwitch = useM7SurfacePrimitives()?.Switch
-  if (renderer === 'legacy' || !ShadcnSwitch) {
-    return <input type="checkbox" onChange={onChange} {...props} />
-  }
   return (
-    <ShadcnSwitch
+    <Switch
       id={props.id}
       name={props.name}
       checked={Boolean(props.checked)}
@@ -231,31 +153,16 @@ export function SettingsRadioGroup({
   value: string
   onValueChange: (value: string) => void
 }) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnRadioGroup = useM7SurfacePrimitives()?.RadioGroup
-  if (renderer === 'legacy' || !ShadcnRadioGroup) {
-    return <div {...props}>{children}</div>
-  }
   return (
-    <ShadcnRadioGroup value={value} onValueChange={onValueChange} {...props}>
+    <RadioGroup value={value} onValueChange={onValueChange} {...props}>
       {children}
-    </ShadcnRadioGroup>
+    </RadioGroup>
   )
 }
 
-export function SettingsRadio({
-  value,
-  checked,
-  onChange,
-  ...props
-}: Omit<ComponentProps<'input'>, 'type'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const ShadcnRadioGroupItem = useM7SurfacePrimitives()?.RadioGroupItem
-  if (renderer === 'legacy' || !ShadcnRadioGroupItem) {
-    return <input type="radio" value={value} checked={checked} onChange={onChange} {...props} />
-  }
+export function SettingsRadio({ value, ...props }: Omit<ComponentProps<'input'>, 'type'>) {
   return (
-    <ShadcnRadioGroupItem
+    <RadioGroupItem
       value={String(value ?? '')}
       disabled={props.disabled}
       aria-label={props['aria-label']}
@@ -270,20 +177,10 @@ export function SettingsTabs({
   children,
   ...props
 }: ComponentProps<'div'> & { value: string; onValueChange: (value: string) => void }) {
-  const renderer = useContext(SettingsRendererContext)
-  const Tabs = useM7SurfacePrimitives()?.Tabs
-  const content =
-    renderer === 'shadcn' && Tabs ? (
-      <Tabs value={value} onValueChange={onValueChange} {...props}>
-        {children}
-      </Tabs>
-    ) : (
-      <div {...props}>{children}</div>
-    )
   return (
-    <SettingsTabsContext.Provider value={{ value, onValueChange }}>
-      {content}
-    </SettingsTabsContext.Provider>
+    <Tabs value={value} onValueChange={onValueChange} {...props}>
+      {children}
+    </Tabs>
   )
 }
 
@@ -291,49 +188,21 @@ export function SettingsTabsList({
   variant,
   ...props
 }: ComponentProps<'div'> & { variant?: 'default' | 'line' }) {
-  const renderer = useContext(SettingsRendererContext)
-  const TabsList = useM7SurfacePrimitives()?.TabsList
-  return renderer === 'shadcn' && TabsList ? (
-    <TabsList variant={variant} {...props} />
-  ) : (
-    <div role="tablist" {...props} />
-  )
+  return <TabsList variant={variant} {...props} />
 }
 
 export function SettingsTabsTrigger({
   value,
   ...props
 }: ComponentProps<'button'> & { value: string }) {
-  const renderer = useContext(SettingsRendererContext)
-  const tabs = useContext(SettingsTabsContext)
-  const TabsTrigger = useM7SurfacePrimitives()?.TabsTrigger
-  return renderer === 'shadcn' && TabsTrigger ? (
-    <TabsTrigger value={value} {...props} />
-  ) : (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={tabs?.value === value}
-      {...props}
-      onClick={(event) => {
-        props.onClick?.(event)
-        if (!event.defaultPrevented) tabs?.onValueChange(value)
-      }}
-    />
-  )
+  return <TabsTrigger value={value} {...props} />
 }
 
 export function SettingsTabsContent({
   value,
   ...props
 }: ComponentProps<'div'> & { value: string }) {
-  const renderer = useContext(SettingsRendererContext)
-  const TabsContent = useM7SurfacePrimitives()?.TabsContent
-  return renderer === 'shadcn' && TabsContent ? (
-    <TabsContent value={value} {...props} />
-  ) : (
-    <div role="tabpanel" {...props} />
-  )
+  return <TabsContent value={value} {...props} />
 }
 
 export function SettingsAccordion({
@@ -343,31 +212,22 @@ export function SettingsAccordion({
   className?: string
   children: ReactNode
 }) {
-  const renderer = useContext(SettingsRendererContext)
-  const Accordion = useM7SurfacePrimitives()?.Accordion
-  return renderer === 'shadcn' && Accordion ? (
-    <Accordion className={className}>{children}</Accordion>
-  ) : (
-    <div className={className}>{children}</div>
-  )
+  return <Accordion className={className}>{children}</Accordion>
 }
 
 export function SettingsAccordionItem({
   value,
-  ...props
+  className,
+  children,
 }: {
   value: string
   className?: string
   children: ReactNode
 }) {
-  const renderer = useContext(SettingsRendererContext)
-  const AccordionItem = useM7SurfacePrimitives()?.AccordionItem
-  return renderer === 'shadcn' && AccordionItem ? (
-    <AccordionItem value={value} className={props.className}>
-      {props.children}
+  return (
+    <AccordionItem value={value} className={className}>
+      {children}
     </AccordionItem>
-  ) : (
-    <details {...props} />
   )
 }
 
@@ -378,13 +238,7 @@ export function SettingsAccordionTrigger({
   className?: string
   children: ReactNode
 }) {
-  const renderer = useContext(SettingsRendererContext)
-  const AccordionTrigger = useM7SurfacePrimitives()?.AccordionTrigger
-  return renderer === 'shadcn' && AccordionTrigger ? (
-    <AccordionTrigger className={className}>{children}</AccordionTrigger>
-  ) : (
-    <summary className={className}>{children}</summary>
-  )
+  return <AccordionTrigger className={className}>{children}</AccordionTrigger>
 }
 
 export function SettingsAccordionContent({
@@ -394,13 +248,7 @@ export function SettingsAccordionContent({
   className?: string
   children: ReactNode
 }) {
-  const renderer = useContext(SettingsRendererContext)
-  const AccordionContent = useM7SurfacePrimitives()?.AccordionContent
-  return renderer === 'shadcn' && AccordionContent ? (
-    <AccordionContent className={className}>{children}</AccordionContent>
-  ) : (
-    <div className={className}>{children}</div>
-  )
+  return <AccordionContent className={className}>{children}</AccordionContent>
 }
 
 type SelectOption = {
@@ -428,29 +276,9 @@ function selectOptions(children: ReactNode): SelectOption[] {
 }
 
 export function SettingsSelect({ children, onChange, value, ...props }: ComponentProps<'select'>) {
-  const renderer = useContext(SettingsRendererContext)
-  const primitives = useM7SurfacePrimitives()
-  const ShadcnSelect = primitives?.Select
-  const ShadcnSelectContent = primitives?.SelectContent
-  const ShadcnSelectItem = primitives?.SelectItem
-  const ShadcnSelectTrigger = primitives?.SelectTrigger
-  const ShadcnSelectValue = primitives?.SelectValue
-  if (
-    renderer === 'legacy' ||
-    !ShadcnSelect ||
-    !ShadcnSelectContent ||
-    !ShadcnSelectItem ||
-    !ShadcnSelectTrigger ||
-    !ShadcnSelectValue
-  ) {
-    return (
-      <select value={value} onChange={onChange} {...props}>
-        {children}
-      </select>
-    )
-  }
+  const options = selectOptions(children)
   return (
-    <ShadcnSelect
+    <Select
       value={String(value ?? '')}
       disabled={props.disabled}
       name={props.name}
@@ -462,7 +290,7 @@ export function SettingsSelect({ children, onChange, value, ...props }: Componen
         } as unknown as ChangeEvent<HTMLSelectElement>)
       }
     >
-      <ShadcnSelectTrigger
+      <SelectTrigger
         id={props.id}
         className={props.className}
         aria-label={props['aria-label']}
@@ -471,15 +299,19 @@ export function SettingsSelect({ children, onChange, value, ...props }: Componen
         title={props.title}
         style={props.style}
       >
-        <ShadcnSelectValue />
-      </ShadcnSelectTrigger>
-      <ShadcnSelectContent>
-        {selectOptions(children).map((option) => (
-          <ShadcnSelectItem key={option.value} value={option.value} disabled={option.disabled}>
+        <SelectValue>
+          {(selected) =>
+            options.find((option) => option.value === String(selected))?.label ?? selected
+          }
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
             {option.label}
-          </ShadcnSelectItem>
+          </SelectItem>
         ))}
-      </ShadcnSelectContent>
-    </ShadcnSelect>
+      </SelectContent>
+    </Select>
   )
 }

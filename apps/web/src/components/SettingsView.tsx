@@ -184,7 +184,6 @@ function SettingsViewContent({
   onDesktopInfo,
   serviceActivity,
   onServiceActivity,
-  renderer = 'legacy',
 }: {
   /** Shell-owned settings snapshot. Standalone renders fetch their own copy. */
   desktopSettings?: DesktopSettings
@@ -225,7 +224,6 @@ function SettingsViewContent({
   /** Shell-owned service action status shared across Settings mounts. */
   serviceActivity?: DesktopServiceActivity | null
   onServiceActivity?: (activity: DesktopServiceActivity | null) => void
-  renderer?: 'legacy' | 'shadcn'
 }) {
   const confirm = useSettingsConfirm()
   const [settings, setSettings] = useState<DesktopSettings | null>(externalSettings ?? null)
@@ -542,7 +540,7 @@ function SettingsViewContent({
 
   if (!isDesktopApp && !externalSettings) {
     return (
-      <SettingsSurfaceProvider renderer={renderer}>
+      <SettingsSurfaceProvider>
         <main id="main-content" className="settings-view settings-unavailable">
           <Settings2 size={34} />
           <h1>Desktop settings</h1>
@@ -554,7 +552,7 @@ function SettingsViewContent({
 
   if (!settings) {
     return (
-      <SettingsSurfaceProvider renderer={renderer}>
+      <SettingsSurfaceProvider>
         <main id="main-content" className="settings-view settings-unavailable">
           <Settings2 size={34} />
           <h1 role={error ? 'alert' : 'status'}>{error || 'Loading local settings…'}</h1>
@@ -571,7 +569,7 @@ function SettingsViewContent({
   const restartFailed = settings.restart_required && serviceActivity?.status === 'failed'
 
   return (
-    <SettingsSurfaceProvider renderer={renderer}>
+    <SettingsSurfaceProvider>
       <main id="main-content" className="settings-view">
         <header className="settings-header">
           <div>
@@ -804,9 +802,7 @@ function SettingsViewContent({
                 onRefreshModels={() => void refreshProviderModels('query')}
               />
             )}
-            {section === 'memory' && (
-              <NativeMemorySection settings={settings} update={update} renderer={renderer} />
-            )}
+            {section === 'memory' && <NativeMemorySection settings={settings} update={update} />}
             {section === 'ingestion' && <IngestionSection settings={settings} update={update} />}
             {section === 'advanced' && (
               <Suspense
@@ -866,10 +862,9 @@ function SettingsViewContent({
 type SettingsViewProps = Parameters<typeof SettingsViewContent>[0]
 
 export function SettingsView(props: SettingsViewProps) {
-  const renderer = props.renderer ?? 'legacy'
   return (
-    <SettingsSurfaceProvider renderer={renderer}>
-      <SettingsConfirmProvider renderer={renderer}>
+    <SettingsSurfaceProvider>
+      <SettingsConfirmProvider>
         <SettingsViewContent {...props} />
       </SettingsConfirmProvider>
       <Toaster position="bottom-right" closeButton />
@@ -1821,10 +1816,8 @@ function UpdatesSection({
 function NativeMemorySection({
   settings,
   update,
-  renderer,
 }: SettingsSectionProps & {
   settings: DesktopSettings
-  renderer: 'legacy' | 'shadcn'
 }) {
   const change = (patch: Partial<DesktopSettings['memory']>) =>
     update((current) => ({ ...current, memory: { ...current.memory, ...patch } }))
@@ -1868,7 +1861,7 @@ function NativeMemorySection({
           />
         </Field>
       </SettingsFieldGroup>
-      <MemoryReview renderer={renderer} maxActive={settings.memory.max_active} />
+      <MemoryReview maxActive={settings.memory.max_active} />
     </SettingsSection>
   )
 }
@@ -1937,9 +1930,9 @@ function AccessSection({
                 <Button
                   variant="danger"
                   type="button"
-                  className="quick-tooltip"
+                  className=""
                   aria-label={`Remove ${principal.principal}`}
-                  data-tooltip={`Remove ${principal.principal}`}
+                  tooltip={`Remove ${principal.principal}`}
                   onClick={() =>
                     applyConfirmed(
                       confirm(
@@ -2587,10 +2580,7 @@ function WorkspaceSection({
                 <strong>{workspace.name || 'New workspace'}</strong>
                 <small>Workspace identity</small>
               </div>
-              <label
-                className="workspace-logo-upload quick-tooltip"
-                data-tooltip="Upload workspace logo"
-              >
+              <label className="workspace-logo-upload " title="Upload workspace logo">
                 <Upload size={14} />
                 <span className="visually-hidden">Upload logo for {workspace.name}</span>
                 <Input
@@ -2606,10 +2596,10 @@ function WorkspaceSection({
                 <Button
                   variant="danger"
                   type="button"
-                  className="quick-tooltip"
+                  className=""
                   aria-label={`Remove ${workspace.name}`}
                   disabled={hasWorkspaceSources(workspace.id)}
-                  data-tooltip={
+                  tooltip={
                     hasWorkspaceSources(workspace.id)
                       ? 'Move assigned sources before removing this workspace'
                       : 'Remove workspace'
