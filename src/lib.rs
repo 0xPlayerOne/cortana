@@ -23,6 +23,7 @@ pub mod migration;
 pub mod model;
 pub mod oauth_common;
 pub mod observation;
+pub mod provider;
 pub mod provider_models;
 pub mod readiness;
 pub mod reflection;
