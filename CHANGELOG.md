@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.9](https://github.com/0xPlayerOne/cortana/compare/v0.53.8...v0.53.9) (2026-08-29)
+
+
+### Bug Fixes
+
+* **web:** polish themed application shell ([9c23875](https://github.com/0xPlayerOne/cortana/commit/9c2387536c9922f8d4655941cfd1c07cfee4916d))
+
 ## [0.53.8](https://github.com/0xPlayerOne/cortana/compare/v0.53.7...v0.53.8) (2026-08-29)
 
 
