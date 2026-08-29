@@ -2,7 +2,7 @@ import * as React from 'react'
 import { type VariantProps } from 'class-variance-authority'
 
 import { cn } from '@/lib/utils'
-import { buttonVariants } from '@/components/shadcn/button'
+import { buttonVariants } from '@/components/shadcn/button-variants'
 import { ChevronLeftIcon, ChevronRightIcon, MoreHorizontalIcon } from 'lucide-react'
 
 function Pagination({ className, ...props }: React.ComponentProps<'nav'>) {

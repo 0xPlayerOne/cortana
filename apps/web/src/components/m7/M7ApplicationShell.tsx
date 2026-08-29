@@ -78,8 +78,8 @@ import {
   SidebarProvider,
   SidebarSeparator,
   SidebarTrigger,
-  useSidebar,
 } from '@/components/shadcn/sidebar'
+import { useSidebar } from '@/components/shadcn/sidebar-context'
 import {
   Tooltip,
   TooltipContent,
