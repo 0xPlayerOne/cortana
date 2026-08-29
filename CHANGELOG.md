@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.5](https://github.com/0xPlayerOne/cortana/compare/v0.53.4...v0.53.5) (2026-08-29)
+
+
+### Bug Fixes
+
+* **ci:** normalize UI contract paths on Windows ([#2207](https://github.com/0xPlayerOne/cortana/issues/2207)) ([7ce33b3](https://github.com/0xPlayerOne/cortana/commit/7ce33b3572c3081cc04365bc01f50563a40c6431))
+
 ## [0.53.4](https://github.com/0xPlayerOne/cortana/compare/v0.53.3...v0.53.4) (2026-08-28)
 
 
