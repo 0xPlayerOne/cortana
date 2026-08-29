@@ -414,6 +414,10 @@ test('shadcn Inbox shares the responsive utility-page spacing contract', () => {
   expect(inbox?.className).toContain('m7-utility-view')
   expect(inbox?.querySelector('.utility-header')).toBeTruthy()
   expect(inbox?.querySelector('[data-m7-activity-body].utility-body')).toBeTruthy()
+  expect(inbox?.querySelector('.activity-card-grid')).toBeTruthy()
+  expect(inbox?.querySelector('.activity-card-title-line')).toBeTruthy()
+  expect(inbox?.querySelector('.activity-card-detail-row')).toBeTruthy()
+  expect(inbox?.querySelector('[data-slot="card-description"]')).toBeNull()
   expect(inbox?.querySelector('.max-w-5xl')).toBeNull()
 })
 

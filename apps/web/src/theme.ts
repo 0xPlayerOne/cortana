@@ -1,8 +1,18 @@
 export type ThemeMode =
-  'blue' | 'accessible' | 'forest' | 'plum' | 'sand' | 'graphite' | 'teal' | 'rose'
+  | 'blue'
+  | 'accessible'
+  | 'forest'
+  | 'plum'
+  | 'sand'
+  | 'graphite'
+  | 'teal'
+  | 'rose'
+  | 'slate'
+  | 'indigo'
+  | 'emerald'
+  | 'amber'
 
-const THEME_KEY = 'cortana.theme.v1'
-export const THEME_EVENT = 'cortana:theme-changed'
+export const DEFAULT_THEME: ThemeMode = 'graphite'
 
 export const SUPPORTED_THEMES: ReadonlyArray<{ id: ThemeMode; label: string }> = [
   { id: 'blue', label: 'Navy' },
@@ -13,6 +23,10 @@ export const SUPPORTED_THEMES: ReadonlyArray<{ id: ThemeMode; label: string }> =
   { id: 'graphite', label: 'Graphite' },
   { id: 'teal', label: 'Teal' },
   { id: 'rose', label: 'Rose' },
+  { id: 'slate', label: 'Slate' },
+  { id: 'indigo', label: 'Indigo' },
+  { id: 'emerald', label: 'Emerald' },
+  { id: 'amber', label: 'Amber' },
 ]
 
 export function isThemeMode(value: string | null): value is ThemeMode {
@@ -24,31 +38,16 @@ export function isThemeMode(value: string | null): value is ThemeMode {
     value === 'sand' ||
     value === 'graphite' ||
     value === 'teal' ||
-    value === 'rose'
+    value === 'rose' ||
+    value === 'slate' ||
+    value === 'indigo' ||
+    value === 'emerald' ||
+    value === 'amber'
   )
 }
 
-export function readThemePreference(): ThemeMode {
-  try {
-    const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(THEME_KEY)
-    return isThemeMode(raw) ? raw : 'blue'
-  } catch {
-    return 'blue'
-  }
-}
-
-export function writeThemePreference(theme: ThemeMode): void {
-  try {
-    localStorage.setItem(THEME_KEY, theme)
-    if (typeof window !== 'undefined') window.dispatchEvent(new Event(THEME_EVENT))
-  } catch {
-    // Theme preference remains session-local when storage is unavailable.
-  }
-}
-
-export function applyTheme(theme: ThemeMode, options: { persist?: boolean } = {}): void {
+export function applyTheme(theme: ThemeMode): void {
   if (typeof document !== 'undefined') {
     document.documentElement.setAttribute('data-theme', theme)
   }
-  if (options.persist !== false) writeThemePreference(theme)
 }

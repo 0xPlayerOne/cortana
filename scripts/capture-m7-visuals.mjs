@@ -14,7 +14,20 @@ for (let index = 2; index < process.argv.length; index += 2) {
 const baseUrl = args.get('--base-url') ?? 'http://127.0.0.1:4173'
 const output = resolve(args.get('--output') ?? 'artifacts/m7-shadcn/final')
 const widths = [320, 768, 1024, 1440, 1920]
-const themes = ['blue', 'accessible', 'forest', 'plum', 'sand']
+const themes = [
+  'blue',
+  'accessible',
+  'forest',
+  'plum',
+  'sand',
+  'graphite',
+  'teal',
+  'rose',
+  'slate',
+  'indigo',
+  'emerald',
+  'amber',
+]
 const consoleErrors = []
 let screenshotCount = 0
 
@@ -23,7 +36,14 @@ const browser = await chromium.launch({ headless: true })
 
 async function openPage(theme, width, state = 'configured') {
   const context = await browser.newContext({ viewport: { width, height: 1000 } })
-  await context.addInitScript((value) => localStorage.setItem('cortana.theme.v1', value), theme)
+  await context.addInitScript(
+    (value) =>
+      localStorage.setItem(
+        'cortana.workspace-themes.v1',
+        JSON.stringify({ work: value, personal: value })
+      ),
+    theme
+  )
   const page = await context.newPage()
   page.setDefaultTimeout(60_000)
   page.on('console', (message) => {

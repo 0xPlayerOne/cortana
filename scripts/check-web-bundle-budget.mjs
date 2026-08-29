@@ -54,7 +54,7 @@ export function verifyWebBundleBudget() {
   const measurements = [
     ['initial application JavaScript graph', uniqueAssetBytes(manifest, initialKeys), 800_000],
     ['complete production JavaScript graph', uniqueAssetBytes(manifest, productionKeys), 950_000],
-    // The three additional semantic themes add their token palettes to the
+    // The four additional semantic themes add their token palettes to the
     // shared stylesheet. Keep the ceiling close to the measured graph while
     // leaving a small amount of room for normal CSS churn.
     ['application CSS graph', uniqueCssBytes(manifest, productionKeys), 216_000],

@@ -2,7 +2,7 @@ import { lazy, StrictMode, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { RendererErrorBoundary } from './components/RendererErrorBoundary'
-import { applyTheme, readThemePreference } from './theme'
+import { applyTheme, DEFAULT_THEME } from './theme'
 
 const App = lazy(() =>
   import('./App').then((module) => ({
@@ -10,7 +10,7 @@ const App = lazy(() =>
   }))
 )
 
-applyTheme(readThemePreference())
+applyTheme(DEFAULT_THEME)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -168,10 +168,11 @@ generated and updated consistently.
 
 Tailwind CSS and semantic shadcn theme variables own application styling. Colors, typography,
 radii, spacing, focus, error, warning, success, destructive, muted, surface, and chart treatments
-must use semantic tokens rather than raw values or page-local variants. Supported Cortana themes
-map to that same token contract; a theme may change values, but it may not fork component markup or
-interaction behavior. Layout utilities may compose components, while component color and typography
-remain in the component variants and theme contract.
+must use semantic tokens rather than raw values or page-local variants. The twelve supported Cortana
+themes map to that same token contract; Graphite is the fixed fallback and each workspace may select
+its own theme. A theme may change values, but it may not fork component markup or interaction
+behavior. Layout utilities may compose components, while component color and typography remain in the
+component variants and theme contract.
 
 Every ordinary control and surface must use the corresponding shared primitive: Button and form
 controls for actions and input; Field and FieldGroup for form structure; Card for grouped content;

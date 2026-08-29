@@ -65,7 +65,7 @@ import {
   sourceJobAttention,
   useSourceJobs,
 } from './sourceJobs'
-import { applyTheme, readThemePreference, THEME_EVENT } from './theme'
+import { applyTheme, DEFAULT_THEME } from './theme'
 import { readWorkspaceThemePreference, WORKSPACE_THEME_EVENT } from './workspaceThemePreference'
 import type {
   AnswerResponse,
@@ -231,15 +231,11 @@ function CortanaApplication() {
 
   useEffect(() => {
     const syncTheme = () => {
-      applyTheme(readWorkspaceThemePreference(effectiveWorkspace) ?? readThemePreference(), {
-        persist: false,
-      })
+      applyTheme(readWorkspaceThemePreference(effectiveWorkspace) ?? DEFAULT_THEME)
     }
     syncTheme()
-    window.addEventListener(THEME_EVENT, syncTheme)
     window.addEventListener(WORKSPACE_THEME_EVENT, syncTheme)
     return () => {
-      window.removeEventListener(THEME_EVENT, syncTheme)
       window.removeEventListener(WORKSPACE_THEME_EVENT, syncTheme)
     }
   }, [effectiveWorkspace])

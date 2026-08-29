@@ -25,7 +25,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { applyTheme, readThemePreference, SUPPORTED_THEMES, type ThemeMode } from '../theme'
+import { DEFAULT_THEME, SUPPORTED_THEMES, type ThemeMode } from '../theme'
 import { WorkspaceLogo } from '../workspaceLogos'
 import { readWorkspaceLogoFile, writeWorkspaceLogo } from '../workspaceLogoStore'
 import {
@@ -240,7 +240,6 @@ function SettingsViewContent({
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [dirty, setDirty] = useState(false)
-  const [theme, setTheme] = useState<ThemeMode>(readThemePreference)
   const [localReadiness, setLocalReadiness] = useState<DesktopReadiness | null>(null)
   const setupReadiness = externalReadiness === undefined ? localReadiness : externalReadiness
   const setSetupReadiness = onReadiness ?? setLocalReadiness
@@ -460,11 +459,6 @@ function SettingsViewContent({
     setSaved(false)
   }
 
-  const onThemeChange = (next: ThemeMode) => {
-    setTheme(next)
-    applyTheme(next)
-  }
-
   const retrySettingsLoad = () => {
     setError('')
     void getDesktopSettings()
@@ -620,20 +614,6 @@ function SettingsViewContent({
             </p>
           </div>
           <div className="settings-header-actions">
-            <label className="settings-theme-control" htmlFor="theme-select">
-              <span>Default theme</span>
-              <Select
-                id="theme-select"
-                value={theme}
-                onChange={(event) => onThemeChange(event.target.value as ThemeMode)}
-              >
-                {SUPPORTED_THEMES.map((item) => (
-                  <option value={item.id} key={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </Select>
-            </label>
             {dirty && (
               <Button
                 variant="secondary"
@@ -759,9 +739,7 @@ function SettingsViewContent({
               />
             )}
             {section === 'audit' && <AuditSection />}
-            {section === 'workspaces' && (
-              <WorkspaceSection settings={settings} update={update} defaultTheme={theme} />
-            )}
+            {section === 'workspaces' && <WorkspaceSection settings={settings} update={update} />}
             {section === 'sources' && (
               <Suspense
                 fallback={
@@ -2556,11 +2534,9 @@ function ReadinessSection({
 function WorkspaceSection({
   settings,
   update,
-  defaultTheme,
 }: {
   settings: DesktopSettings
   update: (change: (draft: DesktopSettings) => DesktopSettings) => void
-  defaultTheme: ThemeMode
 }) {
   const confirm = useSettingsConfirm()
   const [logoError, setLogoError] = useState('')
@@ -2729,13 +2705,10 @@ function WorkspaceSection({
                   maxLength={80}
                 />
               </Field>
-              <Field
-                label="Workspace theme"
-                hint="Stored locally for this Desktop profile; overrides the default theme."
-              >
+              <Field label="Workspace theme">
                 <Select
                   aria-label={`Theme for ${workspace.name || 'new workspace'}`}
-                  value={workspaceThemes[workspace.id] ?? defaultTheme}
+                  value={workspaceThemes[workspace.id] ?? DEFAULT_THEME}
                   onChange={(event) => {
                     const next = event.target.value as ThemeMode
                     setWorkspaceThemes((current) => ({ ...current, [workspace.id]: next }))
