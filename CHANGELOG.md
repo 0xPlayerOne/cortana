@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.7](https://github.com/0xPlayerOne/cortana/compare/v0.53.6...v0.53.7) (2026-08-29)
+
+
+### Bug Fixes
+
+* **desktop:** refine themed shell surfaces ([#2212](https://github.com/0xPlayerOne/cortana/issues/2212)) ([de0e44d](https://github.com/0xPlayerOne/cortana/commit/de0e44d4bebfb31094c6931ee2d7e1b835ff5c01))
+
 ## [0.53.6](https://github.com/0xPlayerOne/cortana/compare/v0.53.5...v0.53.6) (2026-08-29)
 
 
