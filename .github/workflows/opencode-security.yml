@@ -1,0 +1,54 @@
+name: Code Foundry
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect:
+    name: OpenCode Security / Detect
+    if: >-
+      vars.CI_BILLING_PAUSED != 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+      startsWith(github.event.pull_request.head.ref, 'release-please--branches--main'))
+    runs-on: ubuntu-slim
+    outputs:
+      enabled: ${{ steps.detect.outputs.enabled }}
+      token: ${{ steps.detect.outputs.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Detect configuration and token
+        id: detect
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          enabled=false
+          token=false
+          if grep -Eq '^opencode_security:\s*(true|auto)\s*$' .github/code-foundry.yml 2>/dev/null; then enabled=true; fi
+          if [ -n "$OPENCODE_API_KEY" ]; then token=true; fi
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+  scan:
+    name: OpenCode Security / Scan
+    needs: detect
+    if: vars.CI_BILLING_PAUSED != 'true' && needs.detect.outputs.enabled == 'true' && needs.detect.outputs.token == 'true'
+    uses: 0xPlayerOne/opencode-security/.github/workflows/opencode-security.yml@b3dce823322672b285fbe99b870ea984c01826cb # main
+    with:
+      # This is the scanner checkout ref, not the consumer PR ref. The
+      # reusable workflow already checks out the consumer repository.
+      source_ref: b3dce823322672b285fbe99b870ea984c01826cb
+      runner: ubuntu-latest
+      model: opencode-go/muse-spark-1.2-contributor
+      mode: standard
+      fail_on_severity: high
+      max_cost_usd: 1
+    secrets:
+      OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
