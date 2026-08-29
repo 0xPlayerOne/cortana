@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.10](https://github.com/0xPlayerOne/cortana/compare/v0.53.9...v0.53.10) (2026-08-29)
+
+
+### Bug Fixes
+
+* **web:** remove lint warnings and update Code Foundry ([4332a86](https://github.com/0xPlayerOne/cortana/commit/4332a86638d9876c578b72921baac35416e6813b))
+
 ## [0.53.9](https://github.com/0xPlayerOne/cortana/compare/v0.53.8...v0.53.9) (2026-08-29)
 
 
