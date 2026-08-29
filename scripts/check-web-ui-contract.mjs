@@ -34,6 +34,18 @@ function sourceFiles(directory) {
   })
 }
 
+export function normalizePathSeparators(path) {
+  return path.replaceAll('\\', '/')
+}
+
+function relativeSourcePath(file) {
+  return normalizePathSeparators(file.slice(sourceRoot.length + 1))
+}
+
+function isShadcnFile(file) {
+  return relativeSourcePath(file).startsWith('components/shadcn/')
+}
+
 export function verifyWebUiContract() {
   const failures = []
   for (const relative of removedFiles) {
@@ -50,12 +62,13 @@ export function verifyWebUiContract() {
   for (const file of files) {
     const source = readFileSync(file, 'utf8')
     for (const [label, pattern] of forbidden) {
-      if (pattern.test(source)) failures.push(`${file.slice(root.length + 1)} contains ${label}`)
+      if (pattern.test(source))
+        failures.push(`${normalizePathSeparators(file.slice(root.length + 1))} contains ${label}`)
     }
-    if (!file.includes('/components/shadcn/')) {
+    if (!isShadcnFile(file)) {
       for (const element of ['input', 'select', 'textarea']) {
         if (new RegExp(`<${element}\\b`).test(source)) {
-          failures.push(`${file.slice(root.length + 1)} contains raw <${element}>`)
+          failures.push(`${relativeSourcePath(file)} contains raw <${element}>`)
         }
       }
     }
@@ -72,8 +85,8 @@ export function verifyWebUiContract() {
       failures.push(`${relative} has ${count}/${expected} approved raw buttons`)
   }
   for (const file of files) {
-    if (file.includes('/components/shadcn/')) continue
-    const relative = file.slice(sourceRoot.length + 1)
+    if (isShadcnFile(file)) continue
+    const relative = relativeSourcePath(file)
     if (approvedRawButtons.has(relative)) continue
     if (/<button\b/.test(readFileSync(file, 'utf8')))
       failures.push(`${relative} contains raw <button>`)
