@@ -839,7 +839,7 @@ select:focus-visible {
   place-items: center;
   overflow: hidden;
   color: var(--secondary-foreground);
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-xs);
   background: var(--secondary);
   font-size: 11px;
@@ -848,7 +848,7 @@ select:focus-visible {
   box-sizing: border-box;
   object-fit: contain;
   object-position: center;
-  padding: 4px;
+  padding: 2px;
 }
 
 .workspace-logo--small {
@@ -870,11 +870,9 @@ select:focus-visible {
   font-size: 18px;
 }
 
-/* The small picker logo keeps a panel-colored ring so it blends with the
-   workspace selector instead of floating as a bare tile. Defined after the
-   logo sizes so the ring wins over the base logo border. */
+/* Picker marks stay unframed so the actual logo has the full 20px tile. */
 .workspace-picker-mark {
-  border-color: var(--border);
+  padding: 0;
 }
 
 .panel-heading,
@@ -5534,9 +5532,10 @@ select:focus-visible {
   height: 56px;
   min-height: 56px;
   padding: 4px 12px;
+  background-color: var(--background);
 }
 
-[data-slot='sidebar'][data-state='collapsed'] .m7-application-sidebar .m7-workspace-header {
+[data-collapsible='icon'] .m7-application-sidebar .m7-workspace-header {
   padding: 4px;
 }
 
@@ -5545,13 +5544,11 @@ select:focus-visible {
   margin: 0;
 }
 
-[data-slot='sidebar'][data-state='collapsed'] .m7-application-sidebar [data-workspace-labels] {
+[data-collapsible='icon'] .m7-application-sidebar [data-workspace-labels] {
   display: none;
 }
 
-[data-slot='sidebar'][data-state='collapsed']
-  .m7-application-sidebar
-  [data-slot='sidebar-group-label'] {
+[data-collapsible='icon'] .m7-application-sidebar [data-slot='sidebar-group-label'] {
   visibility: hidden;
 }
 
@@ -5566,11 +5563,14 @@ select:focus-visible {
   max-width: none;
 }
 
-[data-slot='sidebar'][data-state='collapsed'] .m7-application-sidebar .m7-workspace-trigger,
-[data-slot='sidebar'][data-state='collapsed']
+[data-collapsible='icon']
   .m7-application-sidebar
-  .m7-workspace-trigger
-  .workspace-logo {
+  :is([data-slot='sidebar-group'], [data-slot='sidebar-footer']) {
+  padding: 4px;
+}
+
+[data-collapsible='icon'] .m7-application-sidebar .m7-workspace-trigger,
+[data-collapsible='icon'] .m7-application-sidebar .m7-workspace-trigger .workspace-logo {
   width: 48px !important;
   height: 48px !important;
   padding: 0 !important;
