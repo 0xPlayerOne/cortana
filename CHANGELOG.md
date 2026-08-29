@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.8](https://github.com/0xPlayerOne/cortana/compare/v0.53.7...v0.53.8) (2026-08-29)
+
+
+### Maintenance
+
+* **ci:** sync code-foundry workflows to v0.39.0 ([#2214](https://github.com/0xPlayerOne/cortana/issues/2214)) ([a4a548b](https://github.com/0xPlayerOne/cortana/commit/a4a548b4557e9559a186fb075515bee63805c96f))
+
 ## [0.53.7](https://github.com/0xPlayerOne/cortana/compare/v0.53.6...v0.53.7) (2026-08-29)
 
 
