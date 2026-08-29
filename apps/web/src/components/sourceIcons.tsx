@@ -4,10 +4,11 @@ export function SourceIcon({ kind, size = 17 }: { kind: string; size?: number })
   const brand = sourceBrandForKind(kind)
   if (!brand) {
     const Icon = sourceIconForKind(kind)
-    return <Icon size={size} aria-hidden="true" />
+    return <Icon className="source-icon" size={size} aria-hidden="true" />
   }
   return (
     <svg
+      className="source-icon"
       viewBox="0 0 24 24"
       width={size}
       height={size}

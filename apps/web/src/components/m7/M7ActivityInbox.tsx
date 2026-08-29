@@ -15,14 +15,7 @@ import type { BrainStatus, DesktopSourceJob, SourceSyncSummary } from '@/types'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/shadcn/alert'
 import { Badge } from '@/components/shadcn/badge'
 import { Button } from '@/components/shadcn/button'
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/shadcn/card'
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/shadcn/card'
 import {
   Empty,
   EmptyContent,
@@ -139,27 +132,30 @@ function SyncActivityCard({ run }: { run: SourceSyncSummary }) {
     : null
   return (
     <Card size="sm">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {statusIcon(run.status)} {run.source}
+      <CardHeader className="activity-card-header">
+        <CardTitle className="activity-card-title-line">
+          {statusIcon(run.status)}
+          <span className="truncate">{run.source}</span>
+          <span className="activity-card-meta">
+            {run.project} · started {new Date(run.started_at).toLocaleString()}
+          </span>
         </CardTitle>
-        <CardDescription>
-          {run.project} · started {new Date(run.started_at).toLocaleString()}
-        </CardDescription>
         <CardAction>{statusBadge(run.status)}</CardAction>
       </CardHeader>
       <CardContent className="activity-card-content">
-        <p className="activity-card-summary text-sm text-muted-foreground">
-          {describeSyncRunProgress(run)}
-        </p>
-        <div className="activity-card-status-row">
-          {run.status === 'running' ? (
-            <Progress value={progress} aria-label={`${run.source} sync progress`} />
-          ) : null}
-          <p className="text-xs text-muted-foreground">
-            {documents.toLocaleString()} documents ·{' '}
-            {(run.progress_bytes ?? run.bytes ?? 0).toLocaleString()} bytes
+        <div className="activity-card-detail-row">
+          <p className="activity-card-summary text-sm text-muted-foreground">
+            {describeSyncRunProgress(run)}
           </p>
+          <div className="activity-card-status-row">
+            {run.status === 'running' ? (
+              <Progress value={progress} aria-label={`${run.source} sync progress`} />
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              {documents.toLocaleString()} documents ·{' '}
+              {(run.progress_bytes ?? run.bytes ?? 0).toLocaleString()} bytes
+            </p>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -179,43 +175,48 @@ function SourceJobCard({
   const started = new Date(job.started_at_unix_seconds * 1000)
   return (
     <Card size="sm">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          {statusIcon(job.status)} {job.source} · {sourceOperationLabel(job.operation)}
+      <CardHeader className="activity-card-header">
+        <CardTitle className="activity-card-title-line">
+          {statusIcon(job.status)}
+          <span className="truncate">
+            {job.source} · {sourceOperationLabel(job.operation)}
+          </span>
+          <span className="activity-card-meta">
+            {job.project} · started {started.toLocaleString()}
+          </span>
         </CardTitle>
-        <CardDescription>
-          {job.project} · started {started.toLocaleString()}
-        </CardDescription>
         <CardAction>{statusBadge(job.status)}</CardAction>
       </CardHeader>
       <CardContent className="activity-card-content">
-        <p className="activity-card-summary text-sm text-muted-foreground">
-          {describeSourceJobProgress(job)}
-        </p>
-        <div className="activity-card-status-row">
-          {job.status === 'running' || job.status === 'cancelling' ? (
-            <Progress
-              value={null}
-              aria-label={`${job.source} ${sourceOperationLabel(job.operation)} in progress`}
-            />
-          ) : null}
-          {completed ? (
-            <p className="text-xs text-muted-foreground">
-              Completed in{' '}
-              {Math.max(0, Math.round((completed.getTime() - started.getTime()) / 1000))} seconds
-            </p>
-          ) : null}
-          {onCancel && (job.status === 'running' || job.status === 'cancelling') ? (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={job.status === 'cancelling'}
-              aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
-              onClick={() => onCancel(job.id)}
-            >
-              <CircleStop aria-hidden="true" /> Cancel
-            </Button>
-          ) : null}
+        <div className="activity-card-detail-row">
+          <p className="activity-card-summary text-sm text-muted-foreground">
+            {describeSourceJobProgress(job)}
+          </p>
+          <div className="activity-card-status-row">
+            {job.status === 'running' || job.status === 'cancelling' ? (
+              <Progress
+                value={null}
+                aria-label={`${job.source} ${sourceOperationLabel(job.operation)} in progress`}
+              />
+            ) : null}
+            {completed ? (
+              <p className="text-xs text-muted-foreground">
+                Completed in{' '}
+                {Math.max(0, Math.round((completed.getTime() - started.getTime()) / 1000))} seconds
+              </p>
+            ) : null}
+            {onCancel && (job.status === 'running' || job.status === 'cancelling') ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={job.status === 'cancelling'}
+                aria-label={`Cancel ${job.project} ${job.source} ${job.operation}`}
+                onClick={() => onCancel(job.id)}
+              >
+                <CircleStop aria-hidden="true" /> Cancel
+              </Button>
+            ) : null}
+          </div>
         </div>
         {job.log ? (
           <details className="activity-card-log rounded-md border p-2 text-xs">

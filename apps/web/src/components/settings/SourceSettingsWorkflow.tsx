@@ -2115,6 +2115,7 @@ export function SourcesSection({
                         <StatusGlyph
                           passed={observedJob.status === 'succeeded'}
                           optional={observedJob.status === 'cancelled'}
+                          pending={['running', 'cancelling'].includes(observedJob.status)}
                         />
                         <span>
                           <strong>

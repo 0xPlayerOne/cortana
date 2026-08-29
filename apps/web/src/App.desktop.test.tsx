@@ -1999,23 +1999,25 @@ test('settings navigation opens workspace and services first and exposes native 
   expect(screen.getByRole('list', { name: 'Memory candidate queue' })).toBeTruthy()
 })
 
-test('settings theme control updates and persists', async () => {
+test('settings uses graphite as the fixed default and exposes theme controls per workspace', async () => {
   const user = userEvent.setup()
+  window.localStorage.setItem('cortana.theme.v1', 'accessible')
   render(<App />)
   await waitFor(() => expect(screen.getByRole('button', { name: 'Settings' })).toBeTruthy())
 
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
 
-  const themeSelect = await screen.findByRole('combobox', { name: 'Default theme' })
-  expect(themeSelect).toBeTruthy()
-  await user.click(themeSelect)
-  await user.click(await screen.findByRole('option', { name: 'Blue' }))
+  expect(screen.queryByRole('combobox', { name: 'Default theme' })).toBeNull()
+  expect(document.documentElement.getAttribute('data-theme')).toBe('graphite')
 
-  await waitFor(() => {
-    expect(window.localStorage.getItem('cortana.theme.v1')).toBe('accessible')
-    expect(document.documentElement.getAttribute('data-theme')).toBe('accessible')
-  })
+  fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+  const workspaceTheme = screen.getByRole('combobox', { name: 'Theme for Work' })
+  await user.click(workspaceTheme)
+  expect(await screen.findByRole('option', { name: 'Slate' })).toBeTruthy()
+  expect(screen.getByRole('option', { name: 'Indigo' })).toBeTruthy()
+  expect(screen.getByRole('option', { name: 'Emerald' })).toBeTruthy()
+  expect(screen.getByRole('option', { name: 'Amber' })).toBeTruthy()
 })
 
 test('workspace theme controls persist and apply per workspace', async () => {
@@ -3142,6 +3144,13 @@ test('running source jobs stay visible in the shell after leaving the settings v
     expect(screen.getByText('Document ACL labels')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Test connection' }))
     await waitFor(() => expect(screen.getByText('Connection check · running')).toBeTruthy())
+    const validationJob = screen
+      .getByText('Connection check · running')
+      .closest('.source-validation-job')
+    expect(validationJob?.querySelector('.status-glyph')?.className).toContain('pending')
+    expect(validationJob?.querySelector('.status-glyph')?.getAttribute('aria-label')).toBe(
+      'In progress'
+    )
 
     // Leaving the settings view must not hide the running job: the status
     // bar indicator and the read-only source-panel strip keep it visible.
