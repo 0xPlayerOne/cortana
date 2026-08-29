@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.53.6](https://github.com/0xPlayerOne/cortana/compare/v0.53.5...v0.53.6) (2026-08-29)
+
+
+### Documentation
+
+* **release:** record M4-M7 acceptance evidence ([#2209](https://github.com/0xPlayerOne/cortana/issues/2209)) ([a66a034](https://github.com/0xPlayerOne/cortana/commit/a66a0341ce9276cf544fb75eb1a4a65dd9149237))
+
 ## [0.53.5](https://github.com/0xPlayerOne/cortana/compare/v0.53.4...v0.53.5) (2026-08-29)
 
 
