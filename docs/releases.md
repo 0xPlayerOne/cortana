@@ -9,67 +9,40 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.39.0
+## Current release: v0.53.5
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
-`v0.39.0` tag is the current source and release boundary. It contains the completed M5 retrieval
-quality and evaluation implementation from [PR #2149](https://github.com/0xPlayerOne/cortana/pull/2149)
-and was published by [release PR #2153](https://github.com/0xPlayerOne/cortana/pull/2153).
-Release-assets workflow
-[`32877997628`](https://github.com/0xPlayerOne/cortana/actions/runs/32877997628) published the
-macOS/Linux core archives and Linux/Windows Desktop packages. The macOS Desktop lane failed
-closed because the required Apple Developer ID and notarization secrets are not configured; no
-trusted macOS Desktop package was published. The strict cross-platform verifier therefore remains
-blocked, while the valid partial updater manifest contains only the signed Linux and Windows
-targets. This verifies neither native GUI, OAuth, nor operating-system trust acceptance.
+`v0.53.5` tag is the current source and release boundary, published by
+[release PR #2208](https://github.com/0xPlayerOne/cortana/pull/2208) after the M4-M7 product-polish
+changes in [PR #2205](https://github.com/0xPlayerOne/cortana/pull/2205) and the Windows acceptance
+fix in [PR #2207](https://github.com/0xPlayerOne/cortana/pull/2207).
 
-The updater endpoint is intentionally valid even when a platform package is unavailable. The
-Desktop reports “No signed package is published for this platform” rather than treating a valid
-partial release as a malformed JSON/network failure. See [#2154](https://github.com/0xPlayerOne/cortana/issues/2154)
-for the remaining Apple credential gate and [#2155](https://github.com/0xPlayerOne/cortana/pull/2155)
-for the fail-closed release/updater handling.
+The packaged release gate is complete. Release-assets workflow
+[`33223028418`](https://github.com/0xPlayerOne/cortana/actions/runs/33223028418) built and uploaded
+the Linux, macOS ARM64, and Windows Desktop packages, both core archives, and the updater manifest.
+Its final cross-platform verifier passed, and the strict local verifier confirmed all 18 expected
+`v0.53.5` assets. The published package-acceptance workflow
+[`33223745099`](https://github.com/0xPlayerOne/cortana/actions/runs/33223745099) passed on macOS
+ARM64, Linux x64, and Windows x64, covering package download/extraction, version checks, offline
+core acceptance, and isolated Desktop host startup.
 
-The v0.34.44 marker carries forward the verified v0.34.43 runtime and source-validation evidence
-and adds no application behavior beyond release metadata. The direct-main workflow and stale
-staging-lane cleanup are documented in the merged promotion PR. It changes no credentials, source
-authorization, indexed data, recurring-sync policy, or native-memory behavior.
-The audited host now runs `cortana 0.34.42`; its binary, controlled service restart, readiness,
-native-memory, shared-agent, MCP, and control-plane checks all passed. The embedding service
-requires a short model warm-up after restart before health becomes ready.
-A fresh v0.34.42 `cortana eval --model` run on 2026-08-24 passed in 16,286 ms with
-planner/synthesis, valid citations, cache reuse, and revision invalidation. The prior v0.34.35
-run failed closed at 15,915 ms because the configured `auto-free` provider returned an
-invalid-citation response; Cortana used the safe extractive fallback. These are synthetic-provider
-records only; approved-corpus answer/synthesis evidence remains open and synthesis remains opt-in.
+The macOS package uses the explicitly enabled ad-hoc recovery path because Apple Developer ID and
+notarization credentials are not configured in Actions. It is a valid downloadable package but is
+not evidence of trusted Gatekeeper distribution. Native GUI behavior, OAuth, tray/background
+services, native dialogs, updater interaction, accessibility, resource behavior, uninstall, and
+manual recovery remain OS-specific acceptance gates.
 
-The source-rollout evidence carried into v0.34.43 completed production-budget, read-only validation
-for `personal-drive` (1,639 documents / 13,440,509 bytes within 2,000 / 128 MiB / 900 seconds),
-`work-drive` (516 / 4,581,462), `work-gmail` (7,388 / 34,530,230 within 10,000 / 64 MiB / 600
-seconds), `work-calendar` (2,220 / 1,832,878 within 3,000 / 64 MiB / 300 seconds),
-`personal-gmail` (431 / 1,493,536), and `personal-calendar` (1,815 / 360,659). Each is
-`complete=true` with zero document, embedding, or reconciliation writes. The three folder-scoped
-Apple Notes sources and Buzz also passed their configured production budgets: `work-notes` 28 /
-122,114 bytes, `personal-notes` 66 / 136,208, `special-notes` 8 / 14,046, and Buzz 45 / 375,824.
-After reauthorizing the shared Special Google grant, `special-drive` completed 98 / 290,445 bytes,
-`special-gmail` 213 / 980,116, and `special-calendar` 0 / 0 at their configured budgets, all with
-`complete=true` and zero writes. `readiness --allow-sync-service` now passes; recurring sync remains
-uninstalled pending explicit operator approval.
+The deterministic memory evaluation and disposable control-plane, native-memory, and backup/restore
+drills passed locally. These checks use synthetic or disposable fixtures and do not authorize
+sources, recurring sync, automatic retention, or access to an approved production corpus.
 
-The protected main tree contains the shared action-button hardening from PR #1864, promoted through
-exact-tree PR #1869, the v0.34.29 Release Please PR #1870, staging metadata reconciliation PR
-#1872, the exact-tree promotion PR #1904, the v0.34.32 Release Please PR #1905, the v0.34.33
-Release Please PR #1911, the readiness startup fix from PR #1914, the v0.34.34 Release Please PR
-#1923, the v0.34.36 Release Please PR #1943, the v0.34.40 Release Please PR #1975, the v0.34.41
-Release Please PR #1985, documentation authority PR #2093, direct-workflow cleanup PR #2100, and
-the v0.34.44 Release Please marker.
-These changes do not alter credentials, source authorization, indexed data, recurring-sync policy,
-or native-memory behavior.
-
-The v0.34.44 marker preserves the direct-`main` merge strategy. It does not authorize sources,
-enable recurring sync, change indexed data, or alter native-memory policy. The package and
-cross-platform asset verification are complete; native GUI, OAuth, and OS trust acceptance remain
-separate manual gates.
+The governed-corpus gate remains intentionally open. The evaluation contract and template manifest
+are documented in [evaluation.md](evaluation.md), but the template is not an approved corpus and
+the final gate requires an authorized operator-owned, read-only manifest and index with provenance.
+No private or personal index was promoted to satisfy this requirement. Manual evidence must be
+recorded with package checksum, exact case results, OS/architecture, reviewer/date, and limitations
+using the matrix in [desktop-ux-audit.md](desktop-ux-audit.md).
 
 ### v0.34.43 post-release reconciliation incident (historical)
 
