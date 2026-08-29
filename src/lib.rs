@@ -15,6 +15,7 @@ pub mod embed;
 pub mod evaluation;
 pub mod github_oauth;
 pub mod google_oauth;
+pub mod integration;
 pub mod mcp;
 pub mod memory;
 pub mod memory_evaluation;
