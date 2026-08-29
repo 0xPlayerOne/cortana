@@ -250,10 +250,6 @@ function ComboboxChipsInput({ className, ...props }: ComboboxPrimitive.Input.Pro
   )
 }
 
-function useComboboxAnchor() {
-  return React.useRef<HTMLDivElement | null>(null)
-}
-
 export {
   Combobox,
   ComboboxInput,
@@ -270,5 +266,4 @@ export {
   ComboboxChipsInput,
   ComboboxTrigger,
   ComboboxValue,
-  useComboboxAnchor,
 }
