@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.55.0](https://github.com/0xPlayerOne/cortana/compare/v0.54.2...v0.55.0) (2026-08-30)
+
+
+### Features
+
+* **code:** complete M9 intelligence and connector certification ([#2226](https://github.com/0xPlayerOne/cortana/issues/2226)) ([5282296](https://github.com/0xPlayerOne/cortana/commit/52822963cf6832e077697b12098b49376a1d3578))
+
 ## [0.54.2](https://github.com/0xPlayerOne/cortana/compare/v0.54.1...v0.54.2) (2026-08-30)
 
 
