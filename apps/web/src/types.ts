@@ -9,6 +9,16 @@ export type Evidence = {
   semantic_rank: number | null
   lexical_rank: number | null
   updated_at: string
+  metadata?: {
+    code?: {
+      repository?: string
+      branch?: string | null
+      commit_sha?: string | null
+      dirty?: boolean
+      revision?: string
+    }
+    [key: string]: unknown
+  }
 }
 
 export type BrainDocumentSummary = {

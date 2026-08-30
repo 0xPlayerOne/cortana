@@ -85,7 +85,7 @@ def main() -> int:
                 "generic_chunk_digest": digest(chunks),
             }
         )
-    print(json.dumps({"contract": "cortana.chunking.v1", "records": report}, sort_keys=True))
+    print(json.dumps({"contract": "cortana.chunking.v2", "records": report}, sort_keys=True))
     return 0
 
 

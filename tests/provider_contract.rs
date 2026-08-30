@@ -219,6 +219,7 @@ fn context_pinning_rejects_scope_revision_budget_and_digest_mismatch() {
         content: "bounded evidence".into(),
         uri: Some("fixture://evidence/1".into()),
         updated_at: Utc::now(),
+        metadata: serde_json::Value::Null,
         score: 1.0,
         semantic_rank: Some(1),
         lexical_rank: Some(1),

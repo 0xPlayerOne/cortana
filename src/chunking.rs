@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::model::Document;
 
-pub const CHUNKING_CONTRACT_VERSION: &str = "cortana.chunking.v1";
+pub const CHUNKING_CONTRACT_VERSION: &str = "cortana.chunking.v2";
 pub const DEFAULT_TARGET_BYTES: usize = 1_600;
 pub const DEFAULT_OVERLAP_BYTES: usize = 200;
 
@@ -23,6 +23,7 @@ pub enum ChunkStrategy {
     MessageThread,
     CalendarEvent,
     StructuredRecord,
+    CodeSymbol,
 }
 
 impl ChunkStrategy {
@@ -34,6 +35,7 @@ impl ChunkStrategy {
             Self::MessageThread => "message_thread",
             Self::CalendarEvent => "calendar_event",
             Self::StructuredRecord => "structured_record",
+            Self::CodeSymbol => "code_symbol",
         }
     }
 }
@@ -97,6 +99,7 @@ pub fn chunk_document_with_policy(document: &Document, policy: ChunkingPolicy) -
         ChunkStrategy::CalendarEvent | ChunkStrategy::StructuredRecord => {
             structured_chunks(&document.content, strategy, policy)
         }
+        ChunkStrategy::CodeSymbol => code_chunks(document, policy),
         ChunkStrategy::Generic => generic_chunks(&document.content, policy),
     };
     link_chunks(&mut chunks);
@@ -133,6 +136,12 @@ fn strategy_for(document: &Document) -> ChunkStrategy {
         .or_else(|| value("extension"))
         .unwrap_or_default()
         .to_ascii_lowercase();
+    if document.metadata.get("code").is_some()
+        && crate::code_intelligence::detect_language(&document.source_id)
+            != crate::code_intelligence::Language::Unknown
+    {
+        return ChunkStrategy::CodeSymbol;
+    }
     if kind.contains("markdown")
         || kind.contains("google-apps.document")
         || kind.contains("wordprocessingml")
@@ -166,6 +175,53 @@ fn strategy_for(document: &Document) -> ChunkStrategy {
         return ChunkStrategy::StructuredRecord;
     }
     ChunkStrategy::Generic
+}
+
+fn code_chunks(document: &Document, policy: ChunkingPolicy) -> Vec<ChunkSpec> {
+    use std::sync::atomic::AtomicBool;
+
+    let parsed = crate::code_intelligence::parse_document(
+        document,
+        &crate::code_intelligence::ParseLimits::default(),
+        &AtomicBool::new(false),
+    );
+    if parsed.symbols.is_empty() {
+        return generic_chunks(&document.content, policy);
+    }
+    let mut starts = parsed
+        .symbols
+        .iter()
+        .map(|symbol| symbol.span.start_byte)
+        .collect::<Vec<_>>();
+    starts.sort_unstable();
+    starts.dedup();
+    if starts.first().copied().unwrap_or_default() > 0 {
+        starts.insert(0, 0);
+    }
+    starts
+        .iter()
+        .enumerate()
+        .flat_map(|(index, start)| {
+            let end = starts
+                .get(index + 1)
+                .copied()
+                .unwrap_or(document.content.len());
+            bounded_ranges(
+                &document.content[*start..end],
+                policy,
+                ChunkStrategy::CodeSymbol,
+                |_| false,
+            )
+            .into_iter()
+            .map(move |mut chunk| {
+                chunk.start_byte += *start;
+                chunk.end_byte += *start;
+                chunk.parent_key =
+                    stable_hash(&format!("code:{}:{start}:{end}", document.source_id));
+                chunk
+            })
+        })
+        .collect()
 }
 
 fn generic_chunks(content: &str, policy: ChunkingPolicy) -> Vec<ChunkSpec> {
@@ -480,5 +536,25 @@ mod tests {
         let stats = stats(&value);
         assert_eq!(stats.source_bytes, value.content.len());
         assert!(stats.chunk_bytes >= stats.source_bytes);
+    }
+
+    #[test]
+    fn code_documents_use_revision_aware_symbol_chunks() {
+        let mut value = document(
+            "code",
+            "fn first() {}\nfn second() {}\n",
+            serde_json::json!({}),
+        );
+        value.source_id = "repo:src/lib.rs".into();
+        value.metadata = serde_json::json!({"extension": "rs", "code": {"repository_id": "repo", "revision": "abc:main:committed"}});
+        let chunks = chunk_document(&value);
+        assert_eq!(chunks.len(), 2);
+        assert!(
+            chunks
+                .iter()
+                .all(|chunk| chunk.strategy == ChunkStrategy::CodeSymbol)
+        );
+        assert!(chunks[0].content.contains("first"));
+        assert!(chunks[1].content.contains("second"));
     }
 }

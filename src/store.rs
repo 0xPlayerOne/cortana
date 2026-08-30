@@ -1,6 +1,7 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -19,6 +20,9 @@ use sha2::{Digest, Sha256};
 use crate::auth::acl_allows;
 use crate::chunking::{CHUNKING_CONTRACT_VERSION, ChunkSpec};
 use crate::classification::{self, CandidateClassification};
+use crate::code_intelligence::{
+    CodeRelation, ParseLimits, ParseOutput, RelationPage, SymbolSearchHit, parse_document,
+};
 use crate::consolidation::{
     self, ConsolidationDecision, ConsolidationOutcome, ConsolidationPolicy, PolicyContext,
 };
@@ -281,6 +285,11 @@ impl Store {
                embedding_blob BLOB, chunk_key TEXT, strategy TEXT,
                parent_key TEXT, previous_key TEXT, next_key TEXT,
                start_byte INTEGER, end_byte INTEGER, policy_version TEXT);
+             CREATE TABLE IF NOT EXISTS code_indexes(
+               document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+               repository_id TEXT, revision TEXT, language TEXT NOT NULL,
+               parser_version TEXT NOT NULL, content_hash TEXT NOT NULL,
+               status TEXT NOT NULL, output_json TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS embedding_cache(
                fingerprint TEXT NOT NULL, content_hash TEXT NOT NULL,
                embedding_json TEXT NOT NULL, embedding_blob BLOB, hits INTEGER NOT NULL DEFAULT 0,
@@ -907,6 +916,7 @@ impl Store {
                 params![chunk_id, document.title, content],
             )?;
         }
+        replace_code_index(&transaction, &id, document)?;
         bump_corpus_revision(&transaction)?;
         transaction.commit()?;
         Ok(true)
@@ -996,6 +1006,7 @@ impl Store {
                 params![chunk_id, document.title, &spec.content],
             )?;
         }
+        replace_code_index(&transaction, &id, document)?;
         bump_corpus_revision(&transaction)?;
         transaction.commit()?;
         Ok(true)
@@ -3967,13 +3978,125 @@ impl Store {
         let mut statement = connection.prepare(
             "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
                     c.embedding_blob,c.embedding_json,d.updated_at,c.strategy,
-                    c.parent_key,c.previous_key,c.next_key
+                    c.parent_key,c.previous_key,c.next_key,d.metadata_json
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
         )?;
         let rows = statement.query_map(params![project, source], row_to_chunk)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    /// Search the rebuildable code-symbol projection after applying document ACLs.
+    /// Exact identifiers rank before qualified-name, signature, and documentation matches.
+    pub fn search_code_symbols(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        source: Option<&str>,
+        principal_acl: &[String],
+        limit: usize,
+    ) -> Result<Vec<SymbolSearchHit>> {
+        let limit = limit.clamp(1, 100);
+        let query = query.trim().to_ascii_lowercase();
+        anyhow::ensure!(!query.is_empty(), "code symbol query is empty");
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT ci.output_json,d.acl_json FROM code_indexes ci
+             JOIN documents d ON d.id=ci.document_id
+             WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
+        )?;
+        let rows = statement.query_map(params![project, source], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut matches = Vec::new();
+        for row in rows {
+            let (output_json, acl_json) = row?;
+            let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            let output: ParseOutput = serde_json::from_str(&output_json)?;
+            for symbol in output.symbols {
+                let exact = symbol.name.eq_ignore_ascii_case(&query)
+                    || symbol.qualified_name.eq_ignore_ascii_case(&query);
+                let searchable = format!(
+                    "{} {} {} {}",
+                    symbol.name,
+                    symbol.qualified_name,
+                    symbol.signature,
+                    symbol.documentation.as_deref().unwrap_or_default()
+                )
+                .to_ascii_lowercase();
+                if exact || searchable.contains(&query) {
+                    matches.push((exact, symbol));
+                }
+            }
+        }
+        matches.sort_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| left.1.qualified_name.cmp(&right.1.qualified_name))
+                .then_with(|| left.1.file.cmp(&right.1.file))
+        });
+        let exact_count = matches.iter().filter(|(exact, _)| *exact).count();
+        Ok(matches
+            .into_iter()
+            .take(limit)
+            .map(|(exact, symbol)| SymbolSearchHit {
+                symbol,
+                exact,
+                ambiguous: exact && exact_count > 1,
+            })
+            .collect())
+    }
+
+    /// Return a bounded, paginated one-hop relation page. Cycles cannot expand because this
+    /// primitive never recursively traverses and ACL checks occur before any edge is returned.
+    pub fn code_relations(
+        &self,
+        symbol_id: &str,
+        project: Option<&str>,
+        principal_acl: &[String],
+        cursor: usize,
+        limit: usize,
+    ) -> Result<RelationPage> {
+        let limit = limit.clamp(1, 100);
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT ci.output_json,d.acl_json FROM code_indexes ci
+             JOIN documents d ON d.id=ci.document_id WHERE (?1 IS NULL OR d.project=?1)",
+        )?;
+        let rows = statement.query_map([project], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut relations = Vec::<CodeRelation>::new();
+        for row in rows {
+            let (output_json, acl_json) = row?;
+            let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            let output: ParseOutput = serde_json::from_str(&output_json)?;
+            relations.extend(output.relations.into_iter().filter(|relation| {
+                relation.from_symbol_id.as_deref() == Some(symbol_id)
+                    || relation.to_symbol_id.as_deref() == Some(symbol_id)
+            }));
+        }
+        relations.sort_by(|left, right| left.id.cmp(&right.id));
+        let total = relations.len();
+        let page = relations
+            .into_iter()
+            .skip(cursor)
+            .take(limit)
+            .collect::<Vec<_>>();
+        let next = cursor.saturating_add(page.len());
+        Ok(RelationPage {
+            relations: page,
+            next_cursor: (next < total).then_some(next),
+            truncated: next < total,
+        })
     }
 
     pub fn semantic_ids(
@@ -4066,7 +4189,7 @@ impl Store {
         let sql = format!(
             "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
                     c.embedding_blob,c.embedding_json,d.updated_at,c.strategy,
-                    c.parent_key,c.previous_key,c.next_key
+                    c.parent_key,c.previous_key,c.next_key,d.metadata_json
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE c.id IN ({placeholders})"
         );
@@ -4985,6 +5108,39 @@ struct SemanticCandidate {
     score: f32,
 }
 
+fn replace_code_index(
+    transaction: &Transaction<'_>,
+    document_id: &str,
+    document: &Document,
+) -> Result<()> {
+    transaction.execute(
+        "DELETE FROM code_indexes WHERE document_id=?1",
+        [document_id],
+    )?;
+    if document.metadata.get("code").is_none() {
+        return Ok(());
+    }
+    let output = parse_document(document, &ParseLimits::default(), &AtomicBool::new(false));
+    let repository_id = document
+        .metadata
+        .get("code")
+        .and_then(|value| value.get("repository_id"))
+        .and_then(Value::as_str);
+    let revision = document
+        .metadata
+        .get("code")
+        .and_then(|value| value.get("revision"))
+        .and_then(Value::as_str);
+    let output_json = serde_json::to_string(&output)?;
+    transaction.execute(
+        "INSERT INTO code_indexes(document_id,repository_id,revision,language,parser_version,content_hash,status,output_json)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![document_id, repository_id, revision, output.language.as_str(), &output.parser_version,
+            &output.content_hash, format!("{:?}", output.status).to_ascii_lowercase(), output_json],
+    )?;
+    Ok(())
+}
+
 impl PartialEq for SemanticCandidate {
     fn eq(&self, other: &Self) -> bool {
         self.score.to_bits() == other.score.to_bits() && self.id == other.id
@@ -5043,6 +5199,9 @@ fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
         parent_key: row.get(11)?,
         previous_key: row.get(12)?,
         next_key: row.get(13)?,
+        metadata: serde_json::from_str(&row.get::<_, String>(14)?).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(14, Type::Text, Box::new(error))
+        })?,
     })
 }
 
@@ -5579,6 +5738,73 @@ mod tests {
                 .upsert_structured(&value, &embedded)
                 .expect("idempotent insert")
         );
+    }
+
+    #[test]
+    fn code_symbol_projection_is_revision_aware_ambiguous_and_acl_scoped() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut work = document("repo:src/work.rs", "pub fn shared_symbol() {}");
+        work.source = "code".into();
+        work.acl = vec!["work".into()];
+        work.metadata = serde_json::json!({"code": {"repository_id": "repo", "revision": "aaa:main:committed"}});
+        let mut private = document("repo:src/private.rs", "pub fn shared_symbol() {}");
+        private.source = "code".into();
+        private.acl = vec!["personal".into()];
+        private.metadata = serde_json::json!({"code": {"repository_id": "repo", "revision": "aaa:main:committed"}});
+        store
+            .upsert(&work, &[(work.content.clone(), vec![1.0])])
+            .expect("work index");
+        store
+            .upsert(&private, &[(private.content.clone(), vec![1.0])])
+            .expect("private index");
+
+        let work_results = store
+            .search_code_symbols(
+                "shared_symbol",
+                Some("demo"),
+                Some("code"),
+                &["work".into()],
+                10,
+            )
+            .expect("work lookup");
+        assert_eq!(work_results.len(), 1);
+        assert!(
+            !work_results[0].ambiguous,
+            "hidden definitions cannot create ambiguity"
+        );
+        let old_id = work_results[0].symbol.id.clone();
+
+        work.metadata["code"]["revision"] = serde_json::json!("bbb:feature:dirty");
+        store
+            .upsert(&work, &[(work.content.clone(), vec![1.0])])
+            .expect("revision update");
+        let updated = store
+            .search_code_symbols(
+                "shared_symbol",
+                Some("demo"),
+                Some("code"),
+                &["work".into()],
+                10,
+            )
+            .expect("updated lookup");
+        assert_ne!(old_id, updated[0].symbol.id);
+        assert_eq!(
+            updated[0].symbol.revision.as_deref(),
+            Some("bbb:feature:dirty")
+        );
+
+        let owner = store
+            .search_code_symbols(
+                "shared_symbol",
+                Some("demo"),
+                Some("code"),
+                &["*".into()],
+                10,
+            )
+            .expect("owner lookup");
+        assert_eq!(owner.len(), 2);
+        assert!(owner.iter().all(|result| result.ambiguous));
     }
 
     #[test]

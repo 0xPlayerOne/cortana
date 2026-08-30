@@ -740,6 +740,7 @@ fn evidence(
         semantic_rank: semantic.get(&chunk.id).copied(),
         lexical_rank: lexical.get(&chunk.id).copied(),
         updated_at: chunk.updated_at,
+        metadata: chunk.metadata.clone(),
     }
 }
 
@@ -837,6 +838,7 @@ mod tests {
             acl: Vec::new(),
             embedding: vec![1.0, 0.0],
             updated_at: Utc::now(),
+            metadata: serde_json::Value::Null,
             strategy: None,
             parent_key: None,
             previous_key: None,

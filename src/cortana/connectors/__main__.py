@@ -13,6 +13,7 @@ from cortana import __version__
 
 from .apple_notes import fetch as fetch_apple_notes
 from .buzz import fetch as fetch_buzz
+from .certification import BUILTIN_MANIFESTS, certify_builtin
 from .chat import fetch_discord, fetch_slack
 from .github import fetch as fetch_github
 from .google import fetch_calendar, fetch_drive, fetch_gmail, validate_token_path
@@ -39,6 +40,9 @@ def parser() -> argparse.ArgumentParser:
         help="print connector package version",
     )
     commands = root.add_subparsers(dest="connector", required=False)
+
+    certify = commands.add_parser("certify")
+    certify.add_argument("connector_id", choices=sorted(BUILTIN_MANIFESTS))
 
     apple_notes = commands.add_parser("apple-notes")
     apple_notes.add_argument(
@@ -107,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
         )
     if arguments.max_documents is not None and arguments.max_documents <= 0:
         raise RuntimeError("--max-documents must be greater than zero")
+    if arguments.connector == "certify":
+        report = certify_builtin(arguments.connector_id)
+        print(report.as_json())
+        return 0 if report.approved else 1
     documents = _documents(arguments)
     if arguments.max_documents is not None:
         documents = itertools.islice(documents, arguments.max_documents)

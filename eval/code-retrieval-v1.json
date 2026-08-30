@@ -1,0 +1,51 @@
+{
+  "contract_version": "cortana.code-retrieval-eval.v1",
+  "documents": [
+    {
+      "id": "auth-rs",
+      "path": "src/auth.rs",
+      "symbol": "authenticate_token",
+      "span": "10:28",
+      "text": "pub fn authenticate_token(token: &str) -> Result<Principal>"
+    },
+    {
+      "id": "store-rs",
+      "path": "src/store.rs",
+      "symbol": "reconcile_snapshot",
+      "span": "80:101",
+      "text": "pub fn reconcile_snapshot(source: &str, seen: &[String])"
+    },
+    {
+      "id": "retry-py",
+      "path": "connectors/http.py",
+      "symbol": "request_with_backoff",
+      "span": "20:49",
+      "text": "def request_with_backoff(client, path): retry rate limited requests"
+    },
+    {
+      "id": "graph-ts",
+      "path": "web/Graph.tsx",
+      "symbol": "DependencyGraph",
+      "span": "15:42",
+      "text": "export function DependencyGraph renders callers callees and imports"
+    },
+    {
+      "id": "noise-md",
+      "path": "README.md",
+      "symbol": "",
+      "span": "1:5",
+      "text": "Installation and configuration guide"
+    }
+  ],
+  "queries": [
+    { "class": "exact_identifier", "query": "authenticate_token", "expected": "auth-rs" },
+    {
+      "class": "architecture",
+      "query": "dependency callers and callees graph",
+      "expected": "graph-ts"
+    },
+    { "class": "error", "query": "retry a rate limited connector request", "expected": "retry-py" },
+    { "class": "api", "query": "snapshot reconciliation API", "expected": "store-rs" },
+    { "class": "impact", "query": "what depends on authenticate token", "expected": "auth-rs" }
+  ]
+}

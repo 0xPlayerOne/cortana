@@ -2,6 +2,7 @@ import { Check, Copy, RefreshCw, X } from 'lucide-react'
 import type { ComponentProps } from 'react'
 
 import type { AnswerResponse, BrainStatus, ContextBundle, Evidence } from '../types'
+import { codeRevisionLabel } from '../codeEvidence'
 import { useClipboardCopy } from '../useClipboardCopy'
 import { Alert, AlertDescription } from './shadcn/alert'
 import { Badge } from './shadcn/badge'
@@ -131,6 +132,7 @@ export function ContextPanel({
             >
               <span>{index + 1}</span>
               <strong>{item.title}</strong>
+              {codeRevisionLabel(item) && <small>{codeRevisionLabel(item)}</small>}
               <time>{new Date(item.updated_at).toLocaleDateString()}</time>
             </ActionButton>
           ))}

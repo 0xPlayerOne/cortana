@@ -25,6 +25,8 @@ The Rust core accepts one JSONL `Document` per line:
 `source` and `source_id` are stable identity; title, URI, content, and metadata are replaceable
 attributes. Connector output must be UTF-8, bounded per line, free of credential values, and
 terminated by an explicit completion result. External-command connectors cannot write SQLite.
+The reusable SDK contract also requires stable IDs, ACLs, progress counters, cursor/completeness,
+cancellation and typed errors, deterministic configuration fingerprints, and a versioned manifest.
 
 ## Operation phases
 
@@ -45,6 +47,29 @@ may reconcile deletions; a failed empty output never does.
 
 Every run reports source/project, phase, status, cursor presence, progress documents/bytes, budgets,
 configuration fingerprint, started/completed timestamps, error class, and deletion count. Public
-status is metadata-only. A future connector is certified by fixtures covering identity stability,
-ACL normalization, malformed rows, duplicate rows, cursor restart, retry/cancel cleanup, complete
-versus partial snapshots, deletion safety, and bounded resource use.
+status is metadata-only. `python -m cortana.connectors certify external-reference` runs the offline
+reference-adapter suite. Certification validates identity stability, ACL normalization, malformed
+or duplicate rows, secrets, cursor/retry/cancel behavior, complete versus partial snapshots,
+deletion safety, compatibility, and bounded document/line/total-byte use. An adapter cannot obtain
+reconciliation authority unless the harness validates a complete successful snapshot.
+
+Manifests declare contract/SDK/version, capabilities, package, dependencies/licenses, and one of
+`supported`, `experimental`, `local-only`, or `rejected`. Compatibility is checked before a run.
+Disabling or removing an adapter never implicitly deletes canonical evidence. External releases
+need a security review and must repeat certification when the SDK, package, dependency, license, or
+capability set changes.
+
+## Slack and Discord certification
+
+`python -m cortana.connectors certify slack` and `... certify discord` exercise disposable,
+synthetic fixtures only. Both connectors remain disabled by default. The suite covers complete,
+partial, cancelled, revoked-token, and rate-limited outcomes; only the complete fixture may
+reconcile. Existing connector tests cover provider pagination, thread identity, cursor restart,
+bounded retries, malformed histories, redaction-safe output, and cache behavior.
+
+Certification does not authorize a production account, personal history, new OAuth scopes, or a
+recurring schedule. Slack channel access depends on bot installation and workspace-admin policy;
+Discord access depends on guild/channel permissions and its separate OAuth/client configuration.
+History visibility may be incomplete because of provider retention, membership, or account tier.
+A production enablement is a separate operator approval with account/source discovery, scope review,
+and a bounded non-reconciling validation run.

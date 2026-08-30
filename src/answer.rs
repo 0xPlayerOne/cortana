@@ -1171,6 +1171,7 @@ mod tests {
             semantic_rank: None,
             lexical_rank: None,
             updated_at: Utc::now(),
+            metadata: serde_json::Value::Null,
         };
 
         let fused = fuse(
@@ -1361,6 +1362,7 @@ mod tests {
             semantic_rank: None,
             lexical_rank: None,
             updated_at: Utc::now(),
+            metadata: serde_json::Value::Null,
         }
     }
 
@@ -1546,6 +1548,7 @@ mod tests {
             semantic_rank: None,
             lexical_rank: Some(index + 1),
             updated_at: Utc::now(),
+            metadata: serde_json::Value::Null,
         })
         .collect::<Vec<_>>();
 

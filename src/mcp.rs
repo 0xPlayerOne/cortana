@@ -56,6 +56,23 @@ pub struct DomainSearchParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct CodeSymbolParams {
+    query: String,
+    project: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CodeRelationParams {
+    symbol_id: String,
+    project: Option<String>,
+    cursor: Option<usize>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryRememberParams {
     kind: String,
     content_type: Option<String>,
@@ -567,6 +584,102 @@ impl BrainServer {
     async fn search_code(&self, Parameters(params): Parameters<DomainSearchParams>) -> String {
         self.domain_search("mcp.search_code", &self.code_sources, params)
             .await
+    }
+
+    #[tool(
+        description = "Look up revision-aware code definitions and declarations. Exact identifiers rank first; duplicate definitions are marked ambiguous."
+    )]
+    async fn lookup_symbol(&self, Parameters(params): Parameters<CodeSymbolParams>) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) if principal.has_scope(QUERY_SCOPE) => principal,
+            Ok(principal) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.lookup_symbol",
+                    params.project.as_deref(),
+                    None,
+                    "forbidden",
+                    None,
+                    started,
+                );
+                return "authorization error: query scope required".into();
+            }
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if let Err(error) = validate_request(&params.query, params.project.as_deref(), None) {
+            return format!("invalid request: {error}");
+        }
+        let acl = principal.visible_acl();
+        match self.store.search_code_symbols(
+            &params.query,
+            params.project.as_deref(),
+            None,
+            &acl,
+            params.limit.unwrap_or(20),
+        ) {
+            Ok(results) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.lookup_symbol",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(results.len()),
+                    started,
+                );
+                serde_json::to_string(&results).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => format!("code index error: {error}"),
+        }
+    }
+
+    #[tool(
+        description = "Return one bounded, ACL-filtered page of callers, callees, imports, dependencies, and references for a code symbol."
+    )]
+    async fn code_relations(&self, Parameters(params): Parameters<CodeRelationParams>) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) if principal.has_scope(QUERY_SCOPE) => principal,
+            Ok(principal) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.code_relations",
+                    params.project.as_deref(),
+                    None,
+                    "forbidden",
+                    None,
+                    started,
+                );
+                return "authorization error: query scope required".into();
+            }
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if params.symbol_id.trim().is_empty() || params.symbol_id.len() > 256 {
+            return "invalid request: symbol_id must contain 1 to 256 bytes".into();
+        }
+        let acl = principal.visible_acl();
+        match self.store.code_relations(
+            &params.symbol_id,
+            params.project.as_deref(),
+            &acl,
+            params.cursor.unwrap_or(0),
+            params.limit.unwrap_or(20),
+        ) {
+            Ok(page) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.code_relations",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(page.relations.len()),
+                    started,
+                );
+                serde_json::to_string(&page).unwrap_or_else(|error| error.to_string())
+            }
+            Err(error) => format!("code index error: {error}"),
+        }
     }
 
     #[tool(

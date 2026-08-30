@@ -331,6 +331,27 @@ struct SearchRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct CodeSymbolRequest {
+    query: String,
+    project: Option<String>,
+    source: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CodeRelationQuery {
+    symbol_id: String,
+    project: Option<String>,
+    #[serde(default)]
+    cursor: usize,
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ContextRequest {
     query: String,
     project: Option<String>,
@@ -662,6 +683,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/documents/{id}", get(document))
         .route("/v1/graph", get(graph))
         .route("/v1/search", post(search))
+        .route("/v1/code/symbols", post(code_symbols))
+        .route("/v1/code/relations", get(code_relations))
         .route("/v1/context", post(context))
         .route("/v1/memory", post(remember_memory))
         .route("/v1/memory/recall", post(recall_memories))
@@ -1723,6 +1746,53 @@ async fn search(
             Err(internal_error(error))
         }
     }
+}
+
+async fn code_symbols(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    Json(request): Json<CodeSymbolRequest>,
+) -> Result<Json<Vec<crate::code_intelligence::SymbolSearchHit>>, (StatusCode, String)> {
+    validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
+    validate_query(&request.query)?;
+    let acl = principal.visible_acl();
+    state
+        .store
+        .search_code_symbols(
+            &request.query,
+            request.project.as_deref(),
+            request.source.as_deref(),
+            &acl,
+            request.limit,
+        )
+        .map(Json)
+        .map_err(internal_error)
+}
+
+async fn code_relations(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    AxumQuery(request): AxumQuery<CodeRelationQuery>,
+) -> Result<Json<crate::code_intelligence::RelationPage>, (StatusCode, String)> {
+    validate_retrieval_scope(request.project.as_deref(), None)?;
+    if request.symbol_id.trim().is_empty() || request.symbol_id.len() > 256 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "symbol_id must contain 1 to 256 bytes".into(),
+        ));
+    }
+    let acl = principal.visible_acl();
+    state
+        .store
+        .code_relations(
+            &request.symbol_id,
+            request.project.as_deref(),
+            &acl,
+            request.cursor,
+            request.limit,
+        )
+        .map(Json)
+        .map_err(internal_error)
 }
 
 async fn context(
@@ -3253,6 +3323,47 @@ mod tests {
             .expect("fingerprint");
         let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
         (directory, AppState::new(store, embedder))
+    }
+
+    #[tokio::test]
+    async fn code_symbol_api_returns_revision_aware_exact_definitions() {
+        let (_directory, state) = test_state();
+        let document = crate::model::Document {
+            source: "code".into(),
+            source_id: "repo:src/lib.rs".into(),
+            title: "src/lib.rs".into(),
+            content: "pub fn target_symbol() {}".into(),
+            uri: Some("code://repository/repo/src/lib.rs".into()),
+            updated_at: chrono::Utc::now(),
+            project: "work".into(),
+            acl: vec!["work".into()],
+            metadata: serde_json::json!({"code": {"repository_id": "repo", "revision": "abc:main:committed"}}),
+        };
+        state
+            .store
+            .upsert(&document, &[(document.content.clone(), vec![1.0; 16])])
+            .expect("index code document");
+        let response = router(state)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"target_symbol","project":"work","source":"code","limit":10}"#,
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("symbol response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("symbol body");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("symbol JSON");
+        assert_eq!(value[0]["exact"], true);
+        assert_eq!(value[0]["symbol"]["revision"], "abc:main:committed");
+        assert_eq!(value[0]["symbol"]["span"]["start_byte"], 0);
     }
 
     #[test]
