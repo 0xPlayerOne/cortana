@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.1](https://github.com/0xPlayerOne/cortana/compare/v0.54.0...v0.54.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* **container:** publish supported multi-arch image ([#2222](https://github.com/0xPlayerOne/cortana/issues/2222)) ([41563d2](https://github.com/0xPlayerOne/cortana/commit/41563d2874d12532a31a53bbec84ed6d23550379))
+
 ## [0.54.0](https://github.com/0xPlayerOne/cortana/compare/v0.53.10...v0.54.0) (2026-08-30)
 
 
