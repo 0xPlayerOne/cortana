@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.2](https://github.com/0xPlayerOne/cortana/compare/v0.54.1...v0.54.2) (2026-08-30)
+
+
+### Bug Fixes
+
+* **container:** isolate multiarch cargo caches ([#2224](https://github.com/0xPlayerOne/cortana/issues/2224)) ([c3d7dc6](https://github.com/0xPlayerOne/cortana/commit/c3d7dc612e0e8887700326bca13c51da835b8444))
+
 ## [0.54.1](https://github.com/0xPlayerOne/cortana/compare/v0.54.0...v0.54.1) (2026-08-30)
 
 
