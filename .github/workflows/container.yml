@@ -71,8 +71,8 @@ jobs:
           build-args: CORTANA_VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: mode=max
-          sbom: true
+          provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || false }}
+          sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}
 
       - name: Run self-hosted provider conformance
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}

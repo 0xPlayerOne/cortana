@@ -48,6 +48,11 @@ def test_container_release_workflow_is_tag_scoped_and_publishes_ghcr() -> None:
     assert "packages: write" in workflow
     assert "ghcr.io/${{ github.repository }}" in workflow
     assert "push: ${{ startsWith(github.ref, 'refs/tags/v') }}" in workflow
+    assert (
+        "provenance: ${{ startsWith(github.ref, 'refs/tags/v') && 'mode=max' || false }}"
+        in workflow
+    )
+    assert "sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}" in workflow
     assert "docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8" in workflow
     assert "scripts/self-hosted-conformance.sh" in workflow
 
