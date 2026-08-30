@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.54.0](https://github.com/0xPlayerOne/cortana/compare/v0.53.10...v0.54.0) (2026-08-30)
+
+
+### Features
+
+* **provider:** complete M8 integration and self-hosted certification ([#2220](https://github.com/0xPlayerOne/cortana/issues/2220)) ([a1150f3](https://github.com/0xPlayerOne/cortana/commit/a1150f36a01edbf8aead5e54fb37fb4c88bcfd91))
+
 ## [0.53.10](https://github.com/0xPlayerOne/cortana/compare/v0.53.9...v0.53.10) (2026-08-29)
 
 
