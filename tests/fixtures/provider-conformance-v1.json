@@ -1,0 +1,65 @@
+{
+  "fixture_version": "cortana.provider-fixtures.v1",
+  "provider_contract_version": "cortana.provider.v1",
+  "context_contract_version": "cortana.context.v1",
+  "compatibility": {
+    "cortana": ">=0.53.10,<0.54.0",
+    "deployment_profiles": ["local", "self_hosted_single_node"],
+    "transports": ["direct_local", "scoped_http", "remote_broker"]
+  },
+  "semantic_cases": [
+    { "name": "evidence_only", "bundle_ref": "context-bundle-v1.json", "expected": "ok" },
+    { "name": "memory_enabled", "memory_count": 1, "expected": "ok" },
+    { "name": "degraded", "degradation_code": "lexical_fallback", "expected": "degraded" },
+    { "name": "stale", "corpus_revision": 2, "minimum_corpus_revision": 3, "expected": "stale" },
+    {
+      "name": "over_budget",
+      "token_budget": 801,
+      "approved_budget": 800,
+      "expected": "over_budget"
+    },
+    { "name": "empty", "evidence_count": 0, "memory_count": 0, "expected": "insufficient" },
+    {
+      "name": "contradictory",
+      "evidence_ids": ["evidence_a", "evidence_b"],
+      "expected": "ok_with_warning"
+    },
+    {
+      "name": "cross_scope",
+      "approved_scope_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "actual_scope_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "expected": "scope_mismatch"
+    }
+  ],
+  "failure_cases": [
+    "missing_principal",
+    "invalid_principal",
+    "expired_principal",
+    "revoked_principal",
+    "wrong_project",
+    "wrong_acl_scope",
+    "stale_bundle",
+    "incompatible_contract",
+    "local_restart",
+    "self_hosted_restart",
+    "direct_unavailable",
+    "broker_disconnect",
+    "broker_reconnect",
+    "malformed_request",
+    "oversized_request",
+    "over_budget_request",
+    "duplicate_read",
+    "duplicate_write",
+    "ambiguous_write",
+    "arbitrary_endpoint_attempt",
+    "arbitrary_path_attempt"
+  ],
+  "invariants": {
+    "retrieval_is_non_mutating": true,
+    "memory_is_not_citation_evidence": true,
+    "transport_does_not_change_semantics": true,
+    "consumer_state_is_independent": true,
+    "credentials_and_local_paths_are_forbidden": true,
+    "ambiguous_writes_require_status_reconciliation": true
+  }
+}

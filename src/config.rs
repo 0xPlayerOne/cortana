@@ -197,6 +197,13 @@ pub struct AuthConfig {
     pub audit_max_events: usize,
     #[serde(default)]
     pub tokens: Vec<AuthTokenConfig>,
+    /// Principal names disabled at the next policy load/reload. Disabled
+    /// entries do not require their former token environment value.
+    #[serde(default)]
+    pub disabled_principals: Vec<String>,
+    /// Optional RFC3339 expiry keyed by principal name.
+    #[serde(default)]
+    pub principal_expiry: HashMap<String, String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -405,6 +412,8 @@ impl Default for AuthConfig {
         Self {
             audit_max_events: default_audit_max_events(),
             tokens: Vec::new(),
+            disabled_principals: Vec::new(),
+            principal_expiry: HashMap::new(),
         }
     }
 }

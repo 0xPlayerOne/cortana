@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 
 use crate::config::Config;
@@ -60,6 +61,7 @@ impl Principal {
 struct Credential {
     digest: [u8; 32],
     principal: Principal,
+    expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Clone)]
@@ -102,6 +104,16 @@ impl AuthPolicy {
     ) -> Result<Self> {
         let mut credentials = Vec::new();
         let mut principals = HashSet::new();
+        let disabled = config
+            .auth
+            .disabled_principals
+            .iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        anyhow::ensure!(
+            disabled.len() == config.auth.disabled_principals.len(),
+            "disabled auth principals must be unique"
+        );
         for token in &config.auth.tokens {
             anyhow::ensure!(
                 !token.principal.trim().is_empty(),
@@ -128,6 +140,21 @@ impl AuthPolicy {
                 "auth principal {} cannot use reserved acl \"*\"",
                 token.principal
             );
+            if disabled.contains(&token.principal) {
+                continue;
+            }
+            let expires_at = config
+                .auth
+                .principal_expiry
+                .get(&token.principal)
+                .map(|value| {
+                    DateTime::parse_from_rfc3339(value)
+                        .map(|value| value.with_timezone(&Utc))
+                        .with_context(|| {
+                            format!("auth principal {} expiry must be RFC3339", token.principal)
+                        })
+                })
+                .transpose()?;
             let value = value_for(config, &token.token_env).with_context(|| {
                 format!(
                     "auth token environment variable {} is not set",
@@ -142,8 +169,21 @@ impl AuthPolicy {
                     scopes,
                     acl,
                 },
+                expires_at,
             });
         }
+        anyhow::ensure!(
+            disabled.iter().all(|name| principals.contains(name)),
+            "disabled auth principal does not match a configured token"
+        );
+        anyhow::ensure!(
+            config
+                .auth
+                .principal_expiry
+                .keys()
+                .all(|name| principals.contains(name)),
+            "auth principal expiry does not match a configured token"
+        );
         let mut digests = HashSet::new();
         anyhow::ensure!(
             credentials
@@ -159,10 +199,24 @@ impl AuthPolicy {
     }
 
     pub fn authenticate(&self, token: &str) -> Option<Principal> {
+        self.authenticate_at_time(token, Utc::now())
+    }
+
+    pub fn authenticate_at(&self, token: &str, at: &str) -> Result<Option<Principal>> {
+        let at = DateTime::parse_from_rfc3339(at)
+            .context("authentication time must be RFC3339")?
+            .with_timezone(&Utc);
+        Ok(self.authenticate_at_time(token, at))
+    }
+
+    fn authenticate_at_time(&self, token: &str, at: DateTime<Utc>) -> Option<Principal> {
         let provided: [u8; 32] = Sha256::digest(token.as_bytes()).into();
         self.credentials
             .iter()
-            .find(|credential| constant_time_eq(&provided, &credential.digest))
+            .find(|credential| {
+                constant_time_eq(&provided, &credential.digest)
+                    && credential.expires_at.is_none_or(|expiry| at < expiry)
+            })
             .map(|credential| credential.principal.clone())
     }
 }
@@ -284,5 +338,42 @@ mod tests {
         ];
 
         assert!(AuthPolicy::from_config(&config).is_err());
+    }
+
+    #[test]
+    fn configured_principals_fail_closed_on_expiry_and_emergency_disable() {
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        config
+            .auth
+            .principal_expiry
+            .insert("work-agent".into(), "2030-01-01T00:00:00Z".into());
+
+        let policy = AuthPolicy::from_config(&config).expect("expiring policy");
+        assert!(
+            policy
+                .authenticate_at("work-secret", "2029-12-31T23:59:59Z")
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            policy
+                .authenticate_at("work-secret", "2030-01-01T00:00:00Z")
+                .unwrap()
+                .is_none()
+        );
+
+        config.auth.disabled_principals.push("work-agent".into());
+        config.environment.remove("WORK_TOKEN");
+        let disabled = AuthPolicy::from_config(&config).expect("disabled policy");
+        assert!(disabled.authenticate("work-secret").is_none());
     }
 }

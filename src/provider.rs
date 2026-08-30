@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     context::{ContextBundle, MAX_CONTEXT_TOKENS, MIN_CONTEXT_TOKENS},
-    contracts::CONTEXT_CONTRACT_VERSION,
+    contracts::{CONTEXT_CONTRACT_VERSION, privacy_scope_digest},
+    integration::{ExternalWorkspaceMapping, IntegrationPrincipal, MappingStatus, PrincipalStatus},
 };
 
 pub const PROVIDER_CONTRACT_VERSION: &str = "cortana.provider.v1";
@@ -194,6 +195,71 @@ impl ProviderRequest {
         );
         Ok(())
     }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct BrokerEnvelope {
+    pub fixture_version: String,
+    pub connection_ref: String,
+    pub request: ProviderRequest,
+    pub payload_digest: String,
+    pub attempt: u16,
+}
+
+impl BrokerEnvelope {
+    pub fn new(
+        connection_ref: &str,
+        request: ProviderRequest,
+        payload_digest: String,
+    ) -> Result<Self> {
+        validate_opaque("connection_ref", connection_ref)?;
+        validate_digest("payload_digest", &payload_digest)?;
+        request.validate(&CapabilityDescriptor::current())?;
+        Ok(Self {
+            fixture_version: PROVIDER_FIXTURE_VERSION.into(),
+            connection_ref: connection_ref.into(),
+            request,
+            payload_digest,
+            attempt: 1,
+        })
+    }
+}
+
+pub fn authorize_provider_request(
+    request: &ProviderRequest,
+    mapping: &ExternalWorkspaceMapping,
+    principal: &IntegrationPrincipal,
+    at: &str,
+) -> std::result::Result<(), ProviderOutcomeCode> {
+    if request.validate(&CapabilityDescriptor::current()).is_err()
+        || mapping.status != MappingStatus::Active
+        || request.mapping_ref != mapping.mapping_id
+        || request.principal_ref != principal.principal_id
+        || principal.mapping_ref != mapping.mapping_id
+        || request.project_ref != mapping.cortana_project_id
+        || principal.status != PrincipalStatus::Active
+        || principal.is_active_at(at).unwrap_or(false) == false
+        || !principal
+            .acl
+            .iter()
+            .all(|label| mapping.permitted_acl.contains(label))
+        || request.privacy_scope_digest
+            != privacy_scope_digest(Some(&mapping.cortana_project_id), None, &principal.acl)
+    {
+        return Err(ProviderOutcomeCode::Unauthorized);
+    }
+    let required_scope = match request.operation {
+        ProviderOperation::Context | ProviderOperation::EvidenceSearch => "query",
+        ProviderOperation::Status => "status",
+        ProviderOperation::MemoryRecall
+        | ProviderOperation::MemoryWrite
+        | ProviderOperation::MemoryWriteStatus => "memory",
+    };
+    if !principal.scopes.iter().any(|scope| scope == required_scope) {
+        return Err(ProviderOutcomeCode::Unauthorized);
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -446,6 +512,14 @@ fn validate_opaque(name: &str, value: &str) -> Result<()> {
             && !value.contains("://")
             && !value.to_ascii_lowercase().starts_with("bearer "),
         "{name} must be an opaque public reference"
+    );
+    Ok(())
+}
+
+fn validate_digest(name: &str, value: &str) -> Result<()> {
+    ensure!(
+        value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit()),
+        "{name} must be a SHA-256 hex digest"
     );
     Ok(())
 }

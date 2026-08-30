@@ -6,9 +6,10 @@ use cortana::integration::{
     ExternalWorkspaceMapping, IntegrationPrincipal, MappingStatus, PrincipalRole,
 };
 use cortana::provider::{
-    CapabilityDescriptor, ContextPin, ContextValidation, ProviderOperation, ProviderOutcome,
-    ProviderOutcomeCode, ProviderRequest, ProviderRequestLimits, ReplayGuard, TransportProfile,
-    ValidationCode, validate_context_bundle,
+    BrokerEnvelope, CapabilityDescriptor, ContextPin, ContextValidation, EffectStatus,
+    MemoryWriteEffect, ProviderOperation, ProviderOutcome, ProviderOutcomeCode, ProviderRequest,
+    ProviderRequestLimits, ReplayGuard, TransportProfile, ValidationCode,
+    authorize_provider_request, validate_context_bundle,
 };
 use cortana::{
     api, context, contracts::privacy_scope_digest, embed::DeterministicEmbedder, model::Evidence,
@@ -315,4 +316,107 @@ async fn http_exposes_the_versioned_provider_capability_descriptor() {
         .unwrap();
     let capabilities: CapabilityDescriptor = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(capabilities.contract_version, "cortana.provider.v1");
+}
+
+#[test]
+fn consumer_promotion_and_cortana_memory_are_independent_effects() {
+    let consumer_state_status = EffectStatus::Applied;
+    let memory_effect = MemoryWriteEffect {
+        contract_version: "cortana.provider.v1".into(),
+        effect_id: "effect_memory_1".into(),
+        idempotency_key: "memory_write_1".into(),
+        status: EffectStatus::Pending,
+        target_revision: None,
+        approving_principal_ref: "principal_opaque".into(),
+        provenance_digest: "c".repeat(64),
+    };
+    assert_eq!(consumer_state_status, EffectStatus::Applied);
+    assert_eq!(memory_effect.status, EffectStatus::Pending);
+
+    let ambiguous = ProviderOutcome::<MemoryWriteEffect>::failure(
+        TransportProfile::RemoteBroker,
+        ProviderOutcomeCode::AmbiguousWrite,
+        "write status is ambiguous",
+    );
+    assert!(!ambiguous.retryable);
+    assert!(ambiguous.user_action_required);
+    assert!(ambiguous.result.is_none());
+}
+
+#[test]
+fn provider_authorization_binds_request_mapping_principal_project_and_acl() {
+    let mut mapping = ExternalWorkspaceMapping::new(
+        "consumer_acme",
+        "workspace_external_42",
+        "work",
+        "cap_local_opaque",
+        vec!["work".into()],
+    )
+    .unwrap();
+    mapping.approve("owner-local").unwrap();
+    let mut principal = IntegrationPrincipal::new(
+        "principal_query",
+        PrincipalRole::QueryOnly,
+        &mapping.mapping_id,
+        vec!["work".into()],
+        None,
+    )
+    .unwrap();
+    let request = ProviderRequest::new(
+        "request_authorized",
+        &mapping.mapping_id,
+        &principal.principal_id,
+        "work",
+        privacy_scope_digest(Some("work"), None, &["work".into()]),
+        ProviderOperation::Context,
+        ProviderRequestLimits {
+            max_tokens: 512,
+            max_response_bytes: 256_000,
+            timeout_ms: 10_000,
+        },
+        Some("authorized_read"),
+    )
+    .unwrap();
+    assert_eq!(
+        authorize_provider_request(&request, &mapping, &principal, "2030-01-01T00:00:00Z"),
+        Ok(())
+    );
+
+    let mut wrong_project = request.clone();
+    wrong_project.project_ref = "other".into();
+    assert_eq!(
+        authorize_provider_request(&wrong_project, &mapping, &principal, "2030-01-01T00:00:00Z"),
+        Err(ProviderOutcomeCode::Unauthorized)
+    );
+    principal.revoke("owner-local").unwrap();
+    assert_eq!(
+        authorize_provider_request(&request, &mapping, &principal, "2030-01-01T00:00:00Z"),
+        Err(ProviderOutcomeCode::Unauthorized)
+    );
+}
+
+#[test]
+fn broker_envelope_rejects_caller_selected_endpoint_and_path_fields() {
+    let request = ProviderRequest::new(
+        "request_broker",
+        "mapping_opaque",
+        "principal_opaque",
+        "work",
+        privacy_scope_digest(Some("work"), None, &["work".into()]),
+        ProviderOperation::Context,
+        ProviderRequestLimits {
+            max_tokens: 512,
+            max_response_bytes: 256_000,
+            timeout_ms: 10_000,
+        },
+        Some("broker_read"),
+    )
+    .unwrap();
+    let envelope = BrokerEnvelope::new("connection_opaque", request, "d".repeat(64)).unwrap();
+    let mut value = serde_json::to_value(envelope).unwrap();
+    value.as_object_mut().unwrap().insert(
+        "endpoint".into(),
+        serde_json::json!("http://127.0.0.1:7331"),
+    );
+    assert!(serde_json::from_value::<BrokerEnvelope>(value).is_err());
 }
