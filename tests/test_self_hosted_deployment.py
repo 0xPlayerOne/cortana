@@ -54,6 +54,7 @@ def test_container_release_workflow_is_tag_scoped_and_publishes_ghcr() -> None:
     )
     assert "sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}" in workflow
     assert "docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8" in workflow
+    assert "CORTANA_CONFORMANCE_IMAGE: ${{ steps.metadata.outputs.tags }}" in workflow
     assert "scripts/self-hosted-conformance.sh" in workflow
 
 
