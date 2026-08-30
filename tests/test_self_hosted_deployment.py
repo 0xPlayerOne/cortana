@@ -47,5 +47,21 @@ def test_container_release_workflow_is_tag_scoped_and_publishes_ghcr() -> None:
     assert "tags:" in workflow and "- 'v*'" in workflow
     assert "packages: write" in workflow
     assert "ghcr.io/${{ github.repository }}" in workflow
-    assert "push: ${{ github.event_name != 'pull_request' }}" in workflow
+    assert "push: ${{ startsWith(github.ref, 'refs/tags/v') }}" in workflow
     assert "docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8" in workflow
+    assert "scripts/self-hosted-conformance.sh" in workflow
+
+
+def test_self_hosted_conformance_drill_is_bounded_and_cleans_up() -> None:
+    drill = (ROOT / "scripts" / "self-hosted-conformance.sh").read_text()
+
+    assert "127.0.0.1::7331" in drill
+    assert "--read-only" in drill
+    assert "--cap-drop ALL" in drill
+    assert "--security-opt no-new-privileges" in drill
+    assert "synthetic-provider-conformance-token" in drill
+    assert "docker restart --timeout 20" in drill
+    assert "backup --keep 3" in drill
+    assert "cortana.provider.v1" in drill
+    assert "trap cleanup EXIT INT TERM" in drill
+    assert 'docker volume rm "$data_volume" "$backup_volume"' in drill

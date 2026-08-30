@@ -239,7 +239,7 @@ pub fn authorize_provider_request(
         || principal.mapping_ref != mapping.mapping_id
         || request.project_ref != mapping.cortana_project_id
         || principal.status != PrincipalStatus::Active
-        || principal.is_active_at(at).unwrap_or(false) == false
+        || !principal.is_active_at(at).unwrap_or(false)
         || !principal
             .acl
             .iter()
