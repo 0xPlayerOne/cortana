@@ -29,6 +29,7 @@ Cortana documentation is divided by authority. Each document should define one d
 | Connector and reconciliation semantics                  | [Connector contract](contracts/connectors.md)                                                                                             |
 | Workspace, principal, and ACL mapping                   | [Identity contract](contracts/identity.md)                                                                                                |
 | Public API compatibility                                | [Public API contract](contracts/public-api.md)                                                                                            |
+| Knowledge graph identity and relationship semantics     | [Knowledge graph contract](contracts/knowledge-graph.md)                                                                                  |
 | ContextProvider compatibility and fixtures              | [ContextProvider contract](contracts/context-provider.md)                                                                                 |
 | Supported single-node container and VPS operations      | [Self-hosted deployment](self-hosted.md)                                                                                                  |
 | Security assets and trust boundaries                    | [Security and trust model](security-model.md)                                                                                             |
