@@ -1,12 +1,13 @@
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use ignore::WalkBuilder;
 use reqwest::Url;
 use serde_json::json;
 
+use crate::code_intelligence::{inspect_repository, is_generated_or_vendor};
 use crate::model::Document;
 
 const TEXT_EXTENSIONS: &[&str] = &[
@@ -127,6 +128,7 @@ pub fn filesystem_document_iter(
     let filter_root = canonical_root.clone();
     let filter_excludes = excludes.to_vec();
     let document_root = canonical_root.clone();
+    let repository = inspect_repository(&canonical_root)?;
     let source = source.to_string();
     let project = project.to_string();
     let iterator = WalkBuilder::new(&canonical_root)
@@ -141,11 +143,13 @@ pub fn filesystem_document_iter(
         .build()
         .filter_map(move |entry| match entry {
             Err(error) => Some(Err(error.into())),
-            Ok(entry) => match filesystem_document(&entry, &document_root, &source, &project) {
-                Ok(Some(document)) => Some(Ok(document)),
-                Ok(None) => None,
-                Err(error) => Some(Err(error)),
-            },
+            Ok(entry) => {
+                match filesystem_document(&entry, &document_root, &source, &project, &repository) {
+                    Ok(Some(document)) => Some(Ok(document)),
+                    Ok(None) => None,
+                    Err(error) => Some(Err(error)),
+                }
+            }
         });
     Ok(Box::new(iterator))
 }
@@ -155,6 +159,7 @@ fn filesystem_document(
     canonical_root: &Path,
     source: &str,
     project: &str,
+    repository: &crate::code_intelligence::RepositoryIdentity,
 ) -> Result<Option<Document>> {
     let path = entry.path();
     if !entry.file_type().is_some_and(|kind| kind.is_file()) || !is_text(path) {
@@ -183,23 +188,57 @@ fn filesystem_document(
         .ok()
         .map(DateTime::<Utc>::from)
         .unwrap_or_else(Utc::now);
-    let uri = Url::from_file_path(path)
-        .map(|url| url.to_string())
-        .map_err(|_| anyhow!("filesystem path cannot be represented as a file URI"))?;
+    let relative_text = relative.to_string_lossy().into_owned();
+    let is_code = crate::code_intelligence::detect_language(&relative_text)
+        != crate::code_intelligence::Language::Unknown;
+    // Code evidence uses repository-qualified identities; ordinary filesystem
+    // documents retain their existing relative source IDs. Neither URI shape
+    // discloses the private absolute host path.
+    let mut uri = Url::parse(if is_code {
+        "code://repository"
+    } else {
+        "cortana://filesystem"
+    })
+    .context("filesystem identity cannot be represented as a safe URI")?;
+    {
+        let mut segments = uri
+            .path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("filesystem URI cannot accept relative path segments"))?;
+        if is_code {
+            segments.push(&repository.repository_id);
+        }
+        for component in relative.components() {
+            if let Some(component) = component.as_os_str().to_str() {
+                segments.push(component);
+            }
+        }
+    }
+    let mut document_metadata = json!({
+        "root": canonical_root.file_name().and_then(|name| name.to_str()),
+        "extension": path.extension().and_then(|extension| extension.to_str()),
+        "bytes": metadata.len(),
+    });
+    if is_code {
+        let (generated, vendor) = is_generated_or_vendor(relative);
+        let mut code = repository.metadata();
+        code["generated"] = json!(generated);
+        code["vendor"] = json!(vendor);
+        document_metadata["code"] = code;
+    }
     Ok(Some(Document {
         source: source.to_string(),
-        source_id: relative.to_string_lossy().into_owned(),
-        title: relative.to_string_lossy().into_owned(),
+        source_id: if is_code {
+            format!("{}:{relative_text}", repository.repository_id)
+        } else {
+            relative_text.clone()
+        },
+        title: relative_text,
         content,
-        uri: Some(uri),
+        uri: Some(uri.to_string()),
         updated_at,
         project: project.to_string(),
         acl: Vec::new(),
-        metadata: json!({
-            "root": canonical_root.file_name().and_then(|name| name.to_str()),
-            "extension": path.extension().and_then(|extension| extension.to_str()),
-            "bytes": metadata.len(),
-        }),
+        metadata: document_metadata,
     }))
 }
 
@@ -226,8 +265,10 @@ fn is_generated(path: &Path, root: &Path) -> bool {
         "build",
         "coverage",
         "dist",
+        ".next",
         "node_modules",
         "target",
+        "vendor",
     ];
     path.strip_prefix(root)
         .unwrap_or(path)
@@ -264,6 +305,15 @@ mod tests {
             "fn duplicate() {}",
         )
         .expect("worktree file");
+        for directory_name in ["vendor", ".next"] {
+            std::fs::create_dir_all(directory.path().join(directory_name))
+                .expect("excluded generated directory");
+            std::fs::write(
+                directory.path().join(directory_name).join("duplicate.rs"),
+                "fn duplicate() {}",
+            )
+            .expect("excluded generated file");
+        }
 
         let documents = filesystem_documents_with_excludes(
             directory.path(),
@@ -274,7 +324,22 @@ mod tests {
         .expect("documents");
 
         assert_eq!(documents.len(), 1);
-        assert_eq!(documents[0].source_id, "keep.rs");
+        assert!(documents[0].source_id.ends_with(":keep.rs"));
+        assert!(documents[0].metadata["code"]["repository_id"].is_string());
+        let repeated = filesystem_documents_with_excludes(
+            directory.path(),
+            "code",
+            "work",
+            &["second-brain".into()],
+        )
+        .expect("repeated documents");
+        assert_eq!(documents[0].source_id, repeated[0].source_id);
+
+        let other = tempfile::tempdir().expect("other source root");
+        std::fs::write(other.path().join("keep.rs"), "fn keep() {}").expect("other file");
+        let other_documents =
+            filesystem_documents(other.path(), "code", "work").expect("other repository documents");
+        assert_ne!(documents[0].source_id, other_documents[0].source_id);
     }
 
     #[test]
@@ -352,7 +417,7 @@ mod tests {
         let documents = filesystem_documents(&root, "code", "work").expect("documents");
 
         assert_eq!(documents.len(), 1);
-        assert_eq!(documents[0].source_id, "keep.rs");
+        assert!(documents[0].source_id.ends_with(":keep.rs"));
     }
 
     #[test]
@@ -363,7 +428,7 @@ mod tests {
 
         let documents = filesystem_documents(&file, "code", "work").expect("documents");
         assert_eq!(documents.len(), 1);
-        assert_eq!(documents[0].source_id, "single.rs");
+        assert!(documents[0].source_id.ends_with(":single.rs"));
         assert_eq!(documents[0].title, "single.rs");
 
         let plan = filesystem_plan(&file, &[], 1, 1_000, Duration::from_secs(5), false)
@@ -382,12 +447,12 @@ mod tests {
         let documents = filesystem_documents(&root, "code", "work").expect("documents");
 
         assert_eq!(documents.len(), 1);
-        assert_eq!(documents[0].source_id, "nested/mod.rs");
+        assert!(documents[0].source_id.ends_with(":nested/mod.rs"));
         assert_eq!(documents[0].title, "nested/mod.rs");
     }
 
     #[test]
-    fn filesystem_source_escapes_special_characters_in_file_uris() {
+    fn non_code_files_keep_relative_ids_and_use_private_path_free_uris() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let root = directory.path().join("project with #hash");
         std::fs::create_dir_all(&root).expect("source root");
@@ -395,10 +460,11 @@ mod tests {
         std::fs::write(&file, "encoded source link").expect("source file");
 
         let documents = filesystem_documents(&root, "code", "work").expect("documents");
-        let expected = Url::from_file_path(file.canonicalize().expect("canonical file"))
-            .expect("file URL")
-            .to_string();
-
-        assert_eq!(documents[0].uri.as_deref(), Some(expected.as_str()));
+        assert_eq!(documents[0].source_id, "notes ? draft.md");
+        assert!(documents[0].metadata.get("code").is_none());
+        let uri = documents[0].uri.as_deref().expect("filesystem URI");
+        assert!(uri.starts_with("cortana://filesystem/"));
+        assert!(uri.ends_with("/notes%20%3F%20draft.md"));
+        assert!(!uri.contains(directory.path().to_string_lossy().as_ref()));
     }
 }

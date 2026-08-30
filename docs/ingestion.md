@@ -317,6 +317,7 @@ source (the Desktop token file picker creates the destination before authorizati
 [[sources]]
 name = "community-discord"
 kind = "discord"
+enabled = false
 project = "community"
 channels = ["123456789012345678"]
 servers = ["987654321098765432"]
@@ -365,6 +366,7 @@ source (the Desktop token file picker creates the destination before authorizati
 [[sources]]
 name = "team-slack"
 kind = "slack"
+enabled = false
 project = "work"
 channels = ["C0123456789"]
 teams = ["T0123456789"]

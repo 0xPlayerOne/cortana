@@ -261,7 +261,16 @@ pub async fn retrieve_sources_scoped_with_status(
         diagnostics.candidate_limit = diagnostics.candidate_limit.max(rows.1.candidate_limit);
         diagnostics.semantic_candidates += rows.1.semantic_candidates;
         diagnostics.lexical_candidates += rows.1.lexical_candidates;
-        for (rank, evidence) in rows.0.into_iter().enumerate() {
+        let evidence = promote_exact_code_symbols(
+            store,
+            query,
+            project,
+            Some(source),
+            principal_acl,
+            result_limit,
+            rows.0,
+        )?;
+        for (rank, evidence) in evidence.into_iter().enumerate() {
             let key = evidence_dedupe_key(&evidence);
             let reciprocal_rank = 1.0 / (60.0 + rank as f32 + 1.0);
             fused
@@ -369,6 +378,15 @@ async fn retrieve_with_timeout_status(
         }
         Err(error) => return Err(error),
     };
+    let evidence = promote_exact_code_symbols(
+        store,
+        query,
+        project,
+        source,
+        principal_acl,
+        limit.min(MAX_RESULT_LIMIT),
+        evidence,
+    )?;
     let mode = if warning.is_some() {
         RetrievalMode::LexicalFallback
     } else {
@@ -380,6 +398,88 @@ async fn retrieve_with_timeout_status(
         warning: warning.map(str::to_string),
         diagnostics,
     })
+}
+
+fn promote_exact_code_symbols(
+    store: &Store,
+    query: &str,
+    project: Option<&str>,
+    source: Option<&str>,
+    principal_acl: &[String],
+    limit: usize,
+    mut evidence: Vec<Evidence>,
+) -> Result<Vec<Evidence>> {
+    let hits = store.search_code_symbols(
+        query,
+        project,
+        source,
+        &crate::code_intelligence::CodeSymbolFilters::default(),
+        principal_acl,
+        limit.max(1),
+    )?;
+    let exact = hits.into_iter().filter(|hit| hit.exact).collect::<Vec<_>>();
+    if exact.is_empty() {
+        return Ok(evidence);
+    }
+    for hit in exact.into_iter().rev() {
+        let symbol = hit.symbol;
+        let marker = serde_json::json!({
+            "symbol_id": symbol.id,
+            "qualified_name": symbol.qualified_name,
+            "repository_id": symbol.repository_id,
+            "revision": symbol.revision,
+            "file": symbol.file,
+            "span": symbol.span,
+            "exact": true,
+            "ambiguous": hit.ambiguous,
+        });
+        if let Some(position) = evidence.iter().position(|row| row.source_id == symbol.file) {
+            let mut row = evidence.remove(position);
+            row.score += 10.0;
+            row.metadata["code_evidence"] = marker;
+            evidence.insert(0, row);
+            continue;
+        }
+        let Some(document) =
+            store.code_document_by_source_id_scoped(&symbol.file, project, principal_acl)?
+        else {
+            continue;
+        };
+        let mut start = symbol.span.start_byte.saturating_sub(512);
+        while start > 0 && !document.content.is_char_boundary(start) {
+            start -= 1;
+        }
+        let mut end = symbol
+            .span
+            .end_byte
+            .saturating_add(512)
+            .min(document.content.len());
+        while end < document.content.len() && !document.content.is_char_boundary(end) {
+            end += 1;
+        }
+        let mut metadata = sanitize_evidence_metadata(&document.metadata);
+        metadata["code_evidence"] = marker;
+        evidence.insert(
+            0,
+            Evidence {
+                chunk_id: format!("symbol:{}", symbol.id),
+                source: document.source,
+                source_id: document.source_id,
+                title: document.title,
+                uri: document.uri,
+                content: document.content[start..end].to_string(),
+                score: 10.0,
+                semantic_rank: None,
+                lexical_rank: None,
+                updated_at: document.updated_at,
+                metadata,
+            },
+        );
+    }
+    let mut seen = HashSet::new();
+    evidence.retain(|row| seen.insert(evidence_dedupe_key(row)));
+    evidence.truncate(limit);
+    Ok(evidence)
 }
 
 fn validate_query(query: &str) -> Result<()> {
@@ -740,6 +840,75 @@ fn evidence(
         semantic_rank: semantic.get(&chunk.id).copied(),
         lexical_rank: lexical.get(&chunk.id).copied(),
         updated_at: chunk.updated_at,
+        metadata: sanitize_evidence_metadata(&chunk.metadata),
+    }
+}
+
+const MAX_EVIDENCE_METADATA_BYTES: usize = 16 * 1024;
+const MAX_EVIDENCE_METADATA_DEPTH: usize = 8;
+const MAX_EVIDENCE_METADATA_ITEMS: usize = 64;
+const MAX_EVIDENCE_METADATA_STRING_BYTES: usize = 4 * 1024;
+
+fn sanitize_evidence_metadata(value: &serde_json::Value) -> serde_json::Value {
+    fn sensitive(key: &str) -> bool {
+        let key = key
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect::<String>();
+        [
+            "accesskey",
+            "apikey",
+            "authorization",
+            "cookie",
+            "credential",
+            "password",
+            "privatekey",
+            "refreshtoken",
+            "secret",
+            "token",
+        ]
+        .iter()
+        .any(|marker| key.contains(marker))
+    }
+
+    fn visit(value: &serde_json::Value, depth: usize) -> serde_json::Value {
+        if depth >= MAX_EVIDENCE_METADATA_DEPTH {
+            return serde_json::Value::String("[truncated]".into());
+        }
+        match value {
+            serde_json::Value::Object(map) => serde_json::Value::Object(
+                map.iter()
+                    .filter(|(key, _)| !sensitive(key))
+                    .take(MAX_EVIDENCE_METADATA_ITEMS)
+                    .map(|(key, value)| (key.clone(), visit(value, depth + 1)))
+                    .collect(),
+            ),
+            serde_json::Value::Array(values) => serde_json::Value::Array(
+                values
+                    .iter()
+                    .take(MAX_EVIDENCE_METADATA_ITEMS)
+                    .map(|value| visit(value, depth + 1))
+                    .collect(),
+            ),
+            serde_json::Value::String(value) => serde_json::Value::String(
+                value
+                    .char_indices()
+                    .take_while(|(index, _)| *index < MAX_EVIDENCE_METADATA_STRING_BYTES)
+                    .map(|(_, character)| character)
+                    .collect(),
+            ),
+            _ => value.clone(),
+        }
+    }
+
+    let sanitized = visit(value, 0);
+    if serde_json::to_vec(&sanitized)
+        .is_ok_and(|encoded| encoded.len() <= MAX_EVIDENCE_METADATA_BYTES)
+    {
+        sanitized
+    } else {
+        serde_json::json!({"metadata_truncated": true})
     }
 }
 
@@ -837,6 +1006,7 @@ mod tests {
             acl: Vec::new(),
             embedding: vec![1.0, 0.0],
             updated_at: Utc::now(),
+            metadata: serde_json::Value::Null,
             strategy: None,
             parent_key: None,
             previous_key: None,
@@ -866,6 +1036,25 @@ mod tests {
         second.uri.clone_from(&first.uri);
 
         assert_eq!(dedupe_key(&first), dedupe_key(&second));
+    }
+
+    #[test]
+    fn evidence_metadata_is_secret_free_and_bounded() {
+        let metadata = json!({
+            "repository": "safe",
+            "access_token": "must-not-escape",
+            "apiKey": "camel-api-secret",
+            "privateKey": "camel-private-secret",
+            "nested": {"client_secret": "hidden", "branch": "main"},
+            "large": "x".repeat(MAX_EVIDENCE_METADATA_BYTES * 2),
+        });
+        let sanitized = sanitize_evidence_metadata(&metadata);
+        let encoded = serde_json::to_string(&sanitized).expect("metadata JSON");
+        assert!(!encoded.contains("must-not-escape"));
+        assert!(!encoded.contains("hidden"));
+        assert!(!encoded.contains("camel-api-secret"));
+        assert!(!encoded.contains("camel-private-secret"));
+        assert!(encoded.len() <= MAX_EVIDENCE_METADATA_BYTES);
     }
 
     #[tokio::test]
@@ -915,6 +1104,48 @@ mod tests {
         assert_eq!(evidence[0].title, "Qwen runbook");
         assert_eq!(evidence[0].semantic_rank, None);
         assert_eq!(evidence[0].lexical_rank, Some(1));
+    }
+
+    #[tokio::test]
+    async fn exact_code_symbol_is_promoted_with_canonical_span_metadata() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let content = "fn unrelated() {}\npub fn exact_symbol() -> usize { 7 }\n";
+        let document = Document {
+            source: "code".into(),
+            source_id: "repo:src/lib.rs".into(),
+            title: "src/lib.rs".into(),
+            content: content.into(),
+            uri: Some("cortana://code/repo/src/lib.rs".into()),
+            updated_at: Utc::now(),
+            project: "cortana".into(),
+            acl: vec!["work".into()],
+            metadata: json!({"code": {
+                "repository_id": "repo",
+                "revision": "abc:main:committed"
+            }}),
+        };
+        store
+            .upsert(&document, &[(content.into(), vec![1.0, 0.0])])
+            .expect("upsert");
+        let outcome = retrieve_scoped_with_status(
+            &store,
+            &(Arc::new(UnavailableEmbedder) as Arc<dyn Embedder>),
+            "exact_symbol",
+            Some("cortana"),
+            Some("code"),
+            10,
+            &["work".into()],
+        )
+        .await
+        .expect("code retrieval");
+        assert_eq!(outcome.evidence[0].source_id, "repo:src/lib.rs");
+        assert_eq!(
+            outcome.evidence[0].metadata["code_evidence"]["qualified_name"],
+            "exact_symbol"
+        );
+        assert_eq!(outcome.evidence[0].metadata["code_evidence"]["exact"], true);
+        assert!(outcome.evidence[0].content.contains("pub fn exact_symbol"));
     }
 
     #[tokio::test]

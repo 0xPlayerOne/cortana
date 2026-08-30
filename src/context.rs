@@ -385,6 +385,7 @@ mod tests {
             semantic_rank: Some(1),
             lexical_rank: Some(2),
             updated_at: Utc::now(),
+            metadata: serde_json::Value::Null,
         }
     }
 

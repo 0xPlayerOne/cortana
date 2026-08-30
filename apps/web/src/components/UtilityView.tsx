@@ -20,6 +20,7 @@ import {
 import { type ComponentProps, useState } from 'react'
 
 import { openDesktopUrl } from '../api'
+import { codeRevisionLabel } from '../codeEvidence'
 import type {
   AnswerResponse,
   BrainStatus,
@@ -484,7 +485,8 @@ function ConversationsView({
                 <div className="utility-item-main">
                   <strong>{item.title}</strong>
                   <span>
-                    {item.source} · updated {new Date(item.updated_at).toLocaleDateString()}
+                    {codeRevisionLabel(item) ?? item.source} · updated{' '}
+                    {new Date(item.updated_at).toLocaleDateString()}
                   </span>
                 </div>
               </div>

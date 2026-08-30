@@ -4,6 +4,7 @@ pub mod auth;
 pub mod buzz_communities;
 pub mod chunking;
 pub mod classification;
+pub mod code_intelligence;
 pub mod config;
 pub mod connectors;
 pub mod consolidation;

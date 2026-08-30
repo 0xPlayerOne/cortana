@@ -1632,6 +1632,7 @@ mod tests {
             semantic_rank: Some(1),
             lexical_rank: Some(1),
             updated_at: Utc::now(),
+            metadata: serde_json::Value::Null,
         }];
         let mut request = request();
         request.include_evidence = true;
@@ -1723,6 +1724,7 @@ mod tests {
             semantic_rank: Some(1),
             lexical_rank: Some(1),
             updated_at: Utc::now(),
+            metadata: serde_json::Value::Null,
         }];
         let mut request = request();
         request.include_evidence = true;

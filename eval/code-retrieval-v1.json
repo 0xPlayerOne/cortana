@@ -1,0 +1,121 @@
+{
+  "contract_version": "cortana.code-retrieval-eval.v1",
+  "repository": "https://github.com/0xPlayerOne/cortana",
+  "revision": "HEAD",
+  "documents": [
+    {
+      "id": "auth",
+      "path": "src/auth.rs",
+      "symbol": "AuthPolicy",
+      "expected_line": 68,
+      "expected_fragment": "pub struct AuthPolicy"
+    },
+    {
+      "id": "store",
+      "path": "src/store.rs",
+      "symbol": "code_relations",
+      "expected_line": 4172,
+      "expected_fragment": "pub fn code_relations"
+    },
+    {
+      "id": "mcp",
+      "path": "src/mcp.rs",
+      "symbol": "search_code",
+      "expected_line": 625,
+      "expected_fragment": "async fn search_code"
+    },
+    {
+      "id": "chunks",
+      "path": "src/chunking.rs",
+      "symbol": "chunk_document",
+      "expected_line": 85,
+      "expected_fragment": "pub fn chunk_document"
+    },
+    {
+      "id": "connectors",
+      "path": "src/connectors.rs",
+      "symbol": "filesystem_documents",
+      "expected_line": 106,
+      "expected_fragment": "pub fn filesystem_documents"
+    },
+    {
+      "id": "embed",
+      "path": "src/embed.rs",
+      "symbol": "DeterministicEmbedder",
+      "expected_line": 403,
+      "expected_fragment": "pub struct DeterministicEmbedder"
+    },
+    {
+      "id": "context",
+      "path": "src/context.rs",
+      "symbol": "ContextBundle",
+      "expected_line": 17,
+      "expected_fragment": "pub struct ContextBundle"
+    },
+    {
+      "id": "retrieval",
+      "path": "src/retrieval.rs",
+      "symbol": "retrieve_scoped_with_status",
+      "expected_line": 151,
+      "expected_fragment": "pub async fn retrieve_scoped_with_status"
+    },
+    {
+      "id": "parser",
+      "path": "src/code_intelligence.rs",
+      "symbol": "parse_document",
+      "expected_line": 587,
+      "expected_fragment": "pub fn parse_document"
+    },
+    {
+      "id": "certify",
+      "path": "src/cortana/connectors/certification.py",
+      "symbol": "certify_builtin",
+      "expected_line": 660,
+      "expected_fragment": "def certify_builtin"
+    },
+    {
+      "id": "retry",
+      "path": "src/cortana/connectors/chat.py",
+      "symbol": "_get_with_backoff",
+      "expected_line": 850,
+      "expected_fragment": "def _get_with_backoff"
+    },
+    {
+      "id": "api",
+      "path": "src/api.rs",
+      "symbol": "code_symbols",
+      "expected_line": 1870,
+      "expected_fragment": "async fn code_symbols"
+    }
+  ],
+  "budgets": {
+    "max_latency_ms": 50.0,
+    "max_peak_memory_bytes": 16777216
+  },
+  "queries": [
+    { "class": "exact_identifier", "query": "AuthPolicy", "expected": "auth" },
+    {
+      "class": "architecture",
+      "query": "ContextBundle evidence and token budget",
+      "expected": "context"
+    },
+    {
+      "class": "error",
+      "query": "_get_with_backoff retry rate limited connector",
+      "expected": "retry"
+    },
+    { "class": "api", "query": "code_symbols exact definition API", "expected": "api" },
+    {
+      "class": "dependency",
+      "query": "filesystem_documents repository traversal",
+      "expected": "connectors"
+    },
+    { "class": "impact", "query": "code_relations callers impact graph", "expected": "store" },
+    {
+      "class": "retrieval",
+      "query": "retrieve_scoped_with_status semantic lexical fallback",
+      "expected": "retrieval"
+    },
+    { "class": "parsing", "query": "parse_document language parser", "expected": "parser" }
+  ]
+}

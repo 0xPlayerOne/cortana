@@ -2,7 +2,7 @@
 
 Cortana stores the exact connector `Document` as the canonical record. Chunk rows are derived
 retrieval units and can be rebuilt without changing source identity, content, provenance, ACLs,
-or citations. The current contract is `cortana.chunking.v1`.
+or citations. The current contract is `cortana.chunking.v2`.
 
 ## Selection
 
@@ -14,7 +14,8 @@ The Rust chunker chooses a strategy from non-secret source metadata:
 - Calendar events and compact structured records keep field boundaries together before splitting.
 - Unknown or malformed records use the generic compatibility splitter.
 
-Code AST/symbol chunking is intentionally deferred to the code-intelligence milestone.
+Code sources with revision metadata use `code_symbol` chunks derived from bounded declaration
+parsing. Unsupported, partial, or symbol-free code safely falls back to generic chunks.
 
 ## Stable output
 

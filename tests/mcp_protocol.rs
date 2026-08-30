@@ -58,6 +58,7 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
                 "brain_status",
                 "cancel_memory_candidate",
                 "classify_memory_candidate",
+                "code_relations",
                 "consolidate_memory_candidate",
                 "context",
                 "export_memory",
@@ -65,6 +66,7 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
                 "forget",
                 "inspect_memory_representations",
                 "list_memory_candidates",
+                "lookup_symbol",
                 "propose_memory_candidate",
                 "provider_capabilities",
                 "recall",
@@ -88,6 +90,30 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
             remember_schema["properties"]["provenance"].is_object(),
             "remember.provenance must be an object schema so strict MCP clients accept tools/list"
         );
+        let lookup = tools
+            .iter()
+            .find(|tool| tool.name == "lookup_symbol")
+            .expect("lookup_symbol tool must be present");
+        let lookup_schema = serde_json::to_value(&*lookup.input_schema)?;
+        assert_eq!(lookup_schema["type"], "object");
+        assert_eq!(lookup_schema["properties"]["query"]["type"], "string");
+        assert!(
+            lookup_schema["properties"]["limit"]["type"]
+                .as_array()
+                .is_some_and(|types| types.iter().any(|kind| kind == "integer"))
+        );
+        assert_eq!(lookup_schema["additionalProperties"], false);
+        let relations = tools
+            .iter()
+            .find(|tool| tool.name == "code_relations")
+            .expect("code_relations tool must be present");
+        let relation_schema = serde_json::to_value(&*relations.input_schema)?;
+        assert_eq!(relation_schema["type"], "object");
+        assert_eq!(relation_schema["properties"]["symbol_id"]["type"], "string");
+        let relation_schema_text = relation_schema.to_string();
+        assert!(relation_schema_text.contains("impact"));
+        assert!(relation_schema_text.contains("dependencies"));
+        assert_eq!(relation_schema["additionalProperties"], false);
 
         // tools/call for brain_status must succeed with a structured JSON text result.
         let result: CallToolResult = client

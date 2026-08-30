@@ -16,8 +16,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     auth::{AuthPolicy, MEMORY_SCOPE, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows},
+    code_intelligence::{
+        CodeSymbolFilters, Language, RelationQuery, decode_relation_cursor, encode_relation_cursor,
+    },
     config::Config,
     context,
+    contracts::API_CONTRACT_VERSION,
     embed::Embedder,
     memory::{MemoryInput, MemoryStats},
     retrieval::{self, RetrievalTuning},
@@ -27,7 +31,7 @@ use crate::{
 const MAX_SCOPE_BYTES: usize = 256;
 const STATS_TIMEOUT: Duration = Duration::from_secs(2);
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SearchParams {
     query: String,
@@ -36,7 +40,7 @@ pub struct SearchParams {
     limit: Option<usize>,
 }
 
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ContextParams {
     query: String,
@@ -52,6 +56,60 @@ pub struct DomainSearchParams {
     query: String,
     project: Option<String>,
     limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CodeSymbolParams {
+    #[serde(default)]
+    query: String,
+    project: Option<String>,
+    repository_id: Option<String>,
+    revision: Option<String>,
+    language: Option<String>,
+    file: Option<String>,
+    qualified_name: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CodeRelationParams {
+    #[serde(default)]
+    symbol_id: String,
+    project: Option<String>,
+    query: Option<RelationQuery>,
+    depth: Option<usize>,
+    cursor: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct CodeSymbolToolParams(serde_json::Map<String, serde_json::Value>);
+
+impl schemars::JsonSchema for CodeSymbolToolParams {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        <CodeSymbolParams as schemars::JsonSchema>::schema_name()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <CodeSymbolParams as schemars::JsonSchema>::json_schema(generator)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct CodeRelationToolParams(serde_json::Map<String, serde_json::Value>);
+
+impl schemars::JsonSchema for CodeRelationToolParams {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        <CodeRelationParams as schemars::JsonSchema>::schema_name()
+    }
+
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        <CodeRelationParams as schemars::JsonSchema>::json_schema(generator)
+    }
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -567,6 +625,405 @@ impl BrainServer {
     async fn search_code(&self, Parameters(params): Parameters<DomainSearchParams>) -> String {
         self.domain_search("mcp.search_code", &self.code_sources, params)
             .await
+    }
+
+    #[tool(
+        description = "Look up revision-aware code definitions and declarations. Exact identifiers rank first; duplicate definitions are marked ambiguous."
+    )]
+    async fn lookup_symbol(
+        &self,
+        Parameters(CodeSymbolToolParams(raw)): Parameters<CodeSymbolToolParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) if principal.has_scope(QUERY_SCOPE) => principal,
+            Ok(principal) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.lookup_symbol",
+                    None,
+                    None,
+                    "forbidden",
+                    None,
+                    started,
+                );
+                return code_error("forbidden", "query scope required", false);
+            }
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.lookup_symbol",
+                    None,
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                let _ = error;
+                return code_error("unauthorized", "authorization required", false);
+            }
+        };
+        let params =
+            match serde_json::from_value::<CodeSymbolParams>(serde_json::Value::Object(raw)) {
+                Ok(params) => params,
+                Err(_) => {
+                    self.audit_principal(
+                        &principal,
+                        "mcp.lookup_symbol",
+                        None,
+                        None,
+                        "invalid",
+                        None,
+                        started,
+                    );
+                    return code_error(
+                        "invalid_request",
+                        "tool arguments do not match the code symbol schema",
+                        false,
+                    );
+                }
+            };
+        if let Err(error) = validate_request(&params.query, params.project.as_deref(), None) {
+            self.audit_principal(
+                &principal,
+                "mcp.lookup_symbol",
+                params.project.as_deref(),
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return code_error("invalid_request", &error.to_string(), false);
+        }
+        for (name, value, max) in [
+            ("repository_id", params.repository_id.as_deref(), 128),
+            ("revision", params.revision.as_deref(), 256),
+            ("file", params.file.as_deref(), 1_024),
+            ("qualified_name", params.qualified_name.as_deref(), 1_024),
+        ] {
+            if let Err(error) = validate_code_filter(name, value, max) {
+                self.audit_principal(
+                    &principal,
+                    "mcp.lookup_symbol",
+                    params.project.as_deref(),
+                    None,
+                    "invalid",
+                    None,
+                    started,
+                );
+                return code_error("invalid_request", &error, false);
+            }
+        }
+        let language = params.language.as_deref().and_then(Language::from_filter);
+        if params.language.is_some() && language.is_none() {
+            self.audit_principal(
+                &principal,
+                "mcp.lookup_symbol",
+                params.project.as_deref(),
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return code_error("invalid_request", "language is unsupported", false);
+        }
+        let filters = CodeSymbolFilters {
+            repository_id: params.repository_id.clone(),
+            revision: params.revision.clone(),
+            language,
+            file: params.file.clone(),
+            qualified_name: params.qualified_name.clone(),
+        };
+        let acl = principal.visible_acl();
+        match self.store.search_code_symbols(
+            &params.query,
+            params.project.as_deref(),
+            None,
+            &filters,
+            &acl,
+            params.limit.unwrap_or(20).min(retrieval::MAX_RESULT_LIMIT),
+        ) {
+            Ok(results) => {
+                let corpus_revision = match self.store.corpus_revision() {
+                    Ok(revision) => revision,
+                    Err(_) => {
+                        self.audit_principal(
+                            &principal,
+                            "mcp.lookup_symbol",
+                            params.project.as_deref(),
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        return code_error("index_unavailable", "query unavailable", true);
+                    }
+                };
+                let result_count = results.len();
+                let response = serde_json::json!({
+                    "contract_version": API_CONTRACT_VERSION,
+                    "correlation_id": uuid::Uuid::new_v4().to_string(),
+                    "corpus_revision": corpus_revision,
+                    "embedding_fingerprint": self.embedder.fingerprint(),
+                    "results": results,
+                });
+                let encoded = match bounded_code_json(&response) {
+                    Ok(encoded) => encoded,
+                    Err(error) => {
+                        self.audit_principal(
+                            &principal,
+                            "mcp.lookup_symbol",
+                            params.project.as_deref(),
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        return code_error("response_budget", error, true);
+                    }
+                };
+                self.audit_principal(
+                    &principal,
+                    "mcp.lookup_symbol",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(result_count),
+                    started,
+                );
+                encoded
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.lookup_symbol",
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                let _ = error;
+                code_error("index_unavailable", "query unavailable", true)
+            }
+        }
+    }
+
+    #[tool(
+        description = "Return one bounded, ACL-filtered page of callers, callees, imports, dependencies, and references for a code symbol."
+    )]
+    async fn code_relations(
+        &self,
+        Parameters(CodeRelationToolParams(raw)): Parameters<CodeRelationToolParams>,
+    ) -> String {
+        let started = Instant::now();
+        let principal = match self.resolve_principal() {
+            Ok(principal) if principal.has_scope(QUERY_SCOPE) => principal,
+            Ok(principal) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.code_relations",
+                    None,
+                    None,
+                    "forbidden",
+                    None,
+                    started,
+                );
+                return code_error("forbidden", "query scope required", false);
+            }
+            Err(error) => {
+                self.audit_as(
+                    "mcp-unauthenticated",
+                    "mcp.code_relations",
+                    None,
+                    None,
+                    "unauthorized",
+                    None,
+                    started,
+                );
+                let _ = error;
+                return code_error("unauthorized", "authorization required", false);
+            }
+        };
+        let params =
+            match serde_json::from_value::<CodeRelationParams>(serde_json::Value::Object(raw)) {
+                Ok(params) => params,
+                Err(_) => {
+                    self.audit_principal(
+                        &principal,
+                        "mcp.code_relations",
+                        None,
+                        None,
+                        "invalid",
+                        None,
+                        started,
+                    );
+                    return code_error(
+                        "invalid_request",
+                        "tool arguments do not match the code relation schema",
+                        false,
+                    );
+                }
+            };
+        if params.symbol_id.trim().is_empty() || params.symbol_id.len() > 256 {
+            self.audit_principal(
+                &principal,
+                "mcp.code_relations",
+                params.project.as_deref(),
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return code_error(
+                "invalid_request",
+                "symbol_id must contain 1 to 256 bytes",
+                false,
+            );
+        }
+        if let Err(error) = validate_scopes(params.project.as_deref(), None) {
+            self.audit_principal(
+                &principal,
+                "mcp.code_relations",
+                params.project.as_deref(),
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return code_error("invalid_request", &error.to_string(), false);
+        }
+        let query = params.query.unwrap_or_default();
+        let depth = params.depth.unwrap_or(1);
+        let corpus_revision = match self.store.corpus_revision() {
+            Ok(revision) => revision,
+            Err(_) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.code_relations",
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                return code_error("index_unavailable", "query unavailable", true);
+            }
+        };
+        let acl = principal.visible_acl();
+        let cursor = match params.cursor.as_deref() {
+            Some(cursor) => match decode_relation_cursor(
+                cursor,
+                corpus_revision,
+                &params.symbol_id,
+                params.project.as_deref(),
+                &acl,
+                query,
+                depth,
+            ) {
+                Ok(cursor) => cursor,
+                Err(error) => {
+                    self.audit_principal(
+                        &principal,
+                        "mcp.code_relations",
+                        params.project.as_deref(),
+                        None,
+                        "invalid",
+                        None,
+                        started,
+                    );
+                    return code_error("invalid_cursor", &error.to_string(), false);
+                }
+            },
+            None => 0,
+        };
+        match self.store.code_relations(
+            &params.symbol_id,
+            params.project.as_deref(),
+            &acl,
+            query,
+            depth,
+            cursor,
+            params.limit.unwrap_or(20).min(retrieval::MAX_RESULT_LIMIT),
+        ) {
+            Ok(mut page) => {
+                if let Some(offset) = page
+                    .next_cursor
+                    .take()
+                    .and_then(|cursor| cursor.parse::<usize>().ok())
+                {
+                    page.next_cursor = match encode_relation_cursor(
+                        offset,
+                        corpus_revision,
+                        &params.symbol_id,
+                        params.project.as_deref(),
+                        &acl,
+                        query,
+                        depth,
+                    ) {
+                        Ok(cursor) => Some(cursor),
+                        Err(_) => {
+                            self.audit_principal(
+                                &principal,
+                                "mcp.code_relations",
+                                params.project.as_deref(),
+                                None,
+                                "failed",
+                                None,
+                                started,
+                            );
+                            return code_error("index_unavailable", "query unavailable", true);
+                        }
+                    };
+                }
+                let result_count = page.relations.len();
+                let response = serde_json::json!({
+                    "contract_version": API_CONTRACT_VERSION,
+                    "correlation_id": uuid::Uuid::new_v4().to_string(),
+                    "corpus_revision": corpus_revision,
+                    "embedding_fingerprint": self.embedder.fingerprint(),
+                    "page": page,
+                });
+                let encoded = match bounded_code_json(&response) {
+                    Ok(encoded) => encoded,
+                    Err(error) => {
+                        self.audit_principal(
+                            &principal,
+                            "mcp.code_relations",
+                            params.project.as_deref(),
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        return code_error("response_budget", error, true);
+                    }
+                };
+                self.audit_principal(
+                    &principal,
+                    "mcp.code_relations",
+                    params.project.as_deref(),
+                    None,
+                    "succeeded",
+                    Some(result_count),
+                    started,
+                );
+                encoded
+            }
+            Err(error) => {
+                self.audit_principal(
+                    &principal,
+                    "mcp.code_relations",
+                    params.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                let _ = error;
+                code_error("index_unavailable", "query unavailable", true)
+            }
+        }
     }
 
     #[tool(
@@ -1830,6 +2287,36 @@ fn validate_request(
     validate_scopes(project, source)
 }
 
+fn validate_code_filter(name: &str, value: Option<&str>, max: usize) -> Result<(), String> {
+    if value.is_some_and(|value| {
+        value.is_empty() || value.len() > max || value.chars().any(char::is_control)
+    }) {
+        return Err(format!("{name} must contain 1 to {max} bytes"));
+    }
+    Ok(())
+}
+
+const MAX_CODE_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+
+fn bounded_code_json(value: &impl Serialize) -> Result<String, &'static str> {
+    let encoded = serde_json::to_vec(value).map_err(|_| "code index error: query unavailable")?;
+    if encoded.len() > MAX_CODE_RESPONSE_BYTES {
+        return Err("code index error: response budget exceeded");
+    }
+    String::from_utf8(encoded).map_err(|_| "code index error: query unavailable")
+}
+
+fn code_error(code: &str, message: &str, retryable: bool) -> String {
+    serde_json::json!({
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+        "contract_version": API_CONTRACT_VERSION,
+        "correlation_id": uuid::Uuid::new_v4().to_string(),
+    })
+    .to_string()
+}
+
 pub async fn serve(server: BrainServer) -> anyhow::Result<()> {
     server.serve(stdio()).await?.waiting().await?;
     Ok(())
@@ -2247,6 +2734,157 @@ mod tests {
         let audit = store.audit_events(10).expect("audit");
         assert_eq!(audit[0].action, "mcp.who_knows");
         assert_eq!(audit[1].action, "mcp.search_code");
+    }
+
+    #[tokio::test]
+    async fn code_tools_enforce_acl_filters_audit_and_shared_row_cap() {
+        fn object(value: serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+            value.as_object().expect("JSON object").clone()
+        }
+
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+        let embedder: Arc<dyn Embedder> = Arc::new(DeterministicEmbedder::new(16));
+        let functions = (0..60)
+            .map(|index| format!("pub fn symbol_{index}() {{}}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let content = format!("use dependency;\npub fn target() {{ symbol_0(); }}\n{functions}");
+        for (source_id, repository_id, acl) in [
+            ("repo:src/lib.rs", "repo", "work"),
+            ("private:src/lib.rs", "private", "personal"),
+        ] {
+            store
+                .upsert(
+                    &Document {
+                        source: "code".into(),
+                        source_id: source_id.into(),
+                        title: "src/lib.rs".into(),
+                        content: content.clone(),
+                        uri: None,
+                        updated_at: Utc::now(),
+                        project: "demo".into(),
+                        acl: vec![acl.into()],
+                        metadata: serde_json::json!({"code": {
+                            "repository_id": repository_id,
+                            "revision": "abc:main:committed"
+                        }}),
+                    },
+                    &[(content.clone(), vec![1.0; 16])],
+                )
+                .expect("code document");
+        }
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let principal = AuthPolicy::from_config(&config)
+            .expect("policy")
+            .authenticate("work-secret")
+            .expect("principal");
+        let server = BrainServer::new(store.clone(), embedder).with_principal(principal);
+
+        let capped_value: serde_json::Value = serde_json::from_str(
+            &server
+                .lookup_symbol(Parameters(CodeSymbolToolParams(object(
+                    serde_json::json!({
+                        "query": "fn",
+                        "project": "demo",
+                        "repository_id": "repo",
+                        "revision": "abc:main:committed",
+                        "language": "rust",
+                        "file": "repo:src/lib.rs",
+                        "limit": 100,
+                    }),
+                ))))
+                .await,
+        )
+        .expect("symbol results");
+        assert_eq!(capped_value["contract_version"], API_CONTRACT_VERSION);
+        let capped: Vec<crate::code_intelligence::SymbolSearchHit> =
+            serde_json::from_value(capped_value["results"].clone()).expect("symbol result rows");
+        assert_eq!(capped.len(), retrieval::MAX_RESULT_LIMIT);
+        assert!(
+            capped
+                .iter()
+                .all(|hit| hit.symbol.repository_id.as_deref() == Some("repo"))
+        );
+
+        let target_value: serde_json::Value = serde_json::from_str(
+            &server
+                .lookup_symbol(Parameters(CodeSymbolToolParams(object(
+                    serde_json::json!({
+                        "query": "target",
+                        "project": "demo",
+                        "repository_id": "repo",
+                        "limit": 10,
+                    }),
+                ))))
+                .await,
+        )
+        .expect("target result");
+        let target: Vec<crate::code_intelligence::SymbolSearchHit> =
+            serde_json::from_value(target_value["results"].clone()).expect("target rows");
+        assert_eq!(target.len(), 1, "hidden duplicate must remain ACL-filtered");
+        let page_value: serde_json::Value = serde_json::from_str(
+            &server
+                .code_relations(Parameters(CodeRelationToolParams(object(
+                    serde_json::json!({
+                        "symbol_id": target[0].symbol.id.clone(),
+                        "project": "demo",
+                        "limit": 100,
+                    }),
+                ))))
+                .await,
+        )
+        .expect("relation page");
+        let page: crate::code_intelligence::RelationPage =
+            serde_json::from_value(page_value["page"].clone()).expect("relation rows");
+        assert!(!page.relations.is_empty());
+        assert!(page.relations.len() <= retrieval::MAX_RESULT_LIMIT);
+        let audit = store.audit_events(10).expect("audit");
+        assert!(
+            audit
+                .iter()
+                .any(|event| event.action == "mcp.lookup_symbol")
+        );
+        assert!(
+            audit
+                .iter()
+                .any(|event| event.action == "mcp.code_relations")
+        );
+
+        let invalid: serde_json::Value = serde_json::from_str(
+            &server
+                .lookup_symbol(Parameters(CodeSymbolToolParams(object(
+                    serde_json::json!({
+                        "query": 42,
+                        "unexpected": true,
+                    }),
+                ))))
+                .await,
+        )
+        .expect("structured invalid tool response");
+        assert_eq!(invalid["code"], "invalid_request");
+        assert!(invalid["correlation_id"].as_str().is_some());
+        let oversized_project: serde_json::Value = serde_json::from_str(
+            &server
+                .code_relations(Parameters(CodeRelationToolParams(object(
+                    serde_json::json!({
+                        "symbol_id": target[0].symbol.id.clone(),
+                        "project": "x".repeat(MAX_SCOPE_BYTES + 1),
+                    }),
+                ))))
+                .await,
+        )
+        .expect("structured oversized project response");
+        assert_eq!(oversized_project["code"], "invalid_request");
     }
 
     #[tokio::test]
@@ -2733,5 +3371,16 @@ mod tests {
                 .contains("query exceeds")
         );
         assert!(validate_request("work", Some("engineering"), Some("notes")).is_ok());
+    }
+
+    #[test]
+    fn mcp_code_responses_fail_closed_at_the_aggregate_byte_budget() {
+        let oversized = serde_json::json!({
+            "results": ["x".repeat(MAX_CODE_RESPONSE_BYTES)],
+        });
+        assert_eq!(
+            bounded_code_json(&oversized).expect_err("oversized response"),
+            "code index error: response budget exceeded"
+        );
     }
 }

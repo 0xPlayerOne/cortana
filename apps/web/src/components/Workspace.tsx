@@ -12,6 +12,7 @@ import {
 import { type ComponentProps, type CSSProperties, useEffect, useMemo, useState } from 'react'
 
 import { isDesktopApp, openDesktopUrl } from '../api'
+import { codeRevisionLabel } from '../codeEvidence'
 import { isFavoriteDocument, toggleFavoriteDocument } from '../favoriteDocuments'
 import { safeSourceLink } from '../sourceLinks'
 import { Badge } from './shadcn/badge'
@@ -981,7 +982,7 @@ function TimelineView({
             <i />
             <div>
               <strong>{item.title}</strong>
-              <span>{item.source}</span>
+              <span>{codeRevisionLabel(item) ?? item.source}</span>
             </div>
           </WorkspaceInteractive>
         ))}

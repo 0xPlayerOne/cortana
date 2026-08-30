@@ -187,6 +187,7 @@ token_env = "GITHUB_TOKEN"
 [[sources]]
 name = "team-slack"
 kind = "slack"
+enabled = false
 project = "work"
 channels = ["C0123456789"]
 token_env = "SLACK_BOT_TOKEN"
@@ -207,6 +208,7 @@ token_env = "SLACK_BOT_TOKEN"
 [[sources]]
 name = "community-discord"
 kind = "discord"
+enabled = false
 project = "community"
 channels = ["123456789012345678"]
 # Discord uses the signed-in Discord Desktop client through its local RPC

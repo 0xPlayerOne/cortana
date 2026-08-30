@@ -31,6 +31,10 @@ pub struct Evidence {
     pub semantic_rank: Option<usize>,
     pub lexical_rank: Option<usize>,
     pub updated_at: DateTime<Utc>,
+    /// Source-owned, non-secret provenance copied from the canonical document.
+    /// Code documents use this for repository and revision identity.
+    #[serde(default, skip_serializing_if = "Value::is_null")]
+    pub metadata: Value,
 }
 
 #[derive(Clone, Debug)]
@@ -44,6 +48,7 @@ pub struct StoredChunk {
     pub acl: Vec<String>,
     pub embedding: Vec<f32>,
     pub updated_at: DateTime<Utc>,
+    pub metadata: Value,
     /// Derived chunk lineage. Legacy rows may have no policy metadata.
     pub strategy: Option<String>,
     pub parent_key: Option<String>,
