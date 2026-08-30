@@ -1471,6 +1471,21 @@ impl BrainServer {
     }
 
     #[tool(
+        description = "Report the versioned Cortana provider operations, transport profiles, and limits without exposing endpoints or credentials"
+    )]
+    async fn provider_capabilities(&self) -> String {
+        let principal = match self.resolve_principal() {
+            Ok(principal) => principal,
+            Err(error) => return format!("authorization error: {error}"),
+        };
+        if !principal.has_scope(STATUS_SCOPE) {
+            return "authorization error: status scope required".into();
+        }
+        serde_json::to_string(&crate::provider::CapabilityDescriptor::current())
+            .unwrap_or_else(|error| error.to_string())
+    }
+
+    #[tool(
         description = "Report index health, configured source coverage, embedding identity, and persistent cache telemetry without exposing credentials"
     )]
     async fn brain_status(&self) -> String {

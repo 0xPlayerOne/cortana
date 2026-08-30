@@ -34,11 +34,17 @@ semantic fields, authorization behavior, limits, revisions, and degradation stat
 | Candidate retry          | `POST /v1/memory/candidates/{id}/retry`                                              | —                                                                                | —                                      | explicit dead-letter requeue              |
 | Consolidation control    | `POST /v1/memory/consolidation/pause\|resume`, `GET /v1/memory/consolidation/status` | —                                                                                | —                                      | readable state; owner-only mutation       |
 | Status                   | `GET /v1/status`                                                                     | `brain_status`                                                                   | `status --json`                        | bounded health/store/source metadata      |
+| Provider capabilities    | `GET /v1/provider/capabilities`                                                      | `provider_capabilities`                                                          | —                                      | provider operations/transports/limits     |
 | Audit                    | `GET /v1/audit`                                                                      | `audit`                                                                          | `audit export`                         | metadata-only audit records               |
 
 MCP schemas and generated Desktop TypeScript fixtures must be derived from these fields without
 importing private Rust/store internals. Provider-backed answers remain opt-in and must preserve the
 same evidence, memory, revision, and degradation semantics.
+
+The deployment-neutral provider request, outcome, pinning, replay, and effect rules are defined by
+the [ContextProvider contract](context-provider.md). HTTP, MCP, direct local-service, and approved
+remote/broker envelopes project those semantics without accepting caller-selected endpoints or
+paths.
 
 Desktop commands for candidate lists, classification/actions, consolidation control, canonical
 export, and derived inspection are fixed-path projections of these HTTP operations. They select a

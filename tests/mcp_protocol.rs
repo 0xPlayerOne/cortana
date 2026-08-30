@@ -66,6 +66,7 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
                 "inspect_memory_representations",
                 "list_memory_candidates",
                 "propose_memory_candidate",
+                "provider_capabilities",
                 "recall",
                 "redact_memory_candidate",
                 "reflect_memory",
@@ -111,6 +112,20 @@ async fn protocol_contract_exposes_native_memory_tools_and_serves_brain_status()
             stats.get("embedding_fingerprint").is_some(),
             "brain_status must report the embedding fingerprint"
         );
+
+        let result: CallToolResult = client
+            .call_tool(CallToolRequestParams::new("provider_capabilities"))
+            .await?;
+        assert_ne!(result.is_error, Some(true));
+        let text = result
+            .content
+            .iter()
+            .filter_map(|content| content.as_text())
+            .map(|text| text.text.as_str())
+            .collect::<Vec<_>>()
+            .join("");
+        let capabilities: Value = serde_json::from_str(&text)?;
+        assert_eq!(capabilities["contract_version"], "cortana.provider.v1");
 
         let expires_at = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
         let candidate_arguments = serde_json::json!({

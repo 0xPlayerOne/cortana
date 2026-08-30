@@ -80,8 +80,8 @@ test('host launch requires the packaged process to survive the startup window', 
       executable: process.execPath,
       args: [app],
       env: buildIsolatedEnvironment({ root, configPath: join(root, 'config.toml') }),
-      stableMs: 100,
-      timeoutMs: 2_000,
+      stableMs: 1_000,
+      timeoutMs: 3_000,
     })
     expect(result).toMatchObject({ status: 'passed', process: 'started-and-stopped' })
     expect(result.stderr).toContain('host-launch-fixture')

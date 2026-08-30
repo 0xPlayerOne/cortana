@@ -657,6 +657,7 @@ pub fn router(state: AppState) -> Router {
         .route("/readyz", get(ready))
         .route("/metrics", get(metrics))
         .route("/v1/status", get(status))
+        .route("/v1/provider/capabilities", get(provider_capabilities))
         .route("/v1/documents", get(list_documents))
         .route("/v1/documents/{id}", get(document))
         .route("/v1/graph", get(graph))
@@ -779,7 +780,7 @@ async fn authorize(
         | "/v1/memory/consolidation/resume"
         | "/v1/memory/consolidation/status" => MEMORY_SCOPE,
         path if path.starts_with("/v1/memory/candidates/") => MEMORY_SCOPE,
-        "/v1/status" | "/readyz" => STATUS_SCOPE,
+        "/v1/status" | "/v1/provider/capabilities" | "/readyz" => STATUS_SCOPE,
         _ => QUERY_SCOPE,
     };
     if !principal.has_scope(required_scope) {
@@ -799,6 +800,10 @@ async fn authorize(
     }
     request.extensions_mut().insert(principal);
     next.run(request).await
+}
+
+async fn provider_capabilities() -> Json<crate::provider::CapabilityDescriptor> {
+    Json(crate::provider::CapabilityDescriptor::current())
 }
 
 async fn list_documents(

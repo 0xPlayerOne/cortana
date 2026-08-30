@@ -75,6 +75,11 @@ audit_max_events = 10000
 # token_env = "CORTANA_SHARED_AGENT_TOKEN"
 # scopes = ["query", "status"]
 # acl = ["work", "shared"]
+# Optional lifecycle controls keyed by principal name. Changes take effect on
+# HTTP auth reload or the next reloadable MCP request boundary.
+# disabled_principals = ["retired-agent"]
+# [auth.principal_expiry]
+# shared-agent = "2030-01-01T00:00:00Z"
 #
 # A query-only agent can be narrower:
 # [[auth.tokens]]

@@ -2,6 +2,8 @@
 
 Shared transport compatibility is defined by the [Public API contract](contracts/public-api.md);
 context pins follow the [ContextBundle contract](contracts/context-bundle.md).
+Provider-neutral consumers also follow the
+[ContextProvider contract](contracts/context-provider.md) and its portable conformance artifact.
 
 Cortana exposes the same vertically integrated knowledge and memory pipeline through a portable
 agent skill, an MCP stdio server, a loopback HTTP API, and the CLI. Agents should start with the
@@ -59,11 +61,11 @@ the value unchanged for audit and provenance consumers.
 The protocol regression test keeps this advertised schema contract from regressing as new memory
 fields are added.
 
-| Interface                                       | Entry points                                                                                                                                                                                                                                                            |
-| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `export_memory`, `reflect_memory`, `inspect_memory_representations`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                 |
-| HTTP (`cortana serve --address 127.0.0.1:7331`) | `POST /v1/context`, `POST /v1/memory[/{recall,forget,reflect}]`, `GET /v1/memory/{export,derived}`, `POST /v1/search`, `POST /v1/answer`, `GET /v1/documents[/{id}]`, `GET /v1/graph`, `GET /v1/status`, `GET /v1/audit`, `GET /healthz`, `GET /readyz`, `GET /metrics` |
-| CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                                                                                                             |
+| Interface                                       | Entry points                                                                                                                                                                                                                                                                                             |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MCP stdio (`cortana --config <path> mcp`)       | `context`, `remember`, `recall`, `forget`, `export_memory`, `reflect_memory`, `inspect_memory_representations`, `search`, `search_code`, `search_messages`, `who_knows`, `brain_status`                                                                                                                  |
+| HTTP (`cortana serve --address 127.0.0.1:7331`) | `POST /v1/context`, `POST /v1/memory[/{recall,forget,reflect}]`, `GET /v1/memory/{export,derived}`, `POST /v1/search`, `POST /v1/answer`, `GET /v1/documents[/{id}]`, `GET /v1/graph`, `GET /v1/status`, `GET /v1/provider/capabilities`, `GET /v1/audit`, `GET /healthz`, `GET /readyz`, `GET /metrics` |
+| CLI (no server required)                        | `cortana context`, `cortana search` (raw-evidence fallback)                                                                                                                                                                                                                                              |
 
 `cortana context QUERY`, `POST /v1/context`, and the MCP `context` tool return the same
 citation-ready, token-bounded Markdown bundle with numbered `[n]` citations, the included evidence,
@@ -152,6 +154,13 @@ malformed or unreadable policy fails closed for that call. A process-environment
 startup-scoped and must reconnect after its value or variable name changes. The Desktop still marks
 access changes as restart-required because its managed service action restarts both transports
 deliberately.
+
+`[auth].disabled_principals` provides an emergency deny list, and
+`[auth.principal_expiry]` maps principal names to RFC3339 expiry instants. A disabled principal does
+not require its former token value during reload; an expired credential fails authentication at the
+next request boundary. Rotation keeps the stable principal and `token_env` reference while replacing
+the secret value. Audit and per-principal runtime metrics provide metadata-only usage evidence
+without recording bearer values, hashes, query text, or retrieved content.
 
 Never use a reload to remove the last policy from a non-loopback listener: remote listeners reject
 that transition. For a zero-downtime rotation, keep the principal and `token_env` mapping stable,
