@@ -365,6 +365,7 @@ pub enum RelationKind {
     Containment,
     Reference,
     Export,
+    Override,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -483,6 +484,12 @@ pub fn parse_document(
         output.status = ParseStatus::Unsupported;
         return output;
     }
+    if !delimiters_balanced(&document.content) {
+        output.status = ParseStatus::Partial;
+        output
+            .diagnostics
+            .push("source contains unbalanced delimiters".into());
+    }
     let started = Instant::now();
     let repo = code_value(document, "repository_id");
     let revision = code_value(document, "revision");
@@ -495,6 +502,8 @@ pub fn parse_document(
     let mut containers: Vec<(usize, String)> = Vec::new();
     let mut declarations = BTreeMap::<String, Vec<String>>::new();
     let mut imports = Vec::<(String, SourceSpan)>::new();
+    let mut exports = Vec::<(String, SourceSpan)>::new();
+    let mut overrides = Vec::<(String, SourceSpan)>::new();
     let mut offset = 0usize;
     let mut pending_docs = Vec::<String>::new();
     for (line_index, line) in document.content.split_inclusive('\n').enumerate() {
@@ -536,6 +545,16 @@ pub fn parse_document(
         };
         if let Some(target) = import_target(trimmed, language) {
             imports.push((target, span.clone()));
+        }
+        if trimmed.starts_with("export ") || trimmed.starts_with("pub use ") {
+            if let Some(name) = exported_name(trimmed, language) {
+                exports.push((name, span.clone()));
+            }
+        }
+        if trimmed.split_whitespace().any(|value| value == "override") {
+            if let Some((name, _, _, _)) = declaration(trimmed, language) {
+                overrides.push((name, span.clone()));
+            }
         }
         if let Some((name, kind, signature, visibility)) = declaration(trimmed, language) {
             if output.symbols.len() >= limits.max_symbols {
@@ -593,6 +612,43 @@ pub fn parse_document(
             ) {
                 containers.push((indent, qualified_name));
             }
+        } else if let Some((original, alias)) = alias_declaration(trimmed, language) {
+            if output.symbols.len() >= limits.max_symbols {
+                output.status = ParseStatus::Partial;
+                output.diagnostics.push("symbol budget exhausted".into());
+                break;
+            }
+            let id = symbol_id(
+                repo.as_deref(),
+                revision.as_deref(),
+                &document.source_id,
+                &alias,
+                &SymbolKind::Module,
+                &span,
+            );
+            declarations
+                .entry(alias.clone())
+                .or_default()
+                .push(id.clone());
+            output.symbols.push(CodeSymbol {
+                id,
+                name: alias.clone(),
+                qualified_name: alias,
+                kind: SymbolKind::Module,
+                role: SymbolRole::Declaration,
+                language,
+                repository_id: repo.clone(),
+                revision: revision.clone(),
+                file: document.source_id.clone(),
+                span,
+                signature: trimmed.to_string(),
+                visibility: None,
+                container: None,
+                documentation: (!pending_docs.is_empty()).then(|| pending_docs.join("\n")),
+                aliases: vec![original],
+                generated,
+            });
+            pending_docs.clear();
         } else if !trimmed.is_empty() {
             pending_docs.clear();
         }
@@ -626,6 +682,39 @@ pub fn parse_document(
             false,
         ));
     }
+    for (kind, entries) in [
+        (RelationKind::Export, exports),
+        (RelationKind::Override, overrides),
+    ] {
+        for (name, span) in entries {
+            if output.relations.len() >= limits.max_relations {
+                output.status = ParseStatus::Partial;
+                output.diagnostics.push("relation budget exhausted".into());
+                break;
+            }
+            let candidates = declarations.get(&name);
+            let target = candidates
+                .filter(|values| values.len() == 1)
+                .map(|values| values[0].clone());
+            let destination = (kind != RelationKind::Override)
+                .then(|| target.clone())
+                .flatten();
+            output.relations.push(relation(
+                document,
+                repo.clone(),
+                revision.clone(),
+                kind.clone(),
+                target.clone(),
+                &name,
+                destination,
+                name.clone(),
+                span,
+                0.9,
+                "syntax",
+                false,
+            ));
+        }
+    }
     for (target, span) in imports {
         if output.relations.len() >= limits.max_relations {
             output.status = ParseStatus::Partial;
@@ -645,12 +734,28 @@ pub fn parse_document(
             None,
             &document.source_id,
             resolved_target,
-            target,
-            span,
+            target.clone(),
+            span.clone(),
             if ambiguous { 0.5 } else { 1.0 },
             if ambiguous { "ambiguous" } else { "syntax" },
             false,
         ));
+        if output.relations.len() < limits.max_relations {
+            output.relations.push(relation(
+                document,
+                repo.clone(),
+                revision.clone(),
+                RelationKind::Dependency,
+                None,
+                &document.source_id,
+                None,
+                target,
+                span,
+                1.0,
+                "syntax",
+                false,
+            ));
+        }
     }
     // Resolve only exact, unique identifier calls. Unknown and duplicate targets stay explicit.
     let mut line_offset = 0usize;
@@ -751,9 +856,24 @@ fn declaration(
     line: &str,
     language: Language,
 ) -> Option<(String, SymbolKind, String, Option<String>)> {
-    let normalized = line
-        .trim_start_matches("export ")
-        .trim_start_matches("async ");
+    let mut normalized = line;
+    loop {
+        let previous = normalized;
+        for modifier in [
+            "export ",
+            "async ",
+            "public ",
+            "private ",
+            "protected ",
+            "static ",
+            "override ",
+        ] {
+            normalized = normalized.trim_start_matches(modifier);
+        }
+        if normalized == previous {
+            break;
+        }
+    }
     let patterns: &[(&str, SymbolKind)] = match language {
         Language::Rust => &[
             ("pub fn ", SymbolKind::Function),
@@ -836,6 +956,66 @@ fn is_doc_comment(line: &str, language: Language) -> bool {
     line.starts_with("///")
         || line.starts_with("/**")
         || (language == Language::Python && line.starts_with("#"))
+}
+
+fn alias_declaration(line: &str, language: Language) -> Option<(String, String)> {
+    let eligible = match language {
+        Language::Rust => line.starts_with("use ") || line.starts_with("pub use "),
+        Language::Python => line.starts_with("import ") || line.starts_with("from "),
+        Language::TypeScript | Language::JavaScript => {
+            line.starts_with("import ") || line.starts_with("export ")
+        }
+        _ => false,
+    };
+    if !eligible {
+        return None;
+    }
+    let (left, right) = line.split_once(" as ")?;
+    let original = left
+        .trim_matches(['{', '}', ';'])
+        .rsplit(|value: char| !(value.is_alphanumeric() || value == '_'))
+        .find(|value| !value.is_empty())?;
+    let alias = right
+        .trim_matches(['{', '}', ';'])
+        .split(|value: char| !(value.is_alphanumeric() || value == '_'))
+        .find(|value| !value.is_empty())?;
+    Some((original.to_string(), alias.to_string()))
+}
+
+fn exported_name(line: &str, language: Language) -> Option<String> {
+    alias_declaration(line, language)
+        .map(|(_, alias)| alias)
+        .or_else(|| declaration(line, language).map(|(name, _, _, _)| name))
+}
+
+fn delimiters_balanced(content: &str) -> bool {
+    let mut stack = Vec::new();
+    let mut quote = None;
+    let mut escaped = false;
+    for character in content.chars() {
+        if let Some(active) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == active {
+                quote = None;
+            }
+            continue;
+        }
+        if matches!(character, '\'' | '"' | '`') {
+            quote = Some(character);
+            continue;
+        }
+        match character {
+            '(' | '[' | '{' => stack.push(character),
+            ')' if stack.pop() != Some('(') => return false,
+            ']' if stack.pop() != Some('[') => return false,
+            '}' if stack.pop() != Some('{') => return false,
+            _ => {}
+        }
+    }
+    stack.is_empty() && quote.is_none()
 }
 
 fn call_tokens(line: &str) -> BTreeSet<String> {
@@ -1191,6 +1371,56 @@ mod tests {
         assert_eq!(
             is_generated_or_vendor(Path::new(".worktrees/topic/src/lib.rs")),
             (true, false)
+        );
+    }
+
+    #[test]
+    fn malformed_sources_are_partial_and_alias_exports_dependencies_and_overrides_are_explicit() {
+        let malformed = parse_document(
+            &document("src/lib.rs", "fn broken() {\n"),
+            &ParseLimits::default(),
+            &AtomicBool::new(false),
+        );
+        assert_eq!(malformed.status, ParseStatus::Partial);
+        assert!(
+            malformed
+                .diagnostics
+                .iter()
+                .any(|value| value.contains("unbalanced"))
+        );
+
+        let source = "import { original as alias } from './module';\nexport function visible() {}\nclass Child extends Base {\n  override function run() {}\n}\n";
+        let parsed = parse_document(
+            &document("src/example.ts", source),
+            &ParseLimits::default(),
+            &AtomicBool::new(false),
+        );
+        let alias = parsed
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "alias")
+            .expect("alias declaration");
+        assert_eq!(alias.aliases, ["original"]);
+        for kind in [
+            RelationKind::Import,
+            RelationKind::Dependency,
+            RelationKind::Export,
+            RelationKind::Inheritance,
+            RelationKind::Override,
+        ] {
+            assert!(
+                parsed
+                    .relations
+                    .iter()
+                    .any(|relation| relation.kind == kind),
+                "missing {kind:?} relation"
+            );
+        }
+        assert!(
+            parsed
+                .relations
+                .iter()
+                .any(|relation| { relation.kind == RelationKind::Override && !relation.resolved })
         );
     }
 }
