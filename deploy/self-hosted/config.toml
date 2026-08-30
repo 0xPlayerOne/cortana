@@ -1,0 +1,46 @@
+data_dir = "/var/lib/cortana"
+
+[embedding]
+# Default to an owner-operated OpenAI-compatible embedding service on the host.
+# Replace with an HTTPS provider only after approving corpus upload to that provider.
+base_url = "http://host.docker.internal:6999/v1"
+model = "Qwen/Qwen3-Embedding-0.6B"
+dimension = 1024
+cache_max_entries = 250000
+request_timeout_seconds = 180
+request_concurrency = 2
+
+[query]
+synthesis_enabled = false
+context_tokens = 8000
+output_tokens = 1200
+request_timeout_seconds = 45
+answer_timeout_seconds = 55
+request_concurrency = 2
+
+[memory]
+max_active = 100000
+default_confidence = 0.7
+default_importance = 0.5
+
+[auth]
+audit_max_events = 10000
+
+[[auth.tokens]]
+principal = "self-hosted-owner"
+token_env = "CORTANA_OWNER_TOKEN"
+scopes = ["query", "status", "memory", "admin"]
+acl = []
+
+[ingestion]
+max_documents_per_source = 2000
+max_bytes_per_source = 134217728
+max_duration_seconds = 900
+document_batch_size = 16
+request_concurrency = 1
+validation_max_age_hours = 168
+sync_freshness_hours = 48
+
+[connectors]
+command = ["/usr/local/bin/cortana-connectors"]
+timeout_seconds = 21600

@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+node_modules
+target
+apps/*/node_modules
+apps/*/dist
+artifacts
+dist
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.sqlite3
+*.db
+*.env
+coverage*

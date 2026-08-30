@@ -1,0 +1,50 @@
+name: cortana
+
+services:
+  cortana:
+    image: ghcr.io/0xplayerone/cortana:${CORTANA_VERSION:-latest}
+    build:
+      context: ../..
+      args:
+        CORTANA_VERSION: ${CORTANA_VERSION:-dev}
+    pull_policy: missing
+    restart: unless-stopped
+    stop_grace_period: 45s
+    ports:
+      - '127.0.0.1:7331:7331'
+    environment:
+      CORTANA_OWNER_TOKEN: ${CORTANA_OWNER_TOKEN:?set a random bearer token}
+      CORTANA_EMBEDDING_API_KEY: ${CORTANA_EMBEDDING_API_KEY:-}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    volumes:
+      - ./config.toml:/etc/cortana/config.toml:ro
+      - cortana_data:/var/lib/cortana
+      - cortana_backups:/var/lib/cortana/backups
+      - cortana_models:/var/cache/cortana/models
+    healthcheck:
+      test: ['CMD', 'curl', '--fail', '--silent', 'http://127.0.0.1:7331/healthz']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 2g
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '3'
+
+volumes:
+  cortana_data:
+  cortana_backups:
+  cortana_models:
