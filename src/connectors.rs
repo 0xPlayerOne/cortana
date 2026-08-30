@@ -188,41 +188,57 @@ fn filesystem_document(
         .ok()
         .map(DateTime::<Utc>::from)
         .unwrap_or_else(Utc::now);
-    // Retrieval payloads must not disclose private absolute host paths. The
-    // opaque repository identity plus relative path is stable across clones.
     let relative_text = relative.to_string_lossy().into_owned();
-    let mut uri = Url::parse("code://repository")
-        .context("repository identity cannot be represented as a code URI")?;
+    let is_code = crate::code_intelligence::detect_language(&relative_text)
+        != crate::code_intelligence::Language::Unknown;
+    // Code evidence uses repository-qualified identities; ordinary filesystem
+    // documents retain their existing relative source IDs. Neither URI shape
+    // discloses the private absolute host path.
+    let mut uri = Url::parse(if is_code {
+        "code://repository"
+    } else {
+        "cortana://filesystem"
+    })
+    .context("filesystem identity cannot be represented as a safe URI")?;
     {
         let mut segments = uri
             .path_segments_mut()
-            .map_err(|_| anyhow::anyhow!("code URI cannot accept relative path segments"))?;
-        segments.push(&repository.repository_id);
+            .map_err(|_| anyhow::anyhow!("filesystem URI cannot accept relative path segments"))?;
+        if is_code {
+            segments.push(&repository.repository_id);
+        }
         for component in relative.components() {
             if let Some(component) = component.as_os_str().to_str() {
                 segments.push(component);
             }
         }
     }
-    let (generated, vendor) = is_generated_or_vendor(relative);
-    let mut code = repository.metadata();
-    code["generated"] = json!(generated);
-    code["vendor"] = json!(vendor);
+    let mut document_metadata = json!({
+        "root": canonical_root.file_name().and_then(|name| name.to_str()),
+        "extension": path.extension().and_then(|extension| extension.to_str()),
+        "bytes": metadata.len(),
+    });
+    if is_code {
+        let (generated, vendor) = is_generated_or_vendor(relative);
+        let mut code = repository.metadata();
+        code["generated"] = json!(generated);
+        code["vendor"] = json!(vendor);
+        document_metadata["code"] = code;
+    }
     Ok(Some(Document {
         source: source.to_string(),
-        source_id: format!("{}:{relative_text}", repository.repository_id),
+        source_id: if is_code {
+            format!("{}:{relative_text}", repository.repository_id)
+        } else {
+            relative_text.clone()
+        },
         title: relative_text,
         content,
         uri: Some(uri.to_string()),
         updated_at,
         project: project.to_string(),
         acl: Vec::new(),
-        metadata: json!({
-            "root": canonical_root.file_name().and_then(|name| name.to_str()),
-            "extension": path.extension().and_then(|extension| extension.to_str()),
-            "bytes": metadata.len(),
-            "code": code,
-        }),
+        metadata: document_metadata,
     }))
 }
 
@@ -249,8 +265,10 @@ fn is_generated(path: &Path, root: &Path) -> bool {
         "build",
         "coverage",
         "dist",
+        ".next",
         "node_modules",
         "target",
+        "vendor",
     ];
     path.strip_prefix(root)
         .unwrap_or(path)
@@ -287,6 +305,15 @@ mod tests {
             "fn duplicate() {}",
         )
         .expect("worktree file");
+        for directory_name in ["vendor", ".next"] {
+            std::fs::create_dir_all(directory.path().join(directory_name))
+                .expect("excluded generated directory");
+            std::fs::write(
+                directory.path().join(directory_name).join("duplicate.rs"),
+                "fn duplicate() {}",
+            )
+            .expect("excluded generated file");
+        }
 
         let documents = filesystem_documents_with_excludes(
             directory.path(),
@@ -425,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn filesystem_source_escapes_special_characters_in_file_uris() {
+    fn non_code_files_keep_relative_ids_and_use_private_path_free_uris() {
         let directory = tempfile::tempdir().expect("temporary directory");
         let root = directory.path().join("project with #hash");
         std::fs::create_dir_all(&root).expect("source root");
@@ -433,8 +460,10 @@ mod tests {
         std::fs::write(&file, "encoded source link").expect("source file");
 
         let documents = filesystem_documents(&root, "code", "work").expect("documents");
-        let uri = documents[0].uri.as_deref().expect("code URI");
-        assert!(uri.starts_with("code://repository/sha256:"));
+        assert_eq!(documents[0].source_id, "notes ? draft.md");
+        assert!(documents[0].metadata.get("code").is_none());
+        let uri = documents[0].uri.as_deref().expect("filesystem URI");
+        assert!(uri.starts_with("cortana://filesystem/"));
         assert!(uri.ends_with("/notes%20%3F%20draft.md"));
         assert!(!uri.contains(directory.path().to_string_lossy().as_ref()));
     }

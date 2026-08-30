@@ -23,13 +23,32 @@ def test_synthetic_connector_certification_passes_without_personal_accounts(
     assert report.approved
     assert report.fixture_only
     assert report.checks["disabled_by_default"]
+    assert report.checks["adapter_fixture_exercised"]
     assert report.checks["failures_do_not_reconcile"]
+    if connector_id in {"slack", "discord"}:
+        assert report.support_status == "local-only"
+        for check in (
+            "authorization_discovery",
+            "pagination",
+            "retry",
+            "cursor",
+            "scope_change_safe",
+            "acl_routing",
+            "cancellation",
+            "revocation",
+        ):
+            assert report.checks[f"adapter_{check}"]
 
 
 def test_partial_cancelled_revoked_and_rate_limited_runs_never_reconcile() -> None:
     manifest = BUILTIN_MANIFESTS["slack"]
     for status in ("partial", "cancelled", "revoked", "rate_limited"):
-        assert not validate_run(manifest, fixture_run("slack", status)).reconcile_allowed
+        run = fixture_run("slack", status)
+        assert not validate_run(manifest, run).reconcile_allowed
+        assert run.completed_at >= run.started_at
+        assert run.deletion_count == 0
+        assert run.stdout_bytes == run.progress_bytes
+        assert run.stderr_bytes > 0
 
 
 def test_certification_rejects_duplicate_ids_secrets_and_incompatible_versions() -> None:
@@ -75,6 +94,15 @@ def test_certification_rejects_invalid_fingerprints_cursors_paths_and_progress()
         )
     with pytest.raises(RuntimeError, match="negative"):
         validate_run(manifest, dataclasses.replace(run, progress_documents=-1))
+    with pytest.raises(RuntimeError, match="stdout"):
+        validate_run(manifest, dataclasses.replace(run, stdout_bytes=run.stdout_bytes + 1))
+    with pytest.raises(RuntimeError, match="stderr"):
+        validate_run(manifest, dataclasses.replace(run, stderr_bytes=3_200_000_000))
+    with pytest.raises(RuntimeError, match="deletions"):
+        validate_run(
+            manifest,
+            dataclasses.replace(fixture_run("external-reference", "partial"), deletion_count=1),
+        )
 
 
 def test_source_identity_is_stable_and_disable_does_not_delete() -> None:
@@ -82,7 +110,7 @@ def test_source_identity_is_stable_and_disable_does_not_delete() -> None:
     identity = stable_document_id(run.documents[0])
     assert identity == stable_document_id(run.documents[0])
     assert not BUILTIN_MANIFESTS["discord"].enabled_by_default
-    assert len(run.documents) == 1, "validation has no deletion side effect"
+    assert len(run.documents) == 2, "pagination fixtures remain intact after validation"
 
 
 def test_certification_cli_emits_machine_readable_report(

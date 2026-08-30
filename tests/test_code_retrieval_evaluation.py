@@ -23,6 +23,11 @@ def test_code_strategy_decision_is_measured_and_activation_gated() -> None:
     assert selected["recall_at_3"] == 1.0
     assert selected["mrr"] >= report["results"]["shared_text_embedding"]["mrr"]
     assert selected["span_correctness"] == 1.0
+    assert selected["cache_reuse"] == 1.0
+    assert selected["index_bytes"] > 0
+    assert report["resource_budget_pass"]
+    assert report["migration_cost"]["documents_scanned"] == len(manifest["documents"])
+    assert report["migration_cost"]["documents_reembedded"] == 0
     assert report["activation"]["approved_roots_required"]
     assert report["activation"]["sampled_non_reconciling_trial_required"]
     assert report["activation"]["second_embedding_generation"] is False

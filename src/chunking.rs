@@ -185,7 +185,8 @@ fn code_chunks(document: &Document, policy: ChunkingPolicy) -> Vec<ChunkSpec> {
         &crate::code_intelligence::ParseLimits::default(),
         &AtomicBool::new(false),
     );
-    if parsed.symbols.is_empty() {
+    if parsed.status != crate::code_intelligence::ParseStatus::Complete || parsed.symbols.is_empty()
+    {
         return generic_chunks(&document.content, policy);
     }
     let mut starts = parsed
@@ -556,5 +557,19 @@ mod tests {
         );
         assert!(chunks[0].content.contains("first"));
         assert!(chunks[1].content.contains("second"));
+    }
+
+    #[test]
+    fn partial_code_parse_uses_generic_fallback_even_when_a_symbol_was_found() {
+        let mut value = document("code", "fn partial() {\n", serde_json::json!({}));
+        value.source_id = "repo:src/lib.rs".into();
+        value.metadata = serde_json::json!({"code": {"repository_id": "repo", "revision": "abc:main:committed"}});
+        let chunks = chunk_document(&value);
+        assert!(!chunks.is_empty());
+        assert!(
+            chunks
+                .iter()
+                .all(|chunk| chunk.strategy == ChunkStrategy::Generic)
+        );
     }
 }

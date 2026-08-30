@@ -9,8 +9,9 @@ use std::time::{Duration, Instant};
 use anyhow::{Result, anyhow};
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{DefaultBodyLimit, Extension, Path as AxumPath, Query as AxumQuery, State},
-    http::{HeaderValue, Request, StatusCode, header},
+    http::{HeaderValue, Request, StatusCode, Uri, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -21,14 +22,19 @@ use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
+use uuid::Uuid;
 
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
     auth::{
         ADMIN_SCOPE, AuthPolicy, MEMORY_SCOPE, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows,
     },
+    code_intelligence::{
+        CodeSymbolFilters, Language, RelationQuery, decode_relation_cursor, encode_relation_cursor,
+    },
     config::{Config, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
+    contracts::API_CONTRACT_VERSION,
     derived::{DerivedMemoryResponse, derive_authorized_memory},
     embed::Embedder,
     memory::MemoryInput,
@@ -335,6 +341,11 @@ struct CodeSymbolRequest {
     query: String,
     project: Option<String>,
     source: Option<String>,
+    repository_id: Option<String>,
+    revision: Option<String>,
+    language: Option<String>,
+    file: Option<String>,
+    qualified_name: Option<String>,
     #[serde(default = "default_limit")]
     limit: usize,
 }
@@ -345,9 +356,34 @@ struct CodeRelationQuery {
     symbol_id: String,
     project: Option<String>,
     #[serde(default)]
-    cursor: usize,
+    query: RelationQuery,
+    #[serde(default = "default_relation_depth")]
+    depth: usize,
+    cursor: Option<String>,
     #[serde(default = "default_limit")]
     limit: usize,
+}
+
+#[derive(Serialize)]
+struct CodeSymbolResponse {
+    contract_version: &'static str,
+    corpus_revision: u64,
+    embedding_fingerprint: String,
+    correlation_id: String,
+    results: Vec<crate::code_intelligence::SymbolSearchHit>,
+}
+
+#[derive(Serialize)]
+struct CodeRelationResponse {
+    contract_version: &'static str,
+    corpus_revision: u64,
+    embedding_fingerprint: String,
+    correlation_id: String,
+    page: crate::code_intelligence::RelationPage,
+}
+
+const fn default_relation_depth() -> usize {
+    1
 }
 
 #[derive(Debug, Deserialize)]
@@ -783,6 +819,19 @@ async fn authorize(
         Some(Principal::local("local-http"))
     };
     let Some(principal) = principal else {
+        if let Some(action) = code_audit_action(path) {
+            record_audit(
+                &state,
+                &Principal::local("http-unauthenticated"),
+                action,
+                None,
+                None,
+                "unauthorized",
+                None,
+                started,
+            );
+            return code_http_error(StatusCode::UNAUTHORIZED);
+        }
         return (
             StatusCode::UNAUTHORIZED,
             [(header::WWW_AUTHENTICATE, "Bearer realm=\"cortana\"")],
@@ -807,6 +856,19 @@ async fn authorize(
         _ => QUERY_SCOPE,
     };
     if !principal.has_scope(required_scope) {
+        if let Some(action) = code_audit_action(path) {
+            record_audit(
+                &state,
+                &principal,
+                action,
+                None,
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return code_http_error(StatusCode::FORBIDDEN);
+        }
         if path.ends_with("/consolidate") && path.starts_with("/v1/memory/candidates/") {
             record_audit(
                 &state,
@@ -821,8 +883,65 @@ async fn authorize(
         }
         return StatusCode::FORBIDDEN.into_response();
     }
+    let audit_principal = principal.clone();
+    let code_action = code_audit_action(path);
     request.extensions_mut().insert(principal);
-    next.run(request).await
+    let response = next.run(request).await;
+    if let Some(action) = code_action
+        && (response.status().is_client_error() || response.status().is_server_error())
+    {
+        record_audit(
+            &state,
+            &audit_principal,
+            action,
+            None,
+            None,
+            if response.status().is_client_error() {
+                "transport_invalid"
+            } else {
+                "transport_failed"
+            },
+            None,
+            started,
+        );
+        return code_http_error(response.status());
+    }
+    response
+}
+
+fn code_audit_action(path: &str) -> Option<&'static str> {
+    match path {
+        "/v1/code/symbols" => Some("code.symbols"),
+        "/v1/code/relations" => Some("code.relations"),
+        _ => None,
+    }
+}
+
+fn code_http_error(status: StatusCode) -> Response {
+    let correlation_id = Uuid::new_v4().to_string();
+    let (code, message, retryable) = if status == StatusCode::UNAUTHORIZED {
+        ("unauthorized", "authorization required", false)
+    } else if status == StatusCode::FORBIDDEN {
+        ("forbidden", "query scope required", false)
+    } else if status.is_client_error() {
+        ("invalid_request", "code query request is invalid", false)
+    } else {
+        ("index_unavailable", "code query is unavailable", true)
+    };
+    let mut response = Json(serde_json::json!({
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+        "contract_version": API_CONTRACT_VERSION,
+        "correlation_id": correlation_id,
+    }))
+    .into_response();
+    *response.status_mut() = status;
+    response.headers_mut().insert(
+        "x-cortana-correlation-id",
+        HeaderValue::from_str(&correlation_id).expect("UUID is a valid header value"),
+    );
+    response
 }
 
 async fn provider_capabilities() -> Json<crate::provider::CapabilityDescriptor> {
@@ -1751,48 +1870,399 @@ async fn search(
 async fn code_symbols(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
-    Json(request): Json<CodeSymbolRequest>,
-) -> Result<Json<Vec<crate::code_intelligence::SymbolSearchHit>>, (StatusCode, String)> {
-    validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())?;
-    validate_query(&request.query)?;
-    let acl = principal.visible_acl();
-    state
-        .store
-        .search_code_symbols(
-            &request.query,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let started = Instant::now();
+    let request: CodeSymbolRequest = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(_) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.symbols",
+                None,
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "invalid code symbol request JSON".into(),
+            ));
+        }
+    };
+    if let Err(error) =
+        validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())
+    {
+        record_audit(
+            &state,
+            &principal,
+            "code.symbols",
             request.project.as_deref(),
             request.source.as_deref(),
-            &acl,
-            request.limit,
-        )
-        .map(Json)
-        .map_err(internal_error)
+            "invalid",
+            None,
+            started,
+        );
+        return Err(error);
+    }
+    if let Err(error) = validate_query(&request.query) {
+        record_audit(
+            &state,
+            &principal,
+            "code.symbols",
+            request.project.as_deref(),
+            request.source.as_deref(),
+            "invalid",
+            None,
+            started,
+        );
+        return Err(error);
+    }
+    for (name, value, max) in [
+        ("repository_id", request.repository_id.as_deref(), 128),
+        ("revision", request.revision.as_deref(), 256),
+        ("file", request.file.as_deref(), 1_024),
+        ("qualified_name", request.qualified_name.as_deref(), 1_024),
+    ] {
+        if let Err(error) = validate_code_filter(name, value, max) {
+            record_audit(
+                &state,
+                &principal,
+                "code.symbols",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "invalid",
+                None,
+                started,
+            );
+            return Err(error);
+        }
+    }
+    let language = request.language.as_deref().and_then(Language::from_filter);
+    if request.language.is_some() && language.is_none() {
+        record_audit(
+            &state,
+            &principal,
+            "code.symbols",
+            request.project.as_deref(),
+            request.source.as_deref(),
+            "invalid",
+            None,
+            started,
+        );
+        return Err((StatusCode::BAD_REQUEST, "language is unsupported".into()));
+    }
+    let filters = CodeSymbolFilters {
+        repository_id: request.repository_id.clone(),
+        revision: request.revision.clone(),
+        language,
+        file: request.file.clone(),
+        qualified_name: request.qualified_name.clone(),
+    };
+    let acl = principal.visible_acl();
+    match state.store.search_code_symbols(
+        &request.query,
+        request.project.as_deref(),
+        request.source.as_deref(),
+        &filters,
+        &acl,
+        request.limit.min(retrieval::MAX_RESULT_LIMIT),
+    ) {
+        Ok(results) => {
+            let corpus_revision = match state.store.corpus_revision() {
+                Ok(revision) => revision,
+                Err(error) => {
+                    record_audit(
+                        &state,
+                        &principal,
+                        "code.symbols",
+                        request.project.as_deref(),
+                        request.source.as_deref(),
+                        "failed",
+                        None,
+                        started,
+                    );
+                    return Err(internal_error(error));
+                }
+            };
+            let response = CodeSymbolResponse {
+                contract_version: API_CONTRACT_VERSION,
+                corpus_revision,
+                embedding_fingerprint: state.embedder.fingerprint(),
+                correlation_id: Uuid::new_v4().to_string(),
+                results,
+            };
+            if let Err(error) = ensure_code_response_size(&response) {
+                record_audit(
+                    &state,
+                    &principal,
+                    "code.symbols",
+                    request.project.as_deref(),
+                    request.source.as_deref(),
+                    "failed",
+                    None,
+                    started,
+                );
+                return Err(error);
+            }
+            record_audit(
+                &state,
+                &principal,
+                "code.symbols",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "succeeded",
+                Some(response.results.len()),
+                started,
+            );
+            let correlation_id = response.correlation_id.clone();
+            let mut response = Json(response).into_response();
+            if let Ok(value) = HeaderValue::try_from(correlation_id) {
+                response
+                    .headers_mut()
+                    .insert("x-cortana-correlation-id", value);
+            }
+            Ok(response)
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.symbols",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "failed",
+                None,
+                started,
+            );
+            Err(internal_error(error))
+        }
+    }
 }
 
 async fn code_relations(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
-    AxumQuery(request): AxumQuery<CodeRelationQuery>,
-) -> Result<Json<crate::code_intelligence::RelationPage>, (StatusCode, String)> {
-    validate_retrieval_scope(request.project.as_deref(), None)?;
+    uri: Uri,
+) -> Result<Response, (StatusCode, String)> {
+    let started = Instant::now();
+    let request = match AxumQuery::<CodeRelationQuery>::try_from_uri(&uri) {
+        Ok(AxumQuery(request)) => request,
+        Err(_) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.relations",
+                None,
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "invalid code relation query".into(),
+            ));
+        }
+    };
+    if let Err(error) = validate_retrieval_scope(request.project.as_deref(), None) {
+        record_audit(
+            &state,
+            &principal,
+            "code.relations",
+            request.project.as_deref(),
+            None,
+            "invalid",
+            None,
+            started,
+        );
+        return Err(error);
+    }
     if request.symbol_id.trim().is_empty() || request.symbol_id.len() > 256 {
+        record_audit(
+            &state,
+            &principal,
+            "code.relations",
+            request.project.as_deref(),
+            None,
+            "invalid",
+            None,
+            started,
+        );
         return Err((
             StatusCode::BAD_REQUEST,
             "symbol_id must contain 1 to 256 bytes".into(),
         ));
     }
+    let corpus_revision = match state.store.corpus_revision() {
+        Ok(revision) => revision,
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.relations",
+                request.project.as_deref(),
+                None,
+                "failed",
+                None,
+                started,
+            );
+            return Err(internal_error(error));
+        }
+    };
     let acl = principal.visible_acl();
-    state
-        .store
-        .code_relations(
+    let cursor = match request.cursor.as_deref() {
+        Some(cursor) => match decode_relation_cursor(
+            cursor,
+            corpus_revision,
             &request.symbol_id,
             request.project.as_deref(),
             &acl,
-            request.cursor,
-            request.limit,
-        )
-        .map(Json)
-        .map_err(internal_error)
+            request.query,
+            request.depth,
+        ) {
+            Ok(cursor) => cursor,
+            Err(error) => {
+                record_audit(
+                    &state,
+                    &principal,
+                    "code.relations",
+                    request.project.as_deref(),
+                    None,
+                    "invalid",
+                    None,
+                    started,
+                );
+                return Err((StatusCode::BAD_REQUEST, error.to_string()));
+            }
+        },
+        None => 0,
+    };
+    match state.store.code_relations(
+        &request.symbol_id,
+        request.project.as_deref(),
+        &acl,
+        request.query,
+        request.depth,
+        cursor,
+        request.limit.min(retrieval::MAX_RESULT_LIMIT),
+    ) {
+        Ok(mut page) => {
+            if let Some(offset) = page
+                .next_cursor
+                .take()
+                .and_then(|cursor| cursor.parse::<usize>().ok())
+            {
+                page.next_cursor = match encode_relation_cursor(
+                    offset,
+                    corpus_revision,
+                    &request.symbol_id,
+                    request.project.as_deref(),
+                    &acl,
+                    request.query,
+                    request.depth,
+                ) {
+                    Ok(cursor) => Some(cursor),
+                    Err(error) => {
+                        record_audit(
+                            &state,
+                            &principal,
+                            "code.relations",
+                            request.project.as_deref(),
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        return Err(internal_error(error));
+                    }
+                };
+            }
+            let result_count = page.relations.len();
+            let response = CodeRelationResponse {
+                contract_version: API_CONTRACT_VERSION,
+                corpus_revision,
+                embedding_fingerprint: state.embedder.fingerprint(),
+                correlation_id: Uuid::new_v4().to_string(),
+                page,
+            };
+            if let Err(error) = ensure_code_response_size(&response) {
+                record_audit(
+                    &state,
+                    &principal,
+                    "code.relations",
+                    request.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                return Err(error);
+            }
+            record_audit(
+                &state,
+                &principal,
+                "code.relations",
+                request.project.as_deref(),
+                None,
+                "succeeded",
+                Some(result_count),
+                started,
+            );
+            let correlation_id = response.correlation_id.clone();
+            let mut response = Json(response).into_response();
+            if let Ok(value) = HeaderValue::try_from(correlation_id) {
+                response
+                    .headers_mut()
+                    .insert("x-cortana-correlation-id", value);
+            }
+            Ok(response)
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.relations",
+                request.project.as_deref(),
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err(internal_error(error))
+        }
+    }
+}
+
+fn validate_code_filter(
+    name: &str,
+    value: Option<&str>,
+    max: usize,
+) -> Result<(), (StatusCode, String)> {
+    if value.is_some_and(|value| {
+        value.is_empty() || value.len() > max || value.chars().any(char::is_control)
+    }) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("{name} must contain 1 to {max} bytes"),
+        ));
+    }
+    Ok(())
+}
+
+const MAX_CODE_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+
+fn ensure_code_response_size(value: &impl Serialize) -> Result<(), (StatusCode, String)> {
+    let encoded = serde_json::to_vec(value).map_err(|error| internal_error(error.into()))?;
+    if encoded.len() > MAX_CODE_RESPONSE_BYTES {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Cortana could not complete the request".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn context(
@@ -3328,11 +3798,12 @@ mod tests {
     #[tokio::test]
     async fn code_symbol_api_returns_revision_aware_exact_definitions() {
         let (_directory, state) = test_state();
+        let store = state.store.clone();
         let document = crate::model::Document {
             source: "code".into(),
             source_id: "repo:src/lib.rs".into(),
             title: "src/lib.rs".into(),
-            content: "pub fn target_symbol() {}".into(),
+            content: "use dependency;\npub fn target_symbol() { helper(); }\nfn helper() {}".into(),
             uri: Some("code://repository/repo/src/lib.rs".into()),
             updated_at: chrono::Utc::now(),
             project: "work".into(),
@@ -3343,14 +3814,47 @@ mod tests {
             .store
             .upsert(&document, &[(document.content.clone(), vec![1.0; 16])])
             .expect("index code document");
-        let response = router(state)
+        let mut hidden = document.clone();
+        hidden.source_id = "repo-private:src/lib.rs".into();
+        hidden.acl = vec!["personal".into()];
+        hidden.metadata["code"]["repository_id"] = serde_json::json!("repo-private");
+        state
+            .store
+            .upsert(&hidden, &[(hidden.content.clone(), vec![1.0; 16])])
+            .expect("index hidden code document");
+        let mut many = document.clone();
+        many.source_id = "repo-many:src/lib.rs".into();
+        many.content = (0..60)
+            .map(|index| format!("pub fn api_symbol_{index}() {{}}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        many.metadata["code"]["repository_id"] = serde_json::json!("repo-many");
+        state
+            .store
+            .upsert(&many, &[(many.content.clone(), vec![1.0; 16])])
+            .expect("index row-cap fixture");
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let app =
+            router(state.with_auth_policy(AuthPolicy::from_config(&config).expect("auth policy")));
+        let response = app
+            .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
                     .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
                     .header(header::CONTENT_TYPE, "application/json")
                     .body(Body::from(
-                        r#"{"query":"target_symbol","project":"work","source":"code","limit":10}"#,
+                        r#"{"query":"target_symbol","project":"work","source":"code","repository_id":"repo","revision":"abc:main:committed","language":"rust","file":"repo:src/lib.rs","qualified_name":"target_symbol","limit":100}"#,
                     ))
                     .expect("request"),
             )
@@ -3361,9 +3865,185 @@ mod tests {
             .await
             .expect("symbol body");
         let value: serde_json::Value = serde_json::from_slice(&body).expect("symbol JSON");
-        assert_eq!(value[0]["exact"], true);
-        assert_eq!(value[0]["symbol"]["revision"], "abc:main:committed");
-        assert_eq!(value[0]["symbol"]["span"]["start_byte"], 0);
+        assert_eq!(value["contract_version"], API_CONTRACT_VERSION);
+        assert_eq!(value["results"][0]["exact"], true);
+        assert_eq!(
+            value["results"][0]["symbol"]["revision"],
+            "abc:main:committed"
+        );
+        assert_eq!(value["results"][0]["symbol"]["span"]["start_byte"], 16);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"target_symbol","project":"work","source":"code","repository_id":"repo-private","limit":10}"#,
+                    ))
+                    .expect("hidden repository request"),
+            )
+            .await
+            .expect("hidden repository response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("hidden repository body");
+        let hidden_results: serde_json::Value =
+            serde_json::from_slice(&body).expect("hidden repository JSON");
+        assert!(
+            hidden_results["results"]
+                .as_array()
+                .expect("hidden results")
+                .is_empty()
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"target_symbol","project":"work","language":"brainfuck"}"#,
+                    ))
+                    .expect("invalid symbol request"),
+            )
+            .await
+            .expect("invalid symbol response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{"))
+                    .expect("malformed symbol request"),
+            )
+            .await
+            .expect("malformed symbol response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("x".repeat(2 * 1024 * 1024 + 1)))
+                    .expect("oversized symbol request"),
+            )
+            .await
+            .expect("oversized symbol response");
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(response.headers().contains_key("x-cortana-correlation-id"));
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("oversized symbol body");
+        let error: serde_json::Value =
+            serde_json::from_slice(&body).expect("oversized symbol error JSON");
+        assert_eq!(error["code"], "invalid_request");
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"query":"target_symbol"}"#))
+                    .expect("unauthorized symbol request"),
+            )
+            .await
+            .expect("unauthorized symbol response");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let symbol_id = value["results"][0]["symbol"]["id"]
+            .as_str()
+            .expect("symbol id");
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/code/relations?symbol_id={symbol_id}&project=work&limit=100"
+                    ))
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("relation request"),
+            )
+            .await
+            .expect("relation response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("relation body");
+        let relations: serde_json::Value = serde_json::from_slice(&body).expect("relation JSON");
+        assert!(
+            relations["page"]["relations"]
+                .as_array()
+                .is_some_and(|items| !items.is_empty())
+        );
+        assert!(
+            relations["page"]["relations"]
+                .as_array()
+                .expect("relations")
+                .len()
+                <= 50
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"fn","project":"work","source":"code","limit":100}"#,
+                    ))
+                    .expect("capped symbol request"),
+            )
+            .await
+            .expect("capped symbol response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("capped symbol body");
+        let capped: serde_json::Value = serde_json::from_slice(&body).expect("capped symbol JSON");
+        assert_eq!(
+            capped["results"].as_array().expect("capped symbols").len(),
+            50
+        );
+
+        let audit = store.audit_events(10).expect("code read audit");
+        assert!(audit.iter().any(|event| event.action == "code.symbols"));
+        assert!(
+            audit
+                .iter()
+                .any(|event| event.action == "code.symbols" && event.outcome == "invalid")
+        );
+        assert!(
+            audit
+                .iter()
+                .any(|event| event.action == "code.symbols" && event.outcome == "unauthorized")
+        );
+        assert!(audit.iter().any(|event| {
+            event.action == "code.symbols" && event.outcome == "transport_invalid"
+        }));
+        assert!(audit.iter().any(|event| event.action == "code.relations"));
     }
 
     #[test]

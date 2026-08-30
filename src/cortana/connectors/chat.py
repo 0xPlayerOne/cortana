@@ -10,7 +10,7 @@ import struct
 import sys
 import tempfile
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any, cast
 
@@ -26,14 +26,18 @@ def fetch_slack(
     token_env: str = "SLACK_BOT_TOKEN",
     max_documents: int | None = None,
     cache_dir: Path | None = None,
+    *,
+    transport: httpx.BaseTransport | None = None,
+    base_url: str = "https://slack.com/api",
 ) -> Iterable[Document]:
     token = _required_env(token_env)
     headers = {"Authorization": f"Bearer {token}"}
     with httpx.Client(
-        base_url="https://slack.com/api",
+        base_url=base_url,
         headers=headers,
         timeout=30,
         follow_redirects=False,
+        transport=transport,
     ) as client:
         # A bounded run is intentionally read-only with respect to the
         # persistent cursor cache. A partial snapshot must not advance a
@@ -261,6 +265,8 @@ def _fetch_slack_cached(
         )
         emitted = 0
         for rowid, channel_id, _parent_ts, body in rows:
+            if str(channel_id) not in channel_ids:
+                continue
             try:
                 payload = json.loads(str(body))
                 parent = payload["parent"]
@@ -323,10 +329,23 @@ def fetch_discord(
     oauth_client_path: Path,
     cache_dir: Path | None = None,
     max_documents: int | None = None,
+    rpc_factory: Callable[[str, str], _DiscordRpc] | None = None,
+    retry_delay_seconds: float = 1.0,
 ) -> Iterable[Document]:
     client_id = _read_discord_client_id(oauth_client_path)
     access_token = _read_discord_access_token(token_path, oauth_client_path)
-    rpc = _DiscordRpc.connect(client_id, access_token)
+    factory = rpc_factory or _DiscordRpc.connect
+    last_error: RuntimeError | None = None
+    for attempt in range(2):
+        try:
+            rpc = factory(client_id, access_token)
+            break
+        except RuntimeError as error:
+            last_error = error
+            if attempt == 0:
+                time.sleep(retry_delay_seconds)
+    else:
+        raise RuntimeError("Discord RPC authorization or discovery failed") from last_error
     try:
         # Bounded validation is read-only. A full run records the messages
         # currently available through Discord Desktop RPC without deleting
@@ -390,6 +409,8 @@ def _fetch_discord_cached(
         )
         emitted = 0
         for rowid, channel_id, body in rows:
+            if str(channel_id) not in channel_ids:
+                continue
             try:
                 cached_message = json.loads(str(body))
             except json.JSONDecodeError:

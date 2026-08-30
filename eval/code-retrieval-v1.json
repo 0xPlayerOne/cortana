@@ -1,51 +1,121 @@
 {
   "contract_version": "cortana.code-retrieval-eval.v1",
+  "repository": "https://github.com/0xPlayerOne/cortana",
+  "revision": "HEAD",
   "documents": [
     {
-      "id": "auth-rs",
+      "id": "auth",
       "path": "src/auth.rs",
-      "symbol": "authenticate_token",
-      "span": "10:28",
-      "text": "pub fn authenticate_token(token: &str) -> Result<Principal>"
+      "symbol": "AuthPolicy",
+      "expected_line": 68,
+      "expected_fragment": "pub struct AuthPolicy"
     },
     {
-      "id": "store-rs",
+      "id": "store",
       "path": "src/store.rs",
-      "symbol": "reconcile_snapshot",
-      "span": "80:101",
-      "text": "pub fn reconcile_snapshot(source: &str, seen: &[String])"
+      "symbol": "code_relations",
+      "expected_line": 4172,
+      "expected_fragment": "pub fn code_relations"
     },
     {
-      "id": "retry-py",
-      "path": "connectors/http.py",
-      "symbol": "request_with_backoff",
-      "span": "20:49",
-      "text": "def request_with_backoff(client, path): retry rate limited requests"
+      "id": "mcp",
+      "path": "src/mcp.rs",
+      "symbol": "search_code",
+      "expected_line": 625,
+      "expected_fragment": "async fn search_code"
     },
     {
-      "id": "graph-ts",
-      "path": "web/Graph.tsx",
-      "symbol": "DependencyGraph",
-      "span": "15:42",
-      "text": "export function DependencyGraph renders callers callees and imports"
+      "id": "chunks",
+      "path": "src/chunking.rs",
+      "symbol": "chunk_document",
+      "expected_line": 85,
+      "expected_fragment": "pub fn chunk_document"
     },
     {
-      "id": "noise-md",
-      "path": "README.md",
-      "symbol": "",
-      "span": "1:5",
-      "text": "Installation and configuration guide"
+      "id": "connectors",
+      "path": "src/connectors.rs",
+      "symbol": "filesystem_documents",
+      "expected_line": 106,
+      "expected_fragment": "pub fn filesystem_documents"
+    },
+    {
+      "id": "embed",
+      "path": "src/embed.rs",
+      "symbol": "DeterministicEmbedder",
+      "expected_line": 403,
+      "expected_fragment": "pub struct DeterministicEmbedder"
+    },
+    {
+      "id": "context",
+      "path": "src/context.rs",
+      "symbol": "ContextBundle",
+      "expected_line": 17,
+      "expected_fragment": "pub struct ContextBundle"
+    },
+    {
+      "id": "retrieval",
+      "path": "src/retrieval.rs",
+      "symbol": "retrieve_scoped_with_status",
+      "expected_line": 151,
+      "expected_fragment": "pub async fn retrieve_scoped_with_status"
+    },
+    {
+      "id": "parser",
+      "path": "src/code_intelligence.rs",
+      "symbol": "parse_document",
+      "expected_line": 587,
+      "expected_fragment": "pub fn parse_document"
+    },
+    {
+      "id": "certify",
+      "path": "src/cortana/connectors/certification.py",
+      "symbol": "certify_builtin",
+      "expected_line": 660,
+      "expected_fragment": "def certify_builtin"
+    },
+    {
+      "id": "retry",
+      "path": "src/cortana/connectors/chat.py",
+      "symbol": "_get_with_backoff",
+      "expected_line": 850,
+      "expected_fragment": "def _get_with_backoff"
+    },
+    {
+      "id": "api",
+      "path": "src/api.rs",
+      "symbol": "code_symbols",
+      "expected_line": 1870,
+      "expected_fragment": "async fn code_symbols"
     }
   ],
+  "budgets": {
+    "max_latency_ms": 50.0,
+    "max_peak_memory_bytes": 16777216
+  },
   "queries": [
-    { "class": "exact_identifier", "query": "authenticate_token", "expected": "auth-rs" },
+    { "class": "exact_identifier", "query": "AuthPolicy", "expected": "auth" },
     {
       "class": "architecture",
-      "query": "dependency callers and callees graph",
-      "expected": "graph-ts"
+      "query": "ContextBundle evidence and token budget",
+      "expected": "context"
     },
-    { "class": "error", "query": "retry a rate limited connector request", "expected": "retry-py" },
-    { "class": "api", "query": "snapshot reconciliation API", "expected": "store-rs" },
-    { "class": "impact", "query": "what depends on authenticate token", "expected": "auth-rs" }
+    {
+      "class": "error",
+      "query": "_get_with_backoff retry rate limited connector",
+      "expected": "retry"
+    },
+    { "class": "api", "query": "code_symbols exact definition API", "expected": "api" },
+    {
+      "class": "dependency",
+      "query": "filesystem_documents repository traversal",
+      "expected": "connectors"
+    },
+    { "class": "impact", "query": "code_relations callers impact graph", "expected": "store" },
+    {
+      "class": "retrieval",
+      "query": "retrieve_scoped_with_status semantic lexical fallback",
+      "expected": "retrieval"
+    },
+    { "class": "parsing", "query": "parse_document language parser", "expected": "parser" }
   ]
 }

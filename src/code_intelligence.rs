@@ -12,6 +12,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -20,7 +21,7 @@ use sha2::{Digest, Sha256};
 use crate::model::Document;
 
 pub const CODE_INDEX_CONTRACT_VERSION: &str = "cortana.code-index.v1";
-pub const BOUNDED_PARSER_VERSION: &str = "cortana.bounded-parser.v1";
+pub const BOUNDED_PARSER_VERSION: &str = "cortana.bounded-parser.v2";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RepositoryIdentity {
@@ -140,7 +141,12 @@ pub fn inspect_repository(root: &Path) -> Result<RepositoryIdentity> {
             })
             .map(str::to_string)
     });
-    let identity_seed = remote.as_deref().unwrap_or(&display_name);
+    let local_identity = repo_root
+        .canonicalize()
+        .unwrap_or_else(|_| repo_root.to_path_buf())
+        .to_string_lossy()
+        .into_owned();
+    let identity_seed = remote.as_deref().unwrap_or(&local_identity);
     Ok(RepositoryIdentity {
         repository_id: stable_hash(identity_seed),
         display_name,
@@ -251,6 +257,21 @@ impl Language {
             Self::Unknown => "unknown",
         }
     }
+
+    pub fn from_filter(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "rust" => Some(Self::Rust),
+            "python" => Some(Self::Python),
+            "typescript" => Some(Self::TypeScript),
+            "javascript" => Some(Self::JavaScript),
+            "go" => Some(Self::Go),
+            "java" => Some(Self::Java),
+            "cpp" => Some(Self::Cpp),
+            "swift" => Some(Self::Swift),
+            "ruby" => Some(Self::Ruby),
+            _ => None,
+        }
+    }
 }
 
 pub fn detect_language(path: &str) -> Language {
@@ -277,6 +298,7 @@ pub fn detect_language(path: &str) -> Language {
 #[derive(Clone, Debug)]
 pub struct ParseLimits {
     pub max_bytes: usize,
+    pub max_memory_bytes: usize,
     pub max_symbols: usize,
     pub max_relations: usize,
     pub timeout: Duration,
@@ -286,6 +308,7 @@ impl Default for ParseLimits {
     fn default() -> Self {
         Self {
             max_bytes: 2_000_000,
+            max_memory_bytes: 64 * 1024 * 1024,
             max_symbols: 20_000,
             max_relations: 40_000,
             timeout: Duration::from_millis(250),
@@ -368,6 +391,17 @@ pub enum RelationKind {
     Override,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RelationOrigin {
+    DirectSyntax,
+    Resolved,
+    Inferred,
+    Dynamic,
+    Unresolved,
+    Ambiguous,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CodeRelation {
     pub id: String,
@@ -382,7 +416,7 @@ pub struct CodeRelation {
     pub span: SourceSpan,
     pub parser_version: String,
     pub confidence: f32,
-    pub origin: String,
+    pub origin: RelationOrigin,
     pub resolved: bool,
     pub dynamic: bool,
 }
@@ -407,11 +441,100 @@ pub struct SymbolSearchHit {
     pub ambiguous: bool,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CodeSymbolFilters {
+    pub repository_id: Option<String>,
+    pub revision: Option<String>,
+    pub language: Option<Language>,
+    pub file: Option<String>,
+    pub qualified_name: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct RelationPage {
     pub relations: Vec<CodeRelation>,
-    pub next_cursor: Option<usize>,
+    pub next_cursor: Option<String>,
     pub truncated: bool,
+}
+
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, schemars::JsonSchema, Serialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RelationQuery {
+    #[default]
+    Neighborhood,
+    Callers,
+    Callees,
+    Dependencies,
+    Impact,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct RelationCursor {
+    offset: usize,
+    corpus_revision: u64,
+    scope: String,
+}
+
+fn relation_cursor_scope(
+    symbol_id: &str,
+    project: Option<&str>,
+    acl: &[String],
+    query: RelationQuery,
+    depth: usize,
+) -> String {
+    let mut acl = acl.to_vec();
+    acl.sort();
+    acl.dedup();
+    stable_hash(&format!(
+        "{symbol_id}:{}:{acl:?}:{query:?}:{}",
+        project.unwrap_or("*"),
+        depth.clamp(1, 3)
+    ))
+}
+
+pub fn encode_relation_cursor(
+    offset: usize,
+    corpus_revision: u64,
+    symbol_id: &str,
+    project: Option<&str>,
+    acl: &[String],
+    query: RelationQuery,
+    depth: usize,
+) -> Result<String> {
+    let cursor = RelationCursor {
+        offset,
+        corpus_revision,
+        scope: relation_cursor_scope(symbol_id, project, acl, query, depth),
+    };
+    Ok(URL_SAFE_NO_PAD.encode(serde_json::to_vec(&cursor)?))
+}
+
+pub fn decode_relation_cursor(
+    cursor: &str,
+    corpus_revision: u64,
+    symbol_id: &str,
+    project: Option<&str>,
+    acl: &[String],
+    query: RelationQuery,
+    depth: usize,
+) -> Result<usize> {
+    anyhow::ensure!(cursor.len() <= 2_048, "relation cursor is too large");
+    let decoded = URL_SAFE_NO_PAD
+        .decode(cursor)
+        .context("relation cursor is not base64url")?;
+    let decoded: RelationCursor =
+        serde_json::from_slice(&decoded).context("relation cursor is invalid")?;
+    anyhow::ensure!(
+        decoded.corpus_revision == corpus_revision,
+        "relation cursor is stale"
+    );
+    anyhow::ensure!(
+        decoded.scope == relation_cursor_scope(symbol_id, project, acl, query, depth),
+        "relation cursor scope does not match"
+    );
+    Ok(decoded.offset)
 }
 
 /// Replaceable parser boundary. Implementations return derived data and never mutate Documents.
@@ -443,6 +566,24 @@ impl CodeParser for BoundedSyntaxParser {
     }
 }
 
+pub fn parser_cache_key(document: &Document, limits: &ParseLimits) -> String {
+    let hash = stable_hash(&document.content);
+    let language = detect_language(&document.source_id);
+    let repo = code_value(document, "repository_id");
+    let revision = code_value(document, "revision");
+    stable_hash(&format!(
+        "{hash}:{}:{BOUNDED_PARSER_VERSION}:{}:{}:{}:{}:{}:{}:{}",
+        language.as_str(),
+        limits.max_bytes,
+        limits.max_memory_bytes,
+        limits.max_symbols,
+        limits.max_relations,
+        limits.timeout.as_millis(),
+        repo.as_deref().unwrap_or("none"),
+        revision.as_deref().unwrap_or("none")
+    ))
+}
+
 pub fn parse_document(
     document: &Document,
     limits: &ParseLimits,
@@ -450,14 +591,9 @@ pub fn parse_document(
 ) -> ParseOutput {
     let language = detect_language(&document.source_id);
     let hash = stable_hash(&document.content);
-    let cache_key = stable_hash(&format!(
-        "{hash}:{}:{BOUNDED_PARSER_VERSION}:{}:{}:{}:{}",
-        language.as_str(),
-        limits.max_bytes,
-        limits.max_symbols,
-        limits.max_relations,
-        limits.timeout.as_millis()
-    ));
+    let repo = code_value(document, "repository_id");
+    let revision = code_value(document, "revision");
+    let cache_key = parser_cache_key(document, limits);
     let mut output = ParseOutput {
         contract_version: CODE_INDEX_CONTRACT_VERSION.into(),
         parser_version: BOUNDED_PARSER_VERSION.into(),
@@ -480,6 +616,19 @@ pub fn parse_document(
             .push("file exceeds parser byte budget".into());
         return output;
     }
+    if document.content.len() > limits.max_memory_bytes {
+        output.status = ParseStatus::Oversized;
+        output
+            .diagnostics
+            .push("file exceeds parser memory budget".into());
+        return output;
+    }
+    let available_memory = limits
+        .max_memory_bytes
+        .saturating_sub(document.content.len());
+    let max_symbols = limits.max_symbols.min(available_memory / 1_024);
+    let relation_memory = available_memory.saturating_sub(max_symbols.saturating_mul(1_024));
+    let max_relations = limits.max_relations.min(relation_memory / 512);
     if language == Language::Unknown {
         output.status = ParseStatus::Unsupported;
         return output;
@@ -491,16 +640,57 @@ pub fn parse_document(
             .push("source contains unbalanced delimiters".into());
     }
     let started = Instant::now();
-    let repo = code_value(document, "repository_id");
-    let revision = code_value(document, "revision");
     let generated = document
         .metadata
         .get("code")
         .and_then(|v| v.get("generated"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let module_name = Path::new(&document.source_id)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or(&document.source_id)
+        .to_string();
+    let module_span = SourceSpan {
+        start_byte: 0,
+        end_byte: document.content.len(),
+        start_line: 1,
+        end_line: document.content.lines().count().max(1),
+    };
+    let module_id = symbol_id(
+        repo.as_deref(),
+        revision.as_deref(),
+        &document.source_id,
+        &document.source_id,
+        &SymbolKind::Module,
+        &module_span,
+    );
+    if max_symbols == 0 {
+        output.status = ParseStatus::Partial;
+        output.diagnostics.push("symbol budget exhausted".into());
+        return output;
+    }
+    output.symbols.push(CodeSymbol {
+        id: module_id.clone(),
+        name: module_name.clone(),
+        qualified_name: document.source_id.clone(),
+        kind: SymbolKind::Module,
+        role: SymbolRole::Definition,
+        language,
+        repository_id: repo.clone(),
+        revision: revision.clone(),
+        file: document.source_id.clone(),
+        span: module_span,
+        signature: format!("module {}", document.source_id),
+        visibility: None,
+        container: None,
+        documentation: None,
+        aliases: Vec::new(),
+        generated,
+    });
     let mut containers: Vec<(usize, String)> = Vec::new();
     let mut declarations = BTreeMap::<String, Vec<String>>::new();
+    declarations.insert(module_name, vec![module_id.clone()]);
     let mut imports = Vec::<(String, SourceSpan)>::new();
     let mut exports = Vec::<(String, SourceSpan)>::new();
     let mut overrides = Vec::<(String, SourceSpan)>::new();
@@ -521,10 +711,7 @@ pub fn parse_document(
         let bare = line.trim_end_matches(['\r', '\n']);
         let trimmed = bare.trim_start();
         let indent = bare.len() - trimmed.len();
-        while containers
-            .last()
-            .is_some_and(|(level, _)| *level >= indent && indent > 0)
-        {
+        while containers.last().is_some_and(|(level, _)| *level >= indent) {
             containers.pop();
         }
         if is_doc_comment(trimmed, language) {
@@ -557,7 +744,7 @@ pub fn parse_document(
             }
         }
         if let Some((name, kind, signature, visibility)) = declaration(trimmed, language) {
-            if output.symbols.len() >= limits.max_symbols {
+            if output.symbols.len() >= max_symbols {
                 output.status = ParseStatus::Partial;
                 output.diagnostics.push("symbol budget exhausted".into());
                 break;
@@ -613,7 +800,7 @@ pub fn parse_document(
                 containers.push((indent, qualified_name));
             }
         } else if let Some((original, alias)) = alias_declaration(trimmed, language) {
-            if output.symbols.len() >= limits.max_symbols {
+            if output.symbols.len() >= max_symbols {
                 output.status = ParseStatus::Partial;
                 output.diagnostics.push("symbol budget exhausted".into());
                 break;
@@ -655,7 +842,7 @@ pub fn parse_document(
         offset += line.len();
     }
     for symbol in &output.symbols {
-        if output.relations.len() >= limits.max_relations {
+        if output.relations.len() >= max_relations {
             output.status = ParseStatus::Partial;
             output.diagnostics.push("relation budget exhausted".into());
             break;
@@ -678,7 +865,7 @@ pub fn parse_document(
             container.to_string(),
             symbol.span.clone(),
             1.0,
-            "syntax",
+            RelationOrigin::Resolved,
             false,
         ));
     }
@@ -687,7 +874,7 @@ pub fn parse_document(
         (RelationKind::Override, overrides),
     ] {
         for (name, span) in entries {
-            if output.relations.len() >= limits.max_relations {
+            if output.relations.len() >= max_relations {
                 output.status = ParseStatus::Partial;
                 output.diagnostics.push("relation budget exhausted".into());
                 break;
@@ -710,13 +897,17 @@ pub fn parse_document(
                 name.clone(),
                 span,
                 0.9,
-                "syntax",
+                if target.is_some() {
+                    RelationOrigin::Resolved
+                } else {
+                    RelationOrigin::Unresolved
+                },
                 false,
             ));
         }
     }
     for (target, span) in imports {
-        if output.relations.len() >= limits.max_relations {
+        if output.relations.len() >= max_relations {
             output.status = ParseStatus::Partial;
             output.diagnostics.push("relation budget exhausted".into());
             break;
@@ -731,28 +922,34 @@ pub fn parse_document(
             repo.clone(),
             revision.clone(),
             RelationKind::Import,
-            None,
+            Some(module_id.clone()),
             &document.source_id,
             resolved_target,
             target.clone(),
             span.clone(),
             if ambiguous { 0.5 } else { 1.0 },
-            if ambiguous { "ambiguous" } else { "syntax" },
+            if ambiguous {
+                RelationOrigin::Ambiguous
+            } else if candidates.is_some() {
+                RelationOrigin::Resolved
+            } else {
+                RelationOrigin::DirectSyntax
+            },
             false,
         ));
-        if output.relations.len() < limits.max_relations {
+        if output.relations.len() < max_relations {
             output.relations.push(relation(
                 document,
                 repo.clone(),
                 revision.clone(),
                 RelationKind::Dependency,
-                None,
+                Some(module_id.clone()),
                 &document.source_id,
                 None,
                 target,
                 span,
-                1.0,
-                "syntax",
+                0.75,
+                RelationOrigin::Inferred,
                 false,
             ));
         }
@@ -760,7 +957,7 @@ pub fn parse_document(
     // Resolve only exact, unique identifier calls. Unknown and duplicate targets stay explicit.
     let mut line_offset = 0usize;
     'relation_lines: for (line_index, line) in document.content.split_inclusive('\n').enumerate() {
-        if output.relations.len() >= limits.max_relations {
+        if output.relations.len() >= max_relations {
             output.status = ParseStatus::Partial;
             output.diagnostics.push("relation budget exhausted".into());
             break 'relation_lines;
@@ -771,7 +968,7 @@ pub fn parse_document(
             .rev()
             .find(|symbol| symbol.span.start_byte <= line_offset);
         for token in call_tokens(line) {
-            if output.relations.len() >= limits.max_relations {
+            if output.relations.len() >= max_relations {
                 output.status = ParseStatus::Partial;
                 output.diagnostics.push("relation budget exhausted".into());
                 break 'relation_lines;
@@ -792,6 +989,7 @@ pub fn parse_document(
                 start_line: line_index + 1,
                 end_line: line_index + 1,
             };
+            let dynamic = is_dynamic_call(line, &token);
             output.relations.push(relation(
                 document,
                 repo.clone(),
@@ -803,12 +1001,20 @@ pub fn parse_document(
                 token,
                 span,
                 if target.is_some() { 0.95 } else { 0.5 },
-                if ambiguous { "ambiguous" } else { "syntax" },
-                false,
+                if dynamic {
+                    RelationOrigin::Dynamic
+                } else if ambiguous {
+                    RelationOrigin::Ambiguous
+                } else if target.is_some() {
+                    RelationOrigin::Resolved
+                } else {
+                    RelationOrigin::Unresolved
+                },
+                dynamic,
             ));
         }
         for (kind, target_name) in inheritance_targets(line, language) {
-            if output.relations.len() >= limits.max_relations {
+            if output.relations.len() >= max_relations {
                 output.status = ParseStatus::Partial;
                 output.diagnostics.push("relation budget exhausted".into());
                 break 'relation_lines;
@@ -817,6 +1023,7 @@ pub fn parse_document(
             let target = candidates
                 .filter(|values| values.len() == 1)
                 .map(|values| values[0].clone());
+            let resolved = target.is_some();
             let span = SourceSpan {
                 start_byte: line_offset,
                 end_byte: line_offset + line.trim_end_matches(['\r', '\n']).len(),
@@ -834,7 +1041,11 @@ pub fn parse_document(
                 target_name,
                 span,
                 0.9,
-                "syntax",
+                if resolved {
+                    RelationOrigin::Resolved
+                } else {
+                    RelationOrigin::Unresolved
+                },
                 false,
             ));
         }
@@ -947,8 +1158,15 @@ fn import_target(line: &str, language: Language) -> Option<String> {
     };
     target
         .trim_matches([';', '\'', '"'])
-        .split([':', '.', '/', ' ', '{'])
-        .find(|part| !part.is_empty())
+        .split(|character: char| !(character.is_alphanumeric() || character == '_'))
+        .filter(|part| {
+            !part.is_empty()
+                && !matches!(
+                    *part,
+                    "as" | "crate" | "from" | "import" | "mod" | "pub" | "self" | "super" | "use"
+                )
+        })
+        .next_back()
         .map(str::to_string)
 }
 
@@ -1041,6 +1259,13 @@ fn call_tokens(line: &str) -> BTreeSet<String> {
     calls
 }
 
+fn is_dynamic_call(line: &str, token: &str) -> bool {
+    matches!(
+        token,
+        "eval" | "exec" | "getattr" | "send" | "apply" | "invoke"
+    ) || line.contains(&format!("[{token}]"))
+}
+
 fn inheritance_targets(line: &str, language: Language) -> Vec<(RelationKind, String)> {
     let mut targets = Vec::new();
     for (keyword, kind) in [
@@ -1089,13 +1314,16 @@ fn relation(
     to_name: String,
     span: SourceSpan,
     confidence: f32,
-    origin: &str,
+    origin: RelationOrigin,
     dynamic: bool,
 ) -> CodeRelation {
     let resolved = to_symbol_id.is_some();
     let id = stable_hash(&format!(
-        "{:?}:{from_name}:{to_name}:{}:{}",
+        "{:?}:{}:{}:{}:{from_name}:{to_name}:{}:{}",
         kind,
+        repository_id.as_deref().unwrap_or("none"),
+        document.source_id,
+        from_symbol_id.as_deref().unwrap_or("none"),
         span.start_byte,
         revision.as_deref().unwrap_or("none")
     ));
@@ -1112,7 +1340,7 @@ fn relation(
         span,
         parser_version: BOUNDED_PARSER_VERSION.into(),
         confidence,
-        origin: origin.into(),
+        origin,
         resolved,
         dynamic,
     }
@@ -1202,12 +1430,83 @@ mod tests {
             &AtomicBool::new(false),
         );
         assert_eq!(oversized.status, ParseStatus::Oversized);
+        let memory_limited = parse_document(
+            &document("lib.rs", "fn value() {}"),
+            &ParseLimits {
+                max_bytes: 1_000,
+                max_memory_bytes: 4,
+                ..ParseLimits::default()
+            },
+            &AtomicBool::new(false),
+        );
+        assert_eq!(memory_limited.status, ParseStatus::Oversized);
+        assert!(
+            memory_limited
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.contains("memory"))
+        );
         let cancelled = parse_document(
             &document("lib.rs", "fn value() {}"),
             &ParseLimits::default(),
             &AtomicBool::new(true),
         );
         assert_eq!(cancelled.status, ParseStatus::Cancelled);
+    }
+
+    #[test]
+    fn relation_cursors_bind_scope_and_corpus_revision() {
+        let cursor = encode_relation_cursor(
+            50,
+            7,
+            "symbol",
+            Some("work"),
+            &["work".into()],
+            RelationQuery::Impact,
+            3,
+        )
+        .expect("cursor");
+        assert_eq!(
+            decode_relation_cursor(
+                &cursor,
+                7,
+                "symbol",
+                Some("work"),
+                &["work".into()],
+                RelationQuery::Impact,
+                3,
+            )
+            .expect("decode"),
+            50
+        );
+        assert!(
+            decode_relation_cursor(
+                &cursor,
+                8,
+                "symbol",
+                Some("work"),
+                &["work".into()],
+                RelationQuery::Impact,
+                3,
+            )
+            .expect_err("stale cursor")
+            .to_string()
+            .contains("stale")
+        );
+        assert!(
+            decode_relation_cursor(
+                &cursor,
+                7,
+                "symbol",
+                Some("work"),
+                &["personal".into()],
+                RelationQuery::Impact,
+                3,
+            )
+            .expect_err("ACL-changed cursor")
+            .to_string()
+            .contains("scope")
+        );
     }
 
     #[test]
@@ -1232,6 +1531,7 @@ mod tests {
         let first = parse_document(&first, &ParseLimits::default(), &cancel);
         let second = parse_document(&second, &ParseLimits::default(), &cancel);
         assert_ne!(first.symbols[0].id, second.symbols[0].id);
+        assert_ne!(first.cache_key, second.cache_key);
     }
 
     #[test]
@@ -1248,9 +1548,31 @@ mod tests {
             .find(|relation| relation.kind == RelationKind::Call && relation.to_name == "run")
             .expect("ambiguous call");
         assert!(!ambiguous.resolved);
-        assert_eq!(ambiguous.origin, "ambiguous");
+        assert_eq!(ambiguous.origin, RelationOrigin::Ambiguous);
         assert!(result.relations.iter().any(|relation| {
             relation.kind == RelationKind::Implementation && relation.to_name == "Runner"
+        }));
+    }
+
+    #[test]
+    fn top_level_declarations_leave_containers_and_imports_keep_terminal_symbols() {
+        let result = parse_document(
+            &document(
+                "src/lib.rs",
+                "use crate::foo::Bar;\nstruct A {}\nfn top_level() { Bar(); }\n",
+            ),
+            &ParseLimits::default(),
+            &AtomicBool::new(false),
+        );
+        let function = result
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "top_level")
+            .expect("top-level function");
+        assert_eq!(function.qualified_name, "top_level");
+        assert_eq!(function.container, None);
+        assert!(result.relations.iter().any(|relation| {
+            relation.kind == RelationKind::Import && relation.to_name == "Bar"
         }));
     }
 
@@ -1259,13 +1581,13 @@ mod tests {
         let result = parse_document(
             &document("src/lib.rs", "fn one() {}\nfn two() {}\n"),
             &ParseLimits {
-                max_symbols: 1,
+                max_symbols: 2,
                 ..ParseLimits::default()
             },
             &AtomicBool::new(false),
         );
         assert_eq!(result.status, ParseStatus::Partial);
-        assert_eq!(result.symbols.len(), 1);
+        assert_eq!(result.symbols.len(), 2);
         assert!(
             result
                 .diagnostics
@@ -1351,6 +1673,29 @@ mod tests {
     }
 
     #[test]
+    fn same_named_local_git_repositories_without_remotes_do_not_collapse() {
+        let parent = tempdir().expect("parent");
+        let first = parent.path().join("one/repo");
+        let second = parent.path().join("two/repo");
+        for repository in [&first, &second] {
+            std::fs::create_dir_all(repository).expect("repository directory");
+            assert!(
+                Command::new("git")
+                    .arg("-C")
+                    .arg(repository)
+                    .args(["init", "-b", "main"])
+                    .status()
+                    .expect("git init")
+                    .success()
+            );
+        }
+        let first = inspect_repository(&first).expect("first identity");
+        let second = inspect_repository(&second).expect("second identity");
+        assert_eq!(first.display_name, second.display_name);
+        assert_ne!(first.repository_id, second.repository_id);
+    }
+
+    #[test]
     fn generated_vendor_and_worktree_paths_are_classified_without_becoming_authority() {
         assert_eq!(
             is_generated_or_vendor(Path::new("src/lib.rs")),
@@ -1422,5 +1767,31 @@ mod tests {
                 .iter()
                 .any(|relation| { relation.kind == RelationKind::Override && !relation.resolved })
         );
+        let module = parsed
+            .symbols
+            .iter()
+            .find(|symbol| symbol.kind == SymbolKind::Module)
+            .expect("file module symbol");
+        assert!(parsed.relations.iter().any(|relation| {
+            relation.kind == RelationKind::Import
+                && relation.from_symbol_id.as_deref() == Some(module.id.as_str())
+                && relation.origin == RelationOrigin::DirectSyntax
+        }));
+
+        let dynamic = parse_document(
+            &document(
+                "src/dynamic.py",
+                "def caller():\n    getattr(target, name)()\n",
+            ),
+            &ParseLimits::default(),
+            &AtomicBool::new(false),
+        );
+        assert!(dynamic.relations.iter().any(|relation| {
+            relation.kind == RelationKind::Call
+                && relation.to_name == "getattr"
+                && relation.dynamic
+                && relation.origin == RelationOrigin::Dynamic
+                && !relation.resolved
+        }));
     }
 }

@@ -50,7 +50,7 @@ pub struct Config {
     pub runtime: RuntimeConfig,
     #[serde(default)]
     pub workspaces: Vec<WorkspaceConfig>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_sources")]
     pub sources: Vec<SourceConfig>,
     #[serde(skip)]
     pub environment: HashMap<String, String>,
@@ -992,6 +992,31 @@ fn default_enabled() -> bool {
     true
 }
 
+fn deserialize_sources<'de, D>(deserializer: D) -> Result<Vec<SourceConfig>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let values = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    values
+        .into_iter()
+        .map(|value| {
+            let explicitly_enabled = value.get("enabled").is_some();
+            let optional_chat = value
+                .get("kind")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|kind| matches!(kind, "slack" | "discord"));
+            let mut source: SourceConfig =
+                serde_json::from_value(value).map_err(D::Error::custom)?;
+            if optional_chat && !explicitly_enabled {
+                source.enabled = false;
+            }
+            Ok(source)
+        })
+        .collect()
+}
+
 fn default_project() -> String {
     "default".into()
 }
@@ -999,6 +1024,35 @@ fn default_project() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn optional_chat_sources_require_explicit_enablement() {
+        let config: Config = toml::from_str(
+            r#"
+            [[sources]]
+            name = "team-slack"
+            kind = "slack"
+
+            [[sources]]
+            name = "community-discord"
+            kind = "discord"
+
+            [[sources]]
+            name = "notes"
+            kind = "filesystem"
+
+            [[sources]]
+            name = "approved-slack"
+            kind = "slack"
+            enabled = true
+            "#,
+        )
+        .expect("source defaults");
+        assert!(!config.sources[0].enabled);
+        assert!(!config.sources[1].enabled);
+        assert!(config.sources[2].enabled);
+        assert!(config.sources[3].enabled);
+    }
 
     #[test]
     fn parses_configurable_sources() {

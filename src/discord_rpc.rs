@@ -483,6 +483,11 @@ fn configured_source<'a>(config: &'a Config, selected: &str) -> Result<&'a Sourc
         "source {} is not a Discord connector",
         source.name
     );
+    anyhow::ensure!(
+        source.token.is_some() && source.oauth_client.is_some(),
+        "source `{}` requires a Discord RPC token file and OAuth client path",
+        source.name
+    );
     Ok(source)
 }
 

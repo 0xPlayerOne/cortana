@@ -52,6 +52,8 @@ reference-adapter suite. Certification validates identity stability, ACL normali
 or duplicate rows, secrets, cursor/retry/cancel behavior, complete versus partial snapshots,
 deletion safety, compatibility, and bounded document/line/total-byte use. An adapter cannot obtain
 reconciliation authority unless the harness validates a complete successful snapshot.
+Certification also matches measured JSONL stdout bytes to the emitted rows and caps captured stderr
+diagnostics at 2 MiB.
 
 Manifests declare contract/SDK/version, capabilities, package, dependencies/licenses, and one of
 `supported`, `experimental`, `local-only`, or `rejected`. Compatibility is checked before a run.
@@ -61,11 +63,24 @@ capability set changes.
 
 ## Slack and Discord certification
 
-`python -m cortana.connectors certify slack` and `... certify discord` exercise disposable,
-synthetic fixtures only. Both connectors remain disabled by default. The suite covers complete,
+`python -m cortana.connectors certify slack` and `... certify discord` exercise actual adapter
+paths with disposable offline provider transports; no account or network is used. Slack drives
+authorization headers, pagination cursors, rate-limit retry, and normalization. Discord drives
+multi-channel RPC-shaped discovery, the private cache, stable IDs, and a narrowed-scope rerun that
+must emit only the requested channel and must not infer deletions for excluded channels. Both apply
+a synthetic workspace ACL before contract validation. Both
+manifests are `local-only`, and the example configuration keeps them explicitly disabled. The suite covers complete,
 partial, cancelled, revoked-token, and rate-limited outcomes; only the complete fixture may
-reconcile. Existing connector tests cover provider pagination, thread identity, cursor restart,
-bounded retries, malformed histories, redaction-safe output, and cache behavior.
+reconcile. The certification report records adapter-level authorization, pagination, cursor, retry,
+scope-change safety, ACL routing, stable identity, redaction, and reconciliation checks.
+Discord certification enters through the public adapter, reads permission-restricted disposable
+OAuth/token files, retries one synthetic transient RPC discovery failure, bounds a partial read,
+and verifies missing/revoked credentials fail closed. Temporary roots use the platform resolver;
+no operating-system-specific directory is required.
+
+Slack and Discord sources also deserialize as disabled when `enabled` is omitted. An operator must
+set `enabled = true` explicitly after authorization, discovery, and bounded validation; disabled
+sources perform no reads and receive no recurring schedule.
 
 Certification does not authorize a production account, personal history, new OAuth scopes, or a
 recurring schedule. Slack channel access depends on bot installation and workspace-admin policy;
