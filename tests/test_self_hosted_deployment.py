@@ -66,6 +66,14 @@ def test_container_release_workflow_is_tag_scoped_and_publishes_ghcr() -> None:
     assert "scripts/self-hosted-conformance.sh" in workflow
 
 
+def test_multiarch_build_isolates_architecture_specific_cargo_caches() -> None:
+    dockerfile = (ROOT / "Dockerfile").read_text()
+
+    assert "ARG TARGETARCH" in dockerfile
+    assert "id=cargo-registry-${TARGETARCH}" in dockerfile
+    assert "id=cargo-target-${TARGETARCH}" in dockerfile
+
+
 def test_self_hosted_conformance_drill_is_bounded_and_cleans_up() -> None:
     drill = (ROOT / "scripts" / "self-hosted-conformance.sh").read_text()
 
