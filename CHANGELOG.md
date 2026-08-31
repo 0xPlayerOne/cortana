@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.0](https://github.com/0xPlayerOne/cortana/compare/v0.55.0...v0.56.0) (2026-08-31)
+
+
+### Features
+
+* complete M10 knowledge graph and vault workflows ([c3cc4c3](https://github.com/0xPlayerOne/cortana/commit/c3cc4c367c81ba891bbd16d49835cef461ba4a9f))
+
 ## [0.55.0](https://github.com/0xPlayerOne/cortana/compare/v0.54.2...v0.55.0) (2026-08-30)
 
 
