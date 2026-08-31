@@ -67,6 +67,23 @@ async function assertAxe(page, surface) {
   return { surface, violations: results.violations.length, passes: results.passes.length }
 }
 
+async function assertControlExposed(page, label, viewportWidth) {
+  const control = page.getByLabel(label)
+  const box = await control.boundingBox()
+  ensure(
+    box && box.x >= 0 && box.x + box.width <= viewportWidth,
+    `${label} does not reflow inside the ${viewportWidth}px viewport`
+  )
+  ensure(
+    await control.evaluate((element) => {
+      const box = element.getBoundingClientRect()
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+      return hit === element || element.contains(hit)
+    }),
+    `${label} is obscured by another graph control`
+  )
+}
+
 async function run() {
   mkdirSync(EVIDENCE_DIRECTORY, { recursive: true })
   const server = spawn(
@@ -138,24 +155,41 @@ async function run() {
       fullPage: true,
     })
 
-    await page.evaluate(() => {
-      document.documentElement.style.zoom = '2'
-    })
+    await page.setViewportSize({ width: 720, height: 900 })
     ensure(await graphNode.isVisible(), 'selected graph node disappeared at 200% zoom')
     ensure(
       await page.getByRole('complementary', { name: 'Selected graph node' }).isVisible(),
       'graph provenance panel disappeared at 200% zoom'
+    )
+    for (const label of [
+      'Filter graph nodes',
+      'Filter graph relationships',
+      'Filter graph relationship origin',
+      'Filter graph minimum confidence',
+    ]) {
+      await assertControlExposed(page, label, 720)
+    }
+    ensure(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth
+      ),
+      'knowledge graph requires horizontal page scrolling at 200% equivalent reflow'
     )
     await page.screenshot({
       path: resolve(EVIDENCE_DIRECTORY, 'graph-desktop-200-percent.png'),
       fullPage: true,
     })
 
-    await page.evaluate(() => {
-      document.documentElement.style.zoom = '1'
-    })
     await page.setViewportSize({ width: 390, height: 844 })
     ensure(await graphNode.isVisible(), 'graph is not responsive at mobile width')
+    for (const label of [
+      'Filter graph nodes',
+      'Filter graph relationships',
+      'Filter graph relationship origin',
+      'Filter graph minimum confidence',
+    ]) {
+      await assertControlExposed(page, label, 390)
+    }
     await page.screenshot({
       path: resolve(EVIDENCE_DIRECTORY, 'graph-mobile.png'),
       fullPage: true,
@@ -176,7 +210,7 @@ async function run() {
         'graph-filter-labels',
         'selection-live-region',
         'reduced-motion',
-        'zoom-200-percent',
+        'zoom-200-percent-reflow',
         'responsive-mobile',
         'browser-console-clean',
       ],

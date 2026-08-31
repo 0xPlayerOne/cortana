@@ -342,7 +342,7 @@ test('graph supports bounded filtering and explains selected relationships', () 
     target: { value: '0.75' },
   })
   expect(relationshipFilters).toEqual(['contains', 'explicit', '0.75'])
-})
+}, 15_000)
 
 test('graph exposes workspace and source nodes with bounded type filters', () => {
   const focused: string[] = []

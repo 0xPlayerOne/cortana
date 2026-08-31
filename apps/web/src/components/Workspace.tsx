@@ -26,6 +26,7 @@ import {
   EmptyTitle,
 } from './shadcn/empty'
 import { Input } from './shadcn/input'
+import { NativeSelect } from './shadcn/native-select'
 import { Spinner } from './shadcn/spinner'
 import { Tabs, TabsList, TabsTrigger } from './shadcn/tabs'
 import { Toggle } from './shadcn/toggle'
@@ -929,71 +930,62 @@ function GraphView({
             Clear
           </WorkspaceButton>
         )}
-        <label>
-          <span className="visually-hidden">Filter graph relationships</span>
-          <select
-            aria-label="Filter graph relationships"
-            value={graphEdgeKind}
-            onChange={(event) =>
-              onGraphEdgeKindChange?.(
-                event.target.value as BrainGraphPage['edges'][number]['kind'] | 'all'
-              )
-            }
-          >
-            <option value="all">All relationships</option>
-            {[
-              'contains',
-              'references',
-              'backlink',
-              'nearby',
-              'same-thread',
-              'authored-by',
-              'mentions',
-              'temporal',
-              'supports',
-              'contradicts',
-              'derives',
-            ].map((kind) => (
-              <option key={kind} value={kind}>
-                {kind}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span className="visually-hidden">Filter graph relationship origin</span>
-          <select
-            aria-label="Filter graph relationship origin"
-            value={graphOrigin}
-            onChange={(event) =>
-              onGraphOriginChange?.(
-                event.target.value as NonNullable<BrainGraphPage['edges'][number]['origin']> | 'all'
-              )
-            }
-          >
-            <option value="all">All origins</option>
-            <option value="explicit">Explicit</option>
-            <option value="derived">Derived</option>
-            <option value="inferred">Inferred</option>
-          </select>
-        </label>
-        <label>
-          <span className="visually-hidden">Filter graph minimum confidence</span>
-          <select
-            aria-label="Filter graph minimum confidence"
-            value={graphMinConfidence ?? ''}
-            onChange={(event) =>
-              onGraphMinConfidenceChange?.(
-                event.target.value === '' ? null : Number(event.target.value)
-              )
-            }
-          >
-            <option value="">Any confidence</option>
-            <option value="0.5">50% or higher</option>
-            <option value="0.75">75% or higher</option>
-            <option value="0.9">90% or higher</option>
-          </select>
-        </label>
+        <NativeSelect
+          aria-label="Filter graph relationships"
+          value={graphEdgeKind}
+          onChange={(event) =>
+            onGraphEdgeKindChange?.(
+              event.target.value as BrainGraphPage['edges'][number]['kind'] | 'all'
+            )
+          }
+        >
+          <option value="all">All relationships</option>
+          {[
+            'contains',
+            'references',
+            'backlink',
+            'nearby',
+            'same-thread',
+            'authored-by',
+            'mentions',
+            'temporal',
+            'supports',
+            'contradicts',
+            'derives',
+          ].map((kind) => (
+            <option key={kind} value={kind}>
+              {kind}
+            </option>
+          ))}
+        </NativeSelect>
+        <NativeSelect
+          aria-label="Filter graph relationship origin"
+          value={graphOrigin}
+          onChange={(event) =>
+            onGraphOriginChange?.(
+              event.target.value as NonNullable<BrainGraphPage['edges'][number]['origin']> | 'all'
+            )
+          }
+        >
+          <option value="all">All origins</option>
+          <option value="explicit">Explicit</option>
+          <option value="derived">Derived</option>
+          <option value="inferred">Inferred</option>
+        </NativeSelect>
+        <NativeSelect
+          aria-label="Filter graph minimum confidence"
+          value={graphMinConfidence == null ? 'all' : String(graphMinConfidence)}
+          onChange={(event) =>
+            onGraphMinConfidenceChange?.(
+              event.target.value === 'all' ? null : Number(event.target.value)
+            )
+          }
+        >
+          <option value="all">Any confidence</option>
+          <option value="0.5">50% or higher</option>
+          <option value="0.75">75% or higher</option>
+          <option value="0.9">90% or higher</option>
+        </NativeSelect>
       </div>
       {graph && !usingEvidenceFallback && (
         <div className="graph-kind-filter" role="group" aria-label="Filter graph node types">

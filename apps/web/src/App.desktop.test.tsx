@@ -1108,6 +1108,7 @@ test('advanced settings export shows redacted notice and calls the export bridge
 
 test('advanced settings exports an explicit workspace set as a derived vault', async () => {
   const originalConfirm = window.confirm
+  const user = userEvent.setup()
   window.confirm = () => true
   try {
     render(<App />)
@@ -1120,11 +1121,12 @@ test('advanced settings exports an explicit workspace set as a derived vault', a
     )
     fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
 
-    const work = (await screen.findByLabelText('Work')) as HTMLInputElement
-    const personal = screen.getByLabelText('Personal') as HTMLInputElement
-    expect(work.checked).toBe(true)
-    expect(personal.checked).toBe(true)
-    fireEvent.click(personal)
+    const work = await screen.findByRole('checkbox', { name: 'Work' })
+    const personal = screen.getByRole('checkbox', { name: 'Personal' })
+    expect(work.getAttribute('aria-checked')).toBe('true')
+    expect(personal.getAttribute('aria-checked')).toBe('true')
+    await user.click(personal)
+    expect(personal.getAttribute('aria-checked')).toBe('false')
 
     fireEvent.click(screen.getByRole('button', { name: 'Export vault' }))
     await waitFor(() =>

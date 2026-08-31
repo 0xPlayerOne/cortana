@@ -25,6 +25,7 @@ import { Field, NumberField, SettingsSection, type SettingsSectionProps } from '
 import {
   SettingsAlert,
   SettingsButton as Button,
+  SettingsCheckbox as Checkbox,
   SettingsFieldGroup,
   SettingsInput as Input,
 } from './SettingsSurface'
@@ -319,8 +320,7 @@ export function AdvancedSettingsSection({
             <legend>Workspaces to export</legend>
             {settings.workspaces.map((workspace) => (
               <label key={workspace.id}>
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={vaultSelected.has(workspace.id)}
                   onChange={(event) =>
                     setVaultSelected((current) => {

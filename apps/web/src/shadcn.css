@@ -2260,23 +2260,19 @@ select:focus-visible {
   font-size: 12px;
 }
 
-.graph-toolbar label {
-  min-width: 0;
+.graph-toolbar [data-slot='native-select-wrapper'] {
+  max-width: 170px;
 }
 
-.graph-toolbar select {
+.graph-toolbar [data-slot='native-select'] {
   min-height: 30px;
-  max-width: 170px;
-  padding: 0 24px 0 8px;
   color: var(--theme-content-text);
-  border: 1px solid var(--theme-content-border);
-  border-radius: var(--radius-sm);
   background: var(--theme-control-bg);
   font: inherit;
   font-size: 11px;
 }
 
-.graph-toolbar select:focus-visible {
+.graph-toolbar [data-slot='native-select']:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
 }
@@ -4904,6 +4900,10 @@ select:focus-visible {
     width: 115px;
   }
 
+  .graph-selection {
+    top: 150px;
+  }
+
   .statusbar {
     padding: 0 12px;
     gap: 14px;
@@ -4912,6 +4912,29 @@ select:focus-visible {
   .statusbar > span:nth-child(2),
   .statusbar > span:last-child {
     display: none;
+  }
+}
+
+@media (max-width: 500px) {
+  .graph-toolbar [data-slot='input'] {
+    flex-basis: calc(100% - 24px);
+  }
+
+  .graph-toolbar [data-slot='native-select-wrapper'] {
+    max-width: none;
+    flex: 1 1 140px;
+  }
+
+  .graph-kind-filter {
+    top: 142px;
+  }
+
+  .graph-summary {
+    top: 184px;
+  }
+
+  .graph-selection {
+    top: 260px;
   }
 }
 .utility-view {
