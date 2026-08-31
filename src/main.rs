@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -153,6 +154,20 @@ enum Command {
     Audit {
         #[command(subcommand)]
         action: AuditAction,
+    },
+    /// Export authorized canonical documents as a derived Obsidian Markdown vault.
+    ExportVault {
+        #[arg(value_name = "DIRECTORY")]
+        output: PathBuf,
+        #[arg(
+            long = "workspace",
+            value_name = "NAME",
+            required = true,
+            help = "Explicit workspace to export; repeat to select more than one"
+        )]
+        workspaces: Vec<String>,
+        #[arg(long, help = "Report the export plan without writing files")]
+        dry_run: bool,
     },
     /// Create and verify an online SQLite snapshot.
     Backup {
@@ -982,6 +997,33 @@ async fn main() -> Result<()> {
     if let Some(Command::Audit { action }) = cli.command.as_ref() {
         return manage_audit(&config, &store, action);
     }
+    if let Some(Command::ExportVault {
+        output,
+        workspaces,
+        dry_run,
+    }) = cli.command.as_ref()
+    {
+        let cancellation = Cancellation::install();
+        let options = cortana::vault_export::VaultExportOptions {
+            output: output.clone(),
+            workspaces: workspaces.iter().cloned().collect::<BTreeSet<_>>(),
+            principal_acl: vec!["*".into()],
+            dry_run: *dry_run,
+            cancel: Arc::clone(&cancellation.requested),
+            progress: Some(Arc::new(|progress| {
+                eprintln!(
+                    "{}",
+                    serde_json::to_string(&progress).unwrap_or_else(|_| {
+                        "{\"phase\":\"progress-serialization-failed\"}".into()
+                    })
+                );
+            })),
+        };
+        let result = cortana::vault_export::export_vault(&store, &options);
+        cancellation.stop();
+        println!("{}", serde_json::to_string_pretty(&result?)?);
+        return Ok(());
+    }
     let cache_max_entries = config.embedding.cache_max_entries;
     let base_embedder: Arc<dyn Embedder> = if cli.offline {
         Arc::new(DeterministicEmbedder::new(256))
@@ -1368,6 +1410,7 @@ async fn main() -> Result<()> {
             | Command::ValidateSource { .. }
             | Command::CheckSource { .. }
             | Command::Memory { .. }
+            | Command::ExportVault { .. }
             | Command::Sync { plan: true, .. }
             | Command::SyncFiles { plan: true, .. },
         ) => unreachable!(),
@@ -5252,6 +5295,37 @@ mod tests {
             Command::CheckSource { source } => assert_eq!(source, "work-code"),
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn export_vault_requires_explicit_workspaces_and_supports_dry_run() {
+        let cli = Cli::try_parse_from([
+            "cortana",
+            "export-vault",
+            "/tmp/cortana-vault",
+            "--workspace",
+            "work",
+            "--workspace",
+            "personal",
+            "--dry-run",
+        ])
+        .expect("vault export command");
+        match cli.command.expect("command") {
+            Command::ExportVault {
+                output,
+                workspaces,
+                dry_run,
+            } => {
+                assert_eq!(output, std::path::PathBuf::from("/tmp/cortana-vault"));
+                assert_eq!(workspaces, ["work", "personal"]);
+                assert!(dry_run);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let error = Cli::try_parse_from(["cortana", "export-vault", "/tmp/cortana-vault"])
+            .expect_err("workspace selection is required");
+        assert!(error.to_string().contains("--workspace"));
     }
 
     #[tokio::test]
