@@ -28,6 +28,7 @@ mod services;
 mod settings;
 mod source_jobs;
 mod updater;
+mod vault_exports;
 
 const BACKEND_ORIGIN: &str = "http://127.0.0.1:7331";
 const MAIN_WINDOW: &str = "main";
@@ -981,6 +982,33 @@ async fn desktop_settings_import(
 }
 
 #[tauri::command]
+async fn desktop_vault_export_start(
+    app: AppHandle,
+    exports: State<'_, vault_exports::VaultExportState>,
+    workspaces: Vec<String>,
+    dry_run: bool,
+    approved: bool,
+) -> Result<Option<vault_exports::VaultExportSnapshot>, String> {
+    exports.start(&app, workspaces, dry_run, approved).await
+}
+
+#[tauri::command]
+fn desktop_vault_export_status(
+    exports: State<'_, vault_exports::VaultExportState>,
+    id: String,
+) -> Result<vault_exports::VaultExportSnapshot, String> {
+    exports.status(&id)
+}
+
+#[tauri::command]
+fn desktop_vault_export_cancel(
+    exports: State<'_, vault_exports::VaultExportState>,
+    id: String,
+) -> Result<vault_exports::VaultExportSnapshot, String> {
+    exports.cancel(&id)
+}
+
+#[tauri::command]
 fn desktop_installer_start(
     app: AppHandle,
     installer: State<'_, installer::InstallerState>,
@@ -1528,6 +1556,7 @@ pub fn run() {
         .manage(installer::InstallerState::default())
         .manage(source_jobs::SourceJobState::default())
         .manage(updater::UpdaterState::default())
+        .manage(vault_exports::VaultExportState::default())
         .invoke_handler(tauri::generate_handler![
             brain_status,
             brain_answer,
@@ -1565,6 +1594,9 @@ pub fn run() {
             desktop_secret_storage_migrate,
             desktop_settings_export,
             desktop_settings_import,
+            desktop_vault_export_start,
+            desktop_vault_export_status,
+            desktop_vault_export_cancel,
             desktop_path_pick,
             desktop_readiness_scan,
             desktop_embedding_generation_migrate,

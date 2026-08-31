@@ -241,6 +241,15 @@ fn vault_export_refuses_unmanaged_or_symlink_destinations_and_keeps_manifest_pri
         "keep"
     );
 
+    let empty = directory.path().join("selected-empty-folder");
+    std::fs::create_dir(&empty).expect("empty picker destination");
+    let empty_options = VaultExportOptions {
+        output: empty.clone(),
+        ..options.clone()
+    };
+    export_vault(&store, &empty_options).expect("empty selected folder");
+    assert!(empty.join(".cortana-vault.json").is_file());
+
     let output = directory.path().join("managed");
     let managed_options = VaultExportOptions {
         output: output.clone(),
@@ -266,4 +275,34 @@ fn vault_export_refuses_unmanaged_or_symlink_destinations_and_keeps_manifest_pri
         let error = export_vault(&store, &linked_options).expect_err("symlink destination");
         assert!(error.to_string().contains("symbolic link"));
     }
+}
+
+#[test]
+fn vault_export_bounds_the_machine_readable_file_preview() {
+    let directory = tempfile::tempdir().expect("temporary directory");
+    let store = Store::open(&directory.path().join("store.sqlite3")).expect("store");
+    for index in 0..101 {
+        insert_document(
+            &store,
+            "work",
+            &format!("note-{index:03}"),
+            "bounded body",
+            Vec::new(),
+        );
+    }
+    let report = export_vault(
+        &store,
+        &VaultExportOptions {
+            output: directory.path().join("vault"),
+            workspaces: BTreeSet::from(["work".into()]),
+            principal_acl: vec!["*".into()],
+            dry_run: true,
+            cancel: Arc::new(AtomicBool::new(false)),
+            progress: None,
+        },
+    )
+    .expect("bounded dry run");
+    assert_eq!(report.documents, 101);
+    assert_eq!(report.files.len(), 100);
+    assert!(report.files_truncated);
 }

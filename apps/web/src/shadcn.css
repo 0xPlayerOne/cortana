@@ -2918,6 +2918,24 @@ select:focus-visible {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 
+.settings-search-input {
+  position: relative;
+}
+
+.settings-search-input > svg {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 10px;
+  color: var(--muted-foreground);
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.settings-search-input input {
+  padding-left: 32px;
+}
+
 .workspace-settings-grid--4 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -3042,6 +3060,11 @@ select:focus-visible {
 .workspace-card-heading button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.workspace-order-actions {
+  display: flex;
+  gap: 4px;
 }
 
 .workspace-advanced-details {
@@ -3198,6 +3221,31 @@ select:focus-visible {
   color: var(--muted-foreground);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.vault-workspace-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  max-width: 560px;
+  margin: 12px 0 0;
+  padding: 0;
+  border: 0;
+}
+
+.vault-workspace-picker legend {
+  width: 100%;
+  margin-bottom: 5px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.vault-workspace-picker label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--foreground);
+  font-size: 12px;
 }
 
 @media (max-width: 760px) {

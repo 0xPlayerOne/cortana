@@ -19,6 +19,7 @@ import type {
   DesktopSettingsExport,
   DesktopSettingsImport,
   DesktopSettingsUpdate,
+  DesktopVaultExport,
   DesktopSourceJob,
   DesktopInstallJob,
   SourceSettings,
@@ -55,6 +56,9 @@ afterEach(() => {
   state.lastSettingsUpdate = null
   state.exportDesktopSettingsCalls = 0
   state.importDesktopSettingsCalls = 0
+  state.vaultExportStartCalls = []
+  state.vaultExportStatusCalls = 0
+  state.vaultExportCancelCalls = 0
   state.databaseBackupCalls = 0
   state.databaseRestoreCalls = 0
   state.databaseBackupResult = {
@@ -201,6 +205,34 @@ const state = {
     preserved_external_sources: [],
     settings: buildImportedSettings('/tmp/imported-runtime-dir'),
   } as DesktopSettingsImport,
+  vaultExportStartCalls: [] as Array<{ workspaces: string[]; dryRun: boolean }>,
+  vaultExportStatusCalls: 0,
+  vaultExportCancelCalls: 0,
+  vaultExportResult: {
+    id: 'vault-1-1',
+    status: 'succeeded',
+    phase: 'complete',
+    workspaces: ['work', 'personal'],
+    output: '/tmp/Cortana Vault',
+    dry_run: false,
+    documents_completed: 2,
+    files_written: 2,
+    started_at_unix_seconds: 1,
+    completed_at_unix_seconds: 2,
+    report: {
+      output: '/tmp/Cortana Vault',
+      workspaces: ['work', 'personal'],
+      documents: 2,
+      content_rewrites: 2,
+      unchanged_documents: 0,
+      deleted_documents: 0,
+      dry_run: false,
+      files: ['/tmp/Cortana Vault/work/notes/one.md'],
+      files_truncated: false,
+      previous_vault: null,
+    },
+    error: null,
+  } as DesktopVaultExport,
   databaseBackupCalls: 0,
   databaseRestoreCalls: 0,
   databaseBackupResult: {
@@ -392,6 +424,29 @@ mock.module('./api', () => ({
   importDesktopSettings: () => {
     state.importDesktopSettingsCalls += 1
     return Promise.resolve(state.importDesktopSettingsResult)
+  },
+  startDesktopVaultExport: (workspaces: string[], dryRun: boolean) => {
+    state.vaultExportStartCalls.push({ workspaces, dryRun })
+    return Promise.resolve({
+      ...state.vaultExportResult,
+      dry_run: dryRun,
+      report: state.vaultExportResult.report
+        ? { ...state.vaultExportResult.report, dry_run: dryRun }
+        : null,
+    })
+  },
+  getDesktopVaultExport: () => {
+    state.vaultExportStatusCalls += 1
+    return Promise.resolve(state.vaultExportResult)
+  },
+  cancelDesktopVaultExport: () => {
+    state.vaultExportCancelCalls += 1
+    return Promise.resolve({
+      ...state.vaultExportResult,
+      status: 'cancelling' as const,
+      phase: 'cancelling',
+      report: null,
+    })
   },
   backupDesktopDatabase: () => {
     state.databaseBackupCalls += 1
@@ -1051,6 +1106,38 @@ test('advanced settings export shows redacted notice and calls the export bridge
   expect(state.exportDesktopSettingsCalls).toBe(1)
 })
 
+test('advanced settings exports an explicit workspace set as a derived vault', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  try {
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: updatesButtonName })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }))
+
+    const work = (await screen.findByLabelText('Work')) as HTMLInputElement
+    const personal = screen.getByLabelText('Personal') as HTMLInputElement
+    expect(work.checked).toBe(true)
+    expect(personal.checked).toBe(true)
+    fireEvent.click(personal)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export vault' }))
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'Exported 2 documents; 2 content rewrites and 0 unchanged.'
+      )
+    )
+    expect(state.vaultExportStartCalls).toEqual([{ workspaces: ['work'], dryRun: false }])
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
 test('advanced import preview cancellation keeps draft values unchanged', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => false
@@ -1555,7 +1642,7 @@ test('new workspace display names keep focus while typing', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
   await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
   fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
-  fireEvent.click(screen.getByRole('button', { name: 'Add workspace (2/4)' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Add workspace (2/128)' }))
   const displayName = screen.getAllByLabelText('Display name').at(-1) as HTMLInputElement
 
   displayName.focus()
@@ -1563,6 +1650,49 @@ test('new workspace display names keep focus while typing', async () => {
   expect(document.activeElement).toBe(displayName)
   fireEvent.change(displayName, { target: { value: 'New workspace' } })
   expect(document.activeElement).toBe(displayName)
+})
+
+test('workspace settings keep 25 workspaces searchable and keyboard-operable', async () => {
+  const originalSettings = state.settings
+  state.settings = {
+    ...desktopSettings,
+    sources: [],
+    workspaces: Array.from({ length: 25 }, (_, index) => ({
+      id: `workspace-${String(index + 1).padStart(2, '0')}`,
+      name: `Workspace ${index + 1}`,
+      account_label: index === 24 ? 'needle@example.test' : null,
+      color: null,
+    })),
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Workspaces' }))
+
+    const add = screen.getByRole('button', { name: 'Add workspace (25/128)' })
+    expect(add.hasAttribute('disabled')).toBe(false)
+    const search = screen.getByLabelText('Find workspace') as HTMLInputElement
+    fireEvent.change(search, { target: { value: 'needle@example.test' } })
+    expect(screen.getAllByLabelText('Display name')).toHaveLength(1)
+    expect((screen.getByLabelText('Display name') as HTMLInputElement).value).toBe('Workspace 25')
+
+    const moveUp = screen.getByRole('button', { name: 'Move Workspace 25 up' })
+    await act(async () => {
+      moveUp.focus()
+      await Promise.resolve()
+    })
+    expect(document.activeElement).toBe(moveUp)
+    fireEvent.click(moveUp)
+    fireEvent.change(search, { target: { value: '' } })
+    const names = screen.getAllByLabelText('Display name') as HTMLInputElement[]
+    expect(names).toHaveLength(25)
+    expect(names[23]?.value).toBe('Workspace 25')
+    expect(names[24]?.value).toBe('Workspace 24')
+  } finally {
+    state.settings = originalSettings
+  }
 })
 
 test('settings warns before discarding dirty changes', async () => {

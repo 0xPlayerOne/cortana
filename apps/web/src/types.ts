@@ -518,6 +518,34 @@ export type DesktopSettingsImport = {
   settings: DesktopPortableSettings
 }
 
+export type DesktopVaultExportReport = {
+  output: string
+  workspaces: string[]
+  documents: number
+  content_rewrites: number
+  unchanged_documents: number
+  deleted_documents: number
+  dry_run: boolean
+  files: string[]
+  files_truncated: boolean
+  previous_vault: string | null
+}
+
+export type DesktopVaultExport = {
+  id: string
+  status: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
+  phase: string
+  workspaces: string[]
+  output: string
+  dry_run: boolean
+  documents_completed: number
+  files_written: number
+  started_at_unix_seconds: number
+  completed_at_unix_seconds: number | null
+  report: DesktopVaultExportReport | null
+  error: string | null
+}
+
 export type DesktopSourceJob = {
   id: string
   operation: 'connection-check' | 'validation' | 'authorization' | 'trial-sync' | 'initial-sync'

@@ -29,6 +29,7 @@ import type {
   DesktopSettingsExport,
   DesktopSettingsImport,
   DesktopSettingsUpdate,
+  DesktopVaultExport,
   DesktopSecretStorageMigration,
   DesktopSourceJob,
   DesktopUpdate,
@@ -81,6 +82,28 @@ export async function exportDesktopSettings(): Promise<DesktopSettingsExport | n
 export async function importDesktopSettings(): Promise<DesktopSettingsImport | null> {
   if (!isDesktopApp) throw new Error('Settings import is available in Cortana Desktop')
   return invokeDesktop<DesktopSettingsImport | null>('desktop_settings_import')
+}
+
+export async function startDesktopVaultExport(
+  workspaces: string[],
+  dryRun: boolean
+): Promise<DesktopVaultExport | null> {
+  if (!isDesktopApp) throw new Error('Vault export is available in Cortana Desktop')
+  return invokeDesktop<DesktopVaultExport | null>('desktop_vault_export_start', {
+    workspaces,
+    dryRun,
+    approved: !dryRun,
+  })
+}
+
+export async function getDesktopVaultExport(id: string): Promise<DesktopVaultExport> {
+  if (!isDesktopApp) throw new Error('Vault export is available in Cortana Desktop')
+  return invokeDesktop<DesktopVaultExport>('desktop_vault_export_status', { id })
+}
+
+export async function cancelDesktopVaultExport(id: string): Promise<DesktopVaultExport> {
+  if (!isDesktopApp) throw new Error('Vault export is available in Cortana Desktop')
+  return invokeDesktop<DesktopVaultExport>('desktop_vault_export_cancel', { id })
 }
 
 export async function scanDesktopReadiness(): Promise<DesktopReadiness> {

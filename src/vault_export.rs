@@ -23,6 +23,7 @@ const MANIFEST_VERSION: u32 = 1;
 const MAX_EXPORT_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_OBSIDIAN_STATE_FILES: usize = 1_000;
 const MAX_OBSIDIAN_STATE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_REPORT_FILES: usize = 100;
 
 pub type VaultProgressCallback = Arc<dyn Fn(VaultExportProgress) + Send + Sync>;
 
@@ -53,6 +54,7 @@ pub struct VaultExportReport {
     pub deleted_documents: usize,
     pub dry_run: bool,
     pub files: Vec<PathBuf>,
+    pub files_truncated: bool,
     pub previous_vault: Option<PathBuf>,
 }
 
@@ -133,8 +135,10 @@ pub fn export_vault(store: &Store, options: &VaultExportOptions) -> Result<Vault
         dry_run: options.dry_run,
         files: rendered
             .iter()
+            .take(MAX_REPORT_FILES)
             .map(|document| output.join(&document.relative_path))
             .collect(),
+        files_truncated: rendered.len() > MAX_REPORT_FILES,
         previous_vault: backup.is_dir().then_some(backup.clone()),
     };
     if options.dry_run {
@@ -345,6 +349,9 @@ fn read_existing_manifest(output: &Path) -> Result<Option<VaultManifest>> {
     }
     let manifest_path = output.join(MANIFEST_NAME);
     if !manifest_path.is_file() {
+        if directory_is_empty(output)? {
+            return Ok(None);
+        }
         bail!(
             "refusing to replace an unmanaged directory without {MANIFEST_NAME}: {}",
             output.display()
@@ -362,6 +369,16 @@ fn read_existing_manifest(output: &Path) -> Result<Option<VaultManifest>> {
 
 fn publish_stage(output: &Path, stage: &Path, backup: &Path) -> Result<()> {
     if output.exists() {
+        if directory_is_empty(output)? {
+            fs::remove_dir(output).with_context(|| {
+                format!(
+                    "failed to prepare empty vault directory {}",
+                    output.display()
+                )
+            })?;
+            fs::rename(stage, output).context("failed to publish staged vault")?;
+            return Ok(());
+        }
         remove_managed_backup(backup)?;
         fs::rename(output, backup).with_context(|| {
             format!(
@@ -377,6 +394,10 @@ fn publish_stage(output: &Path, stage: &Path, backup: &Path) -> Result<()> {
         fs::rename(stage, output).context("failed to publish staged vault")?;
     }
     Ok(())
+}
+
+fn directory_is_empty(path: &Path) -> Result<bool> {
+    Ok(path.is_dir() && fs::read_dir(path)?.next().is_none())
 }
 
 fn remove_managed_backup(backup: &Path) -> Result<()> {
