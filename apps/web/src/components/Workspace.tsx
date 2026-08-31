@@ -115,6 +115,18 @@ export function Workspace({
   onSelect,
   onSelectDocument,
   onFocusGraphNode,
+  graphFocused = false,
+  onResetGraphFocus,
+  graphEdgeKind = 'all',
+  onGraphEdgeKindChange,
+  graphOrigin = 'all',
+  onGraphOriginChange,
+  graphCanGoBack = false,
+  graphCanGoForward = false,
+  onGraphBack,
+  onGraphForward,
+  graphMinConfidence = null,
+  onGraphMinConfidenceChange,
   onRetry,
 }: {
   query: string
@@ -137,6 +149,20 @@ export function Workspace({
   onSelect: (index: number) => void
   onSelectDocument: (id: string) => void
   onFocusGraphNode?: (node: BrainGraphNode) => void
+  graphFocused?: boolean
+  onResetGraphFocus?: () => void
+  graphEdgeKind?: BrainGraphPage['edges'][number]['kind'] | 'all'
+  onGraphEdgeKindChange?: (kind: BrainGraphPage['edges'][number]['kind'] | 'all') => void
+  graphOrigin?: NonNullable<BrainGraphPage['edges'][number]['origin']> | 'all'
+  onGraphOriginChange?: (
+    origin: NonNullable<BrainGraphPage['edges'][number]['origin']> | 'all'
+  ) => void
+  graphCanGoBack?: boolean
+  graphCanGoForward?: boolean
+  onGraphBack?: () => void
+  onGraphForward?: () => void
+  graphMinConfidence?: number | null
+  onGraphMinConfidenceChange?: (confidence: number | null) => void
   onRetry: () => void
 }) {
   const active = evidence[selected] ?? null
@@ -206,6 +232,18 @@ export function Workspace({
           onSelect={selectEvidenceByChunkId}
           onSelectDocument={onSelectDocument}
           onFocusGraphNode={onFocusGraphNode}
+          graphFocused={graphFocused}
+          onResetGraphFocus={onResetGraphFocus}
+          graphEdgeKind={graphEdgeKind}
+          onGraphEdgeKindChange={onGraphEdgeKindChange}
+          graphOrigin={graphOrigin}
+          onGraphOriginChange={onGraphOriginChange}
+          graphCanGoBack={graphCanGoBack}
+          graphCanGoForward={graphCanGoForward}
+          onGraphBack={onGraphBack}
+          onGraphForward={onGraphForward}
+          graphMinConfidence={graphMinConfidence}
+          onGraphMinConfidenceChange={onGraphMinConfidenceChange}
         />
       ) : error ? (
         <EmptyState
@@ -258,12 +296,22 @@ function BrainDocumentView({
 }) {
   const [favorite, setFavorite] = useState(() => isFavoriteDocument(document.id))
   const [sourceOpenError, setSourceOpenError] = useState(false)
+  const [copyStatus, setCopyStatus] = useState('')
   useEffect(() => setFavorite(isFavoriteDocument(document.id)), [document.id])
   useEffect(() => setSourceOpenError(false), [document.id])
+  useEffect(() => setCopyStatus(''), [document.id])
   const metadata = Object.entries(document.metadata).slice(0, 24)
   const sourceHref = document.uri
     ? safeSourceLink(document.uri, { allowLocalFile: isDesktopApp })
     : null
+  const copyDocumentValue = async (value: string, success: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopyStatus(success)
+    } catch {
+      setCopyStatus('Copy failed. Select the canonical text and copy it manually.')
+    }
+  }
   return (
     <article className="document canonical-document">
       <div className="breadcrumbs">
@@ -322,6 +370,28 @@ function BrainDocumentView({
             {(document.acl.length ? document.acl : ['public']).map((label) => (
               <span key={label}>ACL: {label}</span>
             ))}
+          </div>
+          <div className="graph-actions" aria-label="Document copy actions">
+            <WorkspaceButton
+              variant="ghost"
+              onClick={() => void copyDocumentValue(document.content, 'Canonical content copied.')}
+            >
+              Copy content
+            </WorkspaceButton>
+            <WorkspaceButton
+              variant="ghost"
+              onClick={() =>
+                void copyDocumentValue(
+                  `${document.title} — ${document.source}:${document.source_id} (${document.updated_at})${document.uri ? ` ${document.uri}` : ''}`,
+                  'Citation copied.'
+                )
+              }
+            >
+              Copy citation
+            </WorkspaceButton>
+            <span role="status" aria-live="polite">
+              {copyStatus}
+            </span>
           </div>
           <div className="rule" />
           <div className="canonical-content">
@@ -687,6 +757,18 @@ function GraphView({
   onSelect,
   onSelectDocument,
   onFocusGraphNode,
+  graphFocused,
+  onResetGraphFocus,
+  graphEdgeKind,
+  onGraphEdgeKindChange,
+  graphOrigin,
+  onGraphOriginChange,
+  graphCanGoBack,
+  graphCanGoForward,
+  onGraphBack,
+  onGraphForward,
+  graphMinConfidence,
+  onGraphMinConfidenceChange,
 }: {
   graph: BrainGraphPage | null
   graphLoading: boolean
@@ -698,11 +780,26 @@ function GraphView({
   onSelect?: (chunkId: string) => void
   onSelectDocument: (id: string) => void
   onFocusGraphNode?: (node: BrainGraphNode) => void
+  graphFocused: boolean
+  onResetGraphFocus?: () => void
+  graphEdgeKind: BrainGraphPage['edges'][number]['kind'] | 'all'
+  onGraphEdgeKindChange?: (kind: BrainGraphPage['edges'][number]['kind'] | 'all') => void
+  graphOrigin: NonNullable<BrainGraphPage['edges'][number]['origin']> | 'all'
+  onGraphOriginChange?: (
+    origin: NonNullable<BrainGraphPage['edges'][number]['origin']> | 'all'
+  ) => void
+  graphCanGoBack: boolean
+  graphCanGoForward: boolean
+  onGraphBack?: () => void
+  onGraphForward?: () => void
+  graphMinConfidence: number | null
+  onGraphMinConfidenceChange?: (confidence: number | null) => void
 }) {
   const [visibleCount, setVisibleCount] = useState(12)
   const [filter, setFilter] = useState('')
   const [kindFilter, setKindFilter] = useState<BrainGraphNode['kind'] | 'all'>('all')
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const [pinnedNodeIds, setPinnedNodeIds] = useState<Set<string>>(() => new Set())
   const graphNodes = graph?.nodes ?? []
   const usingEvidenceFallback = graph === null
   const normalizedFilter = filter.trim().toLocaleLowerCase()
@@ -817,6 +914,73 @@ function GraphView({
             Clear
           </WorkspaceButton>
         )}
+        <label>
+          <span className="visually-hidden">Filter graph relationships</span>
+          <select
+            aria-label="Filter graph relationships"
+            value={graphEdgeKind}
+            onChange={(event) =>
+              onGraphEdgeKindChange?.(
+                event.target.value as BrainGraphPage['edges'][number]['kind'] | 'all'
+              )
+            }
+          >
+            <option value="all">All relationships</option>
+            {[
+              'contains',
+              'references',
+              'backlink',
+              'nearby',
+              'same-thread',
+              'authored-by',
+              'mentions',
+              'temporal',
+              'supports',
+              'contradicts',
+              'derives',
+            ].map((kind) => (
+              <option key={kind} value={kind}>
+                {kind}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="visually-hidden">Filter graph relationship origin</span>
+          <select
+            aria-label="Filter graph relationship origin"
+            value={graphOrigin}
+            onChange={(event) =>
+              onGraphOriginChange?.(
+                event.target.value as
+                  | NonNullable<BrainGraphPage['edges'][number]['origin']>
+                  | 'all'
+              )
+            }
+          >
+            <option value="all">All origins</option>
+            <option value="explicit">Explicit</option>
+            <option value="derived">Derived</option>
+            <option value="inferred">Inferred</option>
+          </select>
+        </label>
+        <label>
+          <span className="visually-hidden">Filter graph minimum confidence</span>
+          <select
+            aria-label="Filter graph minimum confidence"
+            value={graphMinConfidence ?? ''}
+            onChange={(event) =>
+              onGraphMinConfidenceChange?.(
+                event.target.value === '' ? null : Number(event.target.value)
+              )
+            }
+          >
+            <option value="">Any confidence</option>
+            <option value="0.5">50% or higher</option>
+            <option value="0.75">75% or higher</option>
+            <option value="0.9">90% or higher</option>
+          </select>
+        </label>
       </div>
       {graph && !usingEvidenceFallback && (
         <div className="graph-kind-filter" role="group" aria-label="Filter graph node types">
@@ -856,6 +1020,31 @@ function GraphView({
           <WorkspaceButton variant="ghost" type="button" className="link-button" onClick={onRetry}>
             Retry graph
           </WorkspaceButton>
+        </div>
+      )}
+      {(graphFocused || graphCanGoBack || graphCanGoForward) && (
+        <div className="graph-actions">
+          <WorkspaceButton
+            variant="ghost"
+            type="button"
+            disabled={!graphCanGoBack}
+            onClick={onGraphBack}
+          >
+            Back
+          </WorkspaceButton>
+          <WorkspaceButton
+            variant="ghost"
+            type="button"
+            disabled={!graphCanGoForward}
+            onClick={onGraphForward}
+          >
+            Forward
+          </WorkspaceButton>
+          {graphFocused && onResetGraphFocus && (
+            <WorkspaceButton variant="secondary" type="button" onClick={onResetGraphFocus}>
+              Return to graph overview
+            </WorkspaceButton>
+          )}
         </div>
       )}
       {graph?.next_cursor && onLoadMore && (
@@ -934,6 +1123,7 @@ function GraphView({
           </span>
           <small>
             {selectedEdges.length} related link{selectedEdges.length === 1 ? '' : 's'}
+            {pinnedNodeIds.has(selectedNode.id) ? ' · pinned' : ''}
           </small>
           {selectedEdges.length > 0 && (
             <ul>
@@ -958,12 +1148,32 @@ function GraphView({
             </ul>
           )}
           {selectedNode.document_id && (
-            <WorkspaceButton
-              variant="secondary"
-              onClick={() => onSelectDocument(selectedNode.document_id!)}
-            >
-              Open document
-            </WorkspaceButton>
+            <div className="graph-actions">
+              <WorkspaceButton
+                variant="ghost"
+                onClick={() =>
+                  setPinnedNodeIds((current) => {
+                    const next = new Set(current)
+                    if (next.has(selectedNode.id)) next.delete(selectedNode.id)
+                    else next.add(selectedNode.id)
+                    return next
+                  })
+                }
+              >
+                {pinnedNodeIds.has(selectedNode.id) ? 'Unpin node' : 'Pin node'}
+              </WorkspaceButton>
+              <WorkspaceButton
+                variant="secondary"
+                onClick={() => onSelectDocument(selectedNode.document_id!)}
+              >
+                Open document
+              </WorkspaceButton>
+              {onFocusGraphNode && (
+                <WorkspaceButton variant="ghost" onClick={() => onFocusGraphNode(selectedNode)}>
+                  Expand one-hop relationships
+                </WorkspaceButton>
+              )}
+            </div>
           )}
         </aside>
       )}

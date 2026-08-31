@@ -768,7 +768,13 @@ export async function getGraph(
   source?: string,
   query?: string,
   cursor?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: {
+    focusDocumentId?: string
+    edgeKind?: BrainGraphPage['edges'][number]['kind']
+    origin?: NonNullable<BrainGraphPage['edges'][number]['origin']>
+    minConfidence?: number
+  } = {}
 ): Promise<BrainGraphPage> {
   if (isDemoMode) {
     const page = await getDocuments(project, source, query, cursor, signal)
@@ -859,13 +865,35 @@ export async function getGraph(
         support: { record_ids: [document.id], invalidation_keys: [invalidationKey] },
       })
     }
-    return { contract_version: contractVersion, nodes, edges, next_cursor: page.next_cursor }
+    const filteredEdges = edges.filter(
+      (edge) =>
+        (!options.edgeKind || edge.kind === options.edgeKind) &&
+        (!options.origin || edge.origin === options.origin) &&
+        (options.minConfidence == null ||
+          (edge.confidence != null && edge.confidence >= options.minConfidence))
+    )
+    const filteredNodes =
+      filteredEdges.length === edges.length
+        ? nodes
+        : nodes.filter((node) =>
+            filteredEdges.some((edge) => edge.source === node.id || edge.target === node.id)
+          )
+    return {
+      contract_version: contractVersion,
+      nodes: filteredNodes,
+      edges: filteredEdges,
+      next_cursor: page.next_cursor,
+    }
   }
   const request = {
     project: project || null,
     source: source || null,
     query: query || null,
     cursor: cursor || null,
+    focus_document_id: options.focusDocumentId || null,
+    edge_kind: options.edgeKind || null,
+    origin: options.origin || null,
+    min_confidence: options.minConfidence ?? null,
     limit: 100,
   }
   if (isTauri()) {
@@ -876,6 +904,12 @@ export async function getGraph(
   if (source) params.set('source', source)
   if (query) params.set('query', query)
   if (cursor) params.set('cursor', cursor)
+  if (options.focusDocumentId) params.set('focus_document_id', options.focusDocumentId)
+  if (options.edgeKind) params.set('edge_kind', options.edgeKind)
+  if (options.origin) params.set('origin', options.origin)
+  if (options.minConfidence != null) {
+    params.set('min_confidence', String(options.minConfidence))
+  }
   const response = await authorizedFetch(`/v1/graph?${params}`, { signal })
   if (!response.ok) throw new Error(`Graph data failed (${response.status})`)
   return (await response.json()) as BrainGraphPage

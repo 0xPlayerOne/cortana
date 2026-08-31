@@ -64,6 +64,8 @@ test('unsafe document links are not rendered into the web shell', () => {
 
   expect(screen.getByRole('heading', { name: unsafe.title })).toBeTruthy()
   expect(screen.queryByRole('link', { name: 'Open original source' })).toBeNull()
+  expect(screen.getByRole('button', { name: 'Copy content' })).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Copy citation' })).toBeTruthy()
 })
 
 test('shadcn renderer composes workspace navigation and empty states from shared primitives', () => {
@@ -266,6 +268,8 @@ test('an empty graph page does not reuse unrelated retrieved evidence', () => {
 })
 
 test('graph supports bounded filtering and explains selected relationships', () => {
+  const focused: string[] = []
+  const relationshipFilters: string[] = []
   render(
     <Workspace
       {...props}
@@ -306,6 +310,10 @@ test('graph supports bounded filtering and explains selected relationships', () 
         next_cursor: null,
       }}
       onSelectDocument={() => {}}
+      onFocusGraphNode={(node) => focused.push(node.id)}
+      onGraphEdgeKindChange={(kind) => relationshipFilters.push(kind)}
+      onGraphOriginChange={(origin) => relationshipFilters.push(origin)}
+      onGraphMinConfidenceChange={(confidence) => relationshipFilters.push(String(confidence))}
     />
   )
 
@@ -320,6 +328,20 @@ test('graph supports bounded filtering and explains selected relationships', () 
     screen.getByText('Explicit relationship · 1 supporting record · citation-capable')
   ).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Open document' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Pin node' }))
+  expect(screen.getByRole('button', { name: 'Unpin node' })).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Expand one-hop relationships' }))
+  expect(focused).toEqual(['document:one'])
+  fireEvent.change(screen.getByRole('combobox', { name: 'Filter graph relationships' }), {
+    target: { value: 'contains' },
+  })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Filter graph relationship origin' }), {
+    target: { value: 'explicit' },
+  })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Filter graph minimum confidence' }), {
+    target: { value: '0.75' },
+  })
+  expect(relationshipFilters).toEqual(['contains', 'explicit', '0.75'])
 })
 
 test('graph exposes workspace and source nodes with bounded type filters', () => {

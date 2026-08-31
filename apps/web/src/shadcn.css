@@ -2223,8 +2223,9 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 7px;
-  width: min(280px, calc(100% - 36px));
+  width: min(720px, calc(100% - 36px));
   padding: 7px 9px;
+  flex-wrap: wrap;
   color: var(--theme-content-subtle);
   border: 1px solid var(--theme-content-border);
   background: var(--theme-content-surface);
@@ -2239,6 +2240,27 @@ select:focus-visible {
   background: transparent;
   font: inherit;
   font-size: 12px;
+}
+
+.graph-toolbar label {
+  min-width: 0;
+}
+
+.graph-toolbar select {
+  min-height: 30px;
+  max-width: 170px;
+  padding: 0 24px 0 8px;
+  color: var(--theme-content-text);
+  border: 1px solid var(--theme-content-border);
+  border-radius: var(--radius-sm);
+  background: var(--theme-control-bg);
+  font: inherit;
+  font-size: 11px;
+}
+
+.graph-toolbar select:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
 }
 
 .graph-kind-filter {

@@ -18,6 +18,7 @@ use axum::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
@@ -45,7 +46,7 @@ use crate::{
     observation::ObservationCandidateInput,
     retrieval,
     source_status::{self, ConfiguredSourceStatus},
-    store::{AuditEvent, DocumentCursor, DocumentSummary, Store, StoreStats},
+    store::{AuditEvent, DocumentCursor, DocumentPage, DocumentSummary, Store, StoreStats},
 };
 
 #[cfg(test)]
@@ -56,6 +57,8 @@ const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_QUERY_LENGTH: usize = 256;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
 const MAX_VISIBLE_WORKSPACES: usize = 128;
+const MAX_GRAPH_LABEL_BYTES: usize = 512;
+const MAX_GRAPH_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const READY_EMBEDDING_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const READY_STORE_STATS_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -567,6 +570,21 @@ struct DocumentListParams {
     cursor: Option<String>,
     #[serde(default = "default_document_limit")]
     limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GraphParams {
+    project: Option<String>,
+    source: Option<String>,
+    query: Option<String>,
+    cursor: Option<String>,
+    focus_document_id: Option<String>,
+    edge_kind: Option<EdgeKind>,
+    origin: Option<EdgeOrigin>,
+    min_confidence: Option<f32>,
+    #[serde(default = "default_document_limit")]
+    limit: usize,
     #[serde(default)]
     include_derived: bool,
 }
@@ -574,6 +592,16 @@ struct DocumentListParams {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct EncodedDocumentCursor {
+    updated_at: String,
+    id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EncodedGraphCursor {
+    contract_version: String,
+    corpus_revision: u64,
+    scope_hash: String,
     updated_at: String,
     id: String,
 }
@@ -616,9 +644,31 @@ struct GraphDerivedMetadata {
 #[derive(Debug, Serialize)]
 struct GraphResponse {
     contract_version: &'static str,
+    corpus_revision: u64,
+    response_bytes: usize,
     nodes: Vec<GraphNode>,
     edges: Vec<GraphEdge>,
     next_cursor: Option<String>,
+    truncated: bool,
+    limits: GraphResponseLimits,
+    derivation: GraphDerivationStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct GraphResponseLimits {
+    page_size: usize,
+    max_nodes: usize,
+    max_edges: usize,
+    max_response_bytes: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct GraphDerivationStatus {
+    version: &'static str,
+    mode: &'static str,
+    semantic_neighbors_enabled: bool,
+    rebuild_required: bool,
+    failures: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1105,19 +1155,15 @@ async fn document(
     Extension(principal): Extension<Principal>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<crate::store::DocumentDetail>, (StatusCode, String)> {
-    if id.is_empty()
-        || id.len() > MAX_DOCUMENT_ID_LENGTH
-        || !id.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        return Err((StatusCode::BAD_REQUEST, "invalid document id".into()));
-    }
+    validate_document_id(&id)?;
     let started = Instant::now();
     let acl = principal.visible_acl();
     match state
         .store
         .document_scoped(&id, &acl, MAX_DOCUMENT_CONTENT_BYTES)
     {
-        Ok(Some(document)) => {
+        Ok(Some(mut document)) => {
+            document.metadata = retrieval::sanitize_evidence_metadata(&document.metadata);
             record_audit(
                 &state,
                 &principal,
@@ -1163,7 +1209,7 @@ async fn document(
 async fn graph(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
-    AxumQuery(params): AxumQuery<DocumentListParams>,
+    AxumQuery(params): AxumQuery<GraphParams>,
 ) -> Result<Json<GraphResponse>, (StatusCode, String)> {
     if params.include_derived && !principal.has_scope(MEMORY_SCOPE) {
         return Err((
@@ -1174,27 +1220,73 @@ async fn graph(
     validate_document_scope("project", params.project.as_deref())?;
     validate_document_scope("source", params.source.as_deref())?;
     validate_document_query(params.query.as_deref())?;
+    if let Some(id) = params.focus_document_id.as_deref() {
+        validate_document_id(id)?;
+        if params.cursor.is_some() || params.query.is_some() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "graph focus cannot be combined with cursor or query".into(),
+            ));
+        }
+    }
+    if params
+        .min_confidence
+        .is_some_and(|confidence| !confidence.is_finite() || !(0.0..=1.0).contains(&confidence))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "minimum confidence must be between zero and one".into(),
+        ));
+    }
+    let started = Instant::now();
+    let acl = principal.visible_acl();
+    let corpus_revision = state.store.corpus_revision().map_err(internal_error)?;
+    let cursor_scope = graph_cursor_scope(&params, &acl);
     let cursor = params
         .cursor
         .as_deref()
-        .map(decode_document_cursor)
+        .map(|value| decode_graph_cursor(value, corpus_revision, &cursor_scope))
         .transpose()?;
-    let started = Instant::now();
-    let acl = principal.visible_acl();
-    let result = state.store.list_documents_scoped(
-        params.project.as_deref(),
-        params.source.as_deref(),
-        params.query.as_deref(),
-        cursor.as_ref(),
-        params.limit.clamp(1, 100),
-        &acl,
-    );
+    let page_size = params.limit.clamp(1, GraphContract::MAX_PAGE_SIZE);
+    let result = if let Some(id) = params.focus_document_id.as_deref() {
+        state
+            .store
+            .document_summary_scoped(id, &acl)
+            .map(|document| {
+                let documents = document
+                    .filter(|document| {
+                        params
+                            .project
+                            .as_deref()
+                            .is_none_or(|project| document.project == project)
+                            && params
+                                .source
+                                .as_deref()
+                                .is_none_or(|source| document.source == source)
+                    })
+                    .into_iter()
+                    .collect();
+                DocumentPage {
+                    documents,
+                    has_more: false,
+                }
+            })
+    } else {
+        state.store.list_documents_scoped(
+            params.project.as_deref(),
+            params.source.as_deref(),
+            params.query.as_deref(),
+            cursor.as_ref(),
+            page_size,
+            &acl,
+        )
+    };
     match result {
         Ok(page) => {
             let next_cursor = if page.has_more {
                 page.documents
                     .last()
-                    .map(encode_document_cursor)
+                    .map(|document| encode_graph_cursor(document, corpus_revision, &cursor_scope))
                     .transpose()?
             } else {
                 None
@@ -1273,7 +1365,7 @@ async fn graph(
                     contract_version: GraphContract::VERSION,
                     id: document_id.clone(),
                     kind: NodeKind::Document,
-                    label: document.title.clone(),
+                    label: bounded_graph_label(&document.title),
                     project: document.project.clone(),
                     source: Some(document.source.clone()),
                     canonical_record_id: Some(document.id.clone()),
@@ -1310,17 +1402,46 @@ async fn graph(
                 .store
                 .graph_document_links_scoped(&page_document_ids, &acl, 200)
                 .map_err(internal_error)?;
+            let mut graph_documents = page
+                .documents
+                .iter()
+                .cloned()
+                .map(|document| (document.id.clone(), document))
+                .collect::<BTreeMap<_, _>>();
             for link in document_links {
+                graph_documents
+                    .entry(link.source.id.clone())
+                    .or_insert_with(|| link.source.clone());
+                graph_documents
+                    .entry(link.target.id.clone())
+                    .or_insert_with(|| link.target.clone());
                 let source_id = GraphNodeId::new(NodeKind::Document, &link.source.id)
                     .map_err(internal_error)?;
                 let target_id = GraphNodeId::new(NodeKind::Document, &link.target.id)
                     .map_err(internal_error)?;
+                if document_nodes.insert(source_id.clone()) {
+                    nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
+                        id: source_id.clone(),
+                        kind: NodeKind::Document,
+                        label: bounded_graph_label(&link.source.title),
+                        project: link.source.project.clone(),
+                        source: Some(link.source.source.clone()),
+                        canonical_record_id: Some(link.source.id.clone()),
+                        document_id: Some(link.source.id.clone()),
+                        updated_at: link.source.updated_at.clone(),
+                        acl: link.source.acl.clone(),
+                        content_revision: link.source.content_revision.clone(),
+                        lifecycle_status: "active",
+                        derived: None,
+                    });
+                }
                 if document_nodes.insert(target_id.clone()) {
                     nodes.push(GraphNode {
                         contract_version: GraphContract::VERSION,
                         id: target_id.clone(),
                         kind: NodeKind::Document,
-                        label: link.target.title.clone(),
+                        label: bounded_graph_label(&link.target.title),
                         project: link.target.project.clone(),
                         source: Some(link.target.source.clone()),
                         canonical_record_id: Some(link.target.id.clone()),
@@ -1374,6 +1495,175 @@ async fn graph(
                     .map_err(internal_error)?,
                 );
             }
+            let metadata_document_ids = graph_documents
+                .keys()
+                .take(GraphContract::MAX_NODES_PER_EXPANSION)
+                .cloned()
+                .collect::<Vec<_>>();
+            let graph_metadata = state
+                .store
+                .graph_document_metadata_scoped(&metadata_document_ids, &acl)
+                .map_err(internal_error)?;
+            let mut entity_nodes = BTreeSet::new();
+            let mut threads = BTreeMap::<String, Vec<String>>::new();
+            for metadata in graph_metadata {
+                let Some(document) = graph_documents.get(&metadata.document_id) else {
+                    continue;
+                };
+                let document_id =
+                    GraphNodeId::new(NodeKind::Document, &document.id).map_err(internal_error)?;
+                let invalidation_key = format!(
+                    "document:{}@sha256:{}",
+                    document.id, document.content_revision
+                );
+                if let Some(thread_key) = metadata.thread_key {
+                    threads
+                        .entry(thread_key)
+                        .or_default()
+                        .push(document.id.clone());
+                }
+                for (kind, values) in [
+                    (EdgeKind::AuthoredBy, metadata.authors),
+                    (EdgeKind::Mentions, metadata.entities),
+                ] {
+                    for value in values {
+                        let entity_id = GraphNodeId::new(
+                            NodeKind::Entity,
+                            serde_json::json!([kind, value.clone()]).to_string(),
+                        )
+                        .map_err(internal_error)?;
+                        if entity_nodes.insert(entity_id.clone()) {
+                            nodes.push(GraphNode {
+                                contract_version: GraphContract::VERSION,
+                                id: entity_id.clone(),
+                                kind: NodeKind::Entity,
+                                label: value.clone(),
+                                project: document.project.clone(),
+                                source: Some(document.source.clone()),
+                                canonical_record_id: None,
+                                document_id: None,
+                                updated_at: document.updated_at.clone(),
+                                acl: document.acl.clone(),
+                                content_revision: document.content_revision.clone(),
+                                lifecycle_status: "active",
+                                derived: None,
+                            });
+                        }
+                        edges.push(
+                            GraphEdge::new(
+                                document_id.clone(),
+                                entity_id,
+                                kind,
+                                EdgeOrigin::Explicit,
+                                &document.updated_at,
+                                &document.project,
+                                document.acl.clone(),
+                                RelationshipSupport {
+                                    record_ids: vec![document.id.clone()],
+                                    invalidation_keys: vec![invalidation_key.clone()],
+                                },
+                            )
+                            .map_err(internal_error)?,
+                        );
+                    }
+                }
+            }
+            for document_ids in threads.values_mut() {
+                document_ids.sort_by(|left, right| {
+                    let left = graph_documents.get(left).expect("known thread document");
+                    let right = graph_documents.get(right).expect("known thread document");
+                    left.updated_at
+                        .cmp(&right.updated_at)
+                        .then_with(|| left.id.cmp(&right.id))
+                });
+                document_ids.dedup();
+                for pair in document_ids.windows(2) {
+                    let left = graph_documents
+                        .get(&pair[0])
+                        .expect("known thread document");
+                    let right = graph_documents
+                        .get(&pair[1])
+                        .expect("known thread document");
+                    edges.push(
+                        GraphEdge::new(
+                            GraphNodeId::new(NodeKind::Document, &left.id)
+                                .map_err(internal_error)?,
+                            GraphNodeId::new(NodeKind::Document, &right.id)
+                                .map_err(internal_error)?,
+                            EdgeKind::SameThread,
+                            EdgeOrigin::Explicit,
+                            &right.updated_at,
+                            &right.project,
+                            require_acl_intersection(&left.acl, &right.acl)
+                                .map_err(internal_error)?,
+                            RelationshipSupport {
+                                record_ids: vec![left.id.clone(), right.id.clone()],
+                                invalidation_keys: vec![
+                                    format!(
+                                        "document:{}@sha256:{}",
+                                        left.id, left.content_revision
+                                    ),
+                                    format!(
+                                        "document:{}@sha256:{}",
+                                        right.id, right.content_revision
+                                    ),
+                                ],
+                            },
+                        )
+                        .map_err(internal_error)?,
+                    );
+                }
+            }
+            let mut source_documents = BTreeMap::<(String, String), Vec<&DocumentSummary>>::new();
+            for document in graph_documents.values() {
+                source_documents
+                    .entry((document.project.clone(), document.source.clone()))
+                    .or_default()
+                    .push(document);
+            }
+            for documents in source_documents.values_mut() {
+                documents.sort_by(|left, right| {
+                    left.updated_at
+                        .cmp(&right.updated_at)
+                        .then_with(|| left.id.cmp(&right.id))
+                });
+                for pair in documents.windows(2) {
+                    let older = pair[0];
+                    let newer = pair[1];
+                    let relationship_acl =
+                        require_acl_intersection(&older.acl, &newer.acl).map_err(internal_error)?;
+                    let support = RelationshipSupport {
+                        record_ids: vec![older.id.clone(), newer.id.clone()],
+                        invalidation_keys: vec![
+                            format!("document:{}@sha256:{}", older.id, older.content_revision),
+                            format!("document:{}@sha256:{}", newer.id, newer.content_revision),
+                        ],
+                    };
+                    let older_id =
+                        GraphNodeId::new(NodeKind::Document, &older.id).map_err(internal_error)?;
+                    let newer_id =
+                        GraphNodeId::new(NodeKind::Document, &newer.id).map_err(internal_error)?;
+                    for (source_id, target_id, kind) in [
+                        (older_id.clone(), newer_id.clone(), EdgeKind::Temporal),
+                        (older_id.clone(), newer_id.clone(), EdgeKind::Nearby),
+                        (newer_id, older_id, EdgeKind::Nearby),
+                    ] {
+                        edges.push(
+                            GraphEdge::new(
+                                source_id,
+                                target_id,
+                                kind,
+                                EdgeOrigin::Derived,
+                                &newer.updated_at,
+                                &newer.project,
+                                relationship_acl.clone(),
+                                support.clone(),
+                            )
+                            .map_err(internal_error)?,
+                        );
+                    }
+                }
+            }
             if params.include_derived {
                 let derived = derive_authorized_memories(
                     &state,
@@ -1398,7 +1688,7 @@ async fn graph(
                         contract_version: GraphContract::VERSION,
                         id: derived_id.clone(),
                         kind: node_kind,
-                        label: representation.statement,
+                        label: bounded_graph_label(&representation.statement),
                         project: representation.project.clone(),
                         source: None,
                         canonical_record_id: None,
@@ -1507,7 +1797,10 @@ async fn graph(
                         contract_version: GraphContract::VERSION,
                         id: relation_id.clone(),
                         kind: NodeKind::MentalModel,
-                        label: format!("{}: {}", relation.predicate, relation.object),
+                        label: bounded_graph_label(&format!(
+                            "{}: {}",
+                            relation.predicate, relation.object
+                        )),
                         project: relation.project.clone(),
                         source: None,
                         canonical_record_id: None,
@@ -1568,6 +1861,50 @@ async fn graph(
                     }
                 }
             }
+            if let Some(kind) = params.edge_kind {
+                edges.retain(|edge| edge.kind == kind);
+            }
+            if let Some(origin) = params.origin {
+                edges.retain(|edge| edge.origin == origin);
+            }
+            if let Some(minimum) = params.min_confidence {
+                edges.retain(|edge| edge.confidence.is_some_and(|value| value >= minimum));
+            }
+            if params.edge_kind.is_some()
+                || params.origin.is_some()
+                || params.min_confidence.is_some()
+            {
+                let connected = edges
+                    .iter()
+                    .flat_map(|edge| [edge.source.clone(), edge.target.clone()])
+                    .collect::<BTreeSet<_>>();
+                nodes.retain(|node| connected.contains(&node.id));
+            }
+            let mut edge_keys = BTreeSet::new();
+            edges.retain(|edge| {
+                edge_keys.insert((
+                    edge.source.clone(),
+                    edge.target.clone(),
+                    edge.kind,
+                    edge.origin,
+                ))
+            });
+            let mut truncated = next_cursor.is_some();
+            if edges.len() > GraphContract::MAX_EDGES_PER_EXPANSION {
+                edges.truncate(GraphContract::MAX_EDGES_PER_EXPANSION);
+                truncated = true;
+            }
+            if nodes.len() > GraphContract::MAX_NODES_PER_EXPANSION {
+                nodes.truncate(GraphContract::MAX_NODES_PER_EXPANSION);
+                truncated = true;
+                let visible = nodes
+                    .iter()
+                    .map(|node| node.id.clone())
+                    .collect::<BTreeSet<_>>();
+                edges.retain(|edge| {
+                    visible.contains(&edge.source) && visible.contains(&edge.target)
+                });
+            }
             record_audit(
                 &state,
                 &principal,
@@ -1578,12 +1915,45 @@ async fn graph(
                 Some(page.documents.len()),
                 started,
             );
-            Ok(Json(GraphResponse {
+            let mut response = GraphResponse {
                 contract_version: GraphContract::VERSION,
+                corpus_revision,
+                response_bytes: 0,
                 nodes,
                 edges,
                 next_cursor,
-            }))
+                truncated,
+                limits: GraphResponseLimits {
+                    page_size,
+                    max_nodes: GraphContract::MAX_NODES_PER_EXPANSION,
+                    max_edges: GraphContract::MAX_EDGES_PER_EXPANSION,
+                    max_response_bytes: MAX_GRAPH_RESPONSE_BYTES,
+                },
+                derivation: GraphDerivationStatus {
+                    version: GraphContract::DEFAULT_DERIVATION_VERSION,
+                    mode: "request-derived",
+                    semantic_neighbors_enabled: false,
+                    rebuild_required: false,
+                    failures: Vec::new(),
+                },
+            };
+            loop {
+                let response_bytes = graph_response_bytes(&mut response).map_err(internal_error)?;
+                if response_bytes <= MAX_GRAPH_RESPONSE_BYTES {
+                    break;
+                }
+                response.truncated = true;
+                if response.edges.pop().is_some() {
+                    continue;
+                }
+                if response.nodes.pop().is_none() {
+                    return Err((
+                        StatusCode::INSUFFICIENT_STORAGE,
+                        "graph response cannot fit the configured byte budget".into(),
+                    ));
+                }
+            }
+            Ok(Json(response))
         }
         Err(error) => {
             record_audit(
@@ -1630,6 +2000,38 @@ fn validate_document_query(value: Option<&str>) -> Result<(), (StatusCode, Strin
     Ok(())
 }
 
+fn validate_document_id(id: &str) -> Result<(), (StatusCode, String)> {
+    if id.is_empty()
+        || id.len() > MAX_DOCUMENT_ID_LENGTH
+        || !id.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid document id".into()));
+    }
+    Ok(())
+}
+
+fn bounded_graph_label(value: &str) -> String {
+    if value.len() <= MAX_GRAPH_LABEL_BYTES {
+        return value.to_string();
+    }
+    let mut end = MAX_GRAPH_LABEL_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_string()
+}
+
+fn graph_response_bytes(response: &mut GraphResponse) -> Result<usize> {
+    for _ in 0..4 {
+        let bytes = serde_json::to_vec(response)?.len();
+        if response.response_bytes == bytes {
+            return Ok(bytes);
+        }
+        response.response_bytes = bytes;
+    }
+    Ok(serde_json::to_vec(response)?.len())
+}
+
 fn decode_document_cursor(value: &str) -> Result<DocumentCursor, (StatusCode, String)> {
     let bytes = URL_SAFE_NO_PAD
         .decode(value)
@@ -1655,6 +2057,72 @@ fn decode_document_cursor(value: &str) -> Result<DocumentCursor, (StatusCode, St
 
 fn encode_document_cursor(document: &DocumentSummary) -> Result<String, (StatusCode, String)> {
     serde_json::to_vec(&EncodedDocumentCursor {
+        updated_at: document.updated_at.clone(),
+        id: document.id.clone(),
+    })
+    .map(|value| URL_SAFE_NO_PAD.encode(value))
+    .map_err(|error| internal_error(error.into()))
+}
+
+fn graph_cursor_scope(params: &GraphParams, acl: &[String]) -> String {
+    let mut acl = acl.to_vec();
+    acl.sort();
+    acl.dedup();
+    let payload = serde_json::json!({
+        "project": params.project,
+        "source": params.source,
+        "query": params.query,
+        "edge_kind": params.edge_kind,
+        "origin": params.origin,
+        "min_confidence": params.min_confidence,
+        "include_derived": params.include_derived,
+        "acl": acl,
+    });
+    let digest = Sha256::digest(payload.to_string().as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn decode_graph_cursor(
+    value: &str,
+    corpus_revision: u64,
+    scope_hash: &str,
+) -> Result<DocumentCursor, (StatusCode, String)> {
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid graph cursor".into()))?;
+    if bytes.len() > 1024 {
+        return Err((StatusCode::BAD_REQUEST, "invalid graph cursor".into()));
+    }
+    let cursor: EncodedGraphCursor = serde_json::from_slice(&bytes)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid graph cursor".into()))?;
+    if cursor.contract_version != GraphContract::VERSION
+        || cursor.scope_hash != scope_hash
+        || cursor.corpus_revision != corpus_revision
+    {
+        return Err((StatusCode::CONFLICT, "stale graph cursor".into()));
+    }
+    validate_document_id(&cursor.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid graph cursor".into()))?;
+    if cursor.updated_at.len() > 64
+        || chrono::DateTime::parse_from_rfc3339(&cursor.updated_at).is_err()
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid graph cursor".into()));
+    }
+    Ok(DocumentCursor {
+        updated_at: cursor.updated_at,
+        id: cursor.id,
+    })
+}
+
+fn encode_graph_cursor(
+    document: &DocumentSummary,
+    corpus_revision: u64,
+    scope_hash: &str,
+) -> Result<String, (StatusCode, String)> {
+    serde_json::to_vec(&EncodedGraphCursor {
+        contract_version: GraphContract::VERSION.into(),
+        corpus_revision,
+        scope_hash: scope_hash.into(),
         updated_at: document.updated_at.clone(),
         id: document.id.clone(),
     })
@@ -6317,16 +6785,26 @@ mod tests {
                         project: "demo".into(),
                         acl: Vec::new(),
                         metadata: if index == 0 {
-                            serde_json::json!({"kind": "note", "references": ["note-1"]})
+                            serde_json::json!({
+                                "kind": "note",
+                                "references": ["note-1"],
+                                "thread_id": "release-thread",
+                                "author": "Ada Lovelace",
+                                "entities": ["Project Atlas"],
+                                "access_token": "must-not-become-a-graph-node"
+                            })
                         } else {
-                            serde_json::json!({"kind": "note"})
+                            serde_json::json!({
+                                "kind": "note",
+                                "thread_id": "release-thread"
+                            })
                         },
                     },
                     &[(content.into(), vec![1.0; 16])],
                 )
                 .expect("document");
         }
-        let app = router(state);
+        let app = router(state.clone());
         let first = app
             .clone()
             .oneshot(
@@ -6381,6 +6859,7 @@ mod tests {
             serde_json::from_slice(&detail_body).expect("detail JSON");
         assert_eq!(detail_value["content"], "first body");
         assert_eq!(detail_value["metadata"]["kind"], "note");
+        assert!(detail_value["metadata"].get("access_token").is_none());
         assert_eq!(detail_value["source_id"], "note-0");
         assert_eq!(detail_value["acl"], serde_json::json!([]));
         assert_eq!(
@@ -6464,8 +6943,22 @@ mod tests {
             .expect("graph body");
         let graph_value: serde_json::Value =
             serde_json::from_slice(&graph_body).expect("graph JSON");
-        assert_eq!(graph_value["nodes"].as_array().map(Vec::len), Some(4));
-        assert_eq!(graph_value["edges"].as_array().map(Vec::len), Some(5));
+        assert_eq!(graph_value["nodes"].as_array().map(Vec::len), Some(6));
+        assert_eq!(graph_value["edges"].as_array().map(Vec::len), Some(11));
+        assert_eq!(
+            graph_value["response_bytes"].as_u64(),
+            u64::try_from(graph_body.len()).ok()
+        );
+        assert!(graph_body.len() <= MAX_GRAPH_RESPONSE_BYTES);
+        assert_eq!(
+            graph_value["derivation"]["mode"],
+            serde_json::json!("request-derived")
+        );
+        assert_eq!(
+            graph_value["derivation"]["semantic_neighbors_enabled"],
+            false
+        );
+        assert!(!String::from_utf8_lossy(&graph_body).contains("must-not-become-a-graph-node"));
         assert_eq!(
             graph_value["contract_version"],
             crate::knowledge_graph::GraphContract::VERSION
@@ -6499,6 +6992,98 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(relationship_kinds.contains(&"references"));
         assert!(relationship_kinds.contains(&"backlink"));
+        assert!(relationship_kinds.contains(&"nearby"));
+        assert!(relationship_kinds.contains(&"temporal"));
+        assert!(relationship_kinds.contains(&"same-thread"));
+        assert!(relationship_kinds.contains(&"authored-by"));
+        assert!(relationship_kinds.contains(&"mentions"));
+
+        let focused_graph = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/graph?focus_document_id={id}&edge_kind=references&limit=10"
+                    ))
+                    .body(Body::empty())
+                    .expect("focused graph request"),
+            )
+            .await
+            .expect("focused graph response");
+        assert_eq!(focused_graph.status(), StatusCode::OK);
+        let focused_body = to_bytes(focused_graph.into_body(), 1024 * 1024)
+            .await
+            .expect("focused graph body");
+        let focused_value: serde_json::Value =
+            serde_json::from_slice(&focused_body).expect("focused graph JSON");
+        assert_eq!(focused_value["nodes"].as_array().map(Vec::len), Some(2));
+        assert_eq!(focused_value["edges"].as_array().map(Vec::len), Some(1));
+        assert_eq!(focused_value["edges"][0]["kind"], "references");
+        assert_eq!(focused_value["next_cursor"], serde_json::Value::Null);
+        assert_eq!(focused_value["truncated"], false);
+
+        let invalid_focus = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?focus_document_id=not-a-document")
+                    .body(Body::empty())
+                    .expect("invalid graph focus request"),
+            )
+            .await
+            .expect("invalid graph focus response");
+        assert_eq!(invalid_focus.status(), StatusCode::BAD_REQUEST);
+
+        let graph_page = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?project=demo&limit=1")
+                    .body(Body::empty())
+                    .expect("paged graph request"),
+            )
+            .await
+            .expect("paged graph response");
+        assert_eq!(graph_page.status(), StatusCode::OK);
+        let graph_page_body = to_bytes(graph_page.into_body(), 1024 * 1024)
+            .await
+            .expect("paged graph body");
+        let graph_page_value: serde_json::Value =
+            serde_json::from_slice(&graph_page_body).expect("paged graph JSON");
+        let graph_cursor = graph_page_value["next_cursor"]
+            .as_str()
+            .expect("graph cursor")
+            .to_string();
+        state
+            .store
+            .upsert(
+                &Document {
+                    source: "notes".into(),
+                    source_id: "note-2".into(),
+                    title: "Note 2".into(),
+                    content: "third body".into(),
+                    uri: None,
+                    updated_at: chrono::Utc::now(),
+                    project: "demo".into(),
+                    acl: Vec::new(),
+                    metadata: serde_json::json!({"kind": "note"}),
+                },
+                &[("third body".into(), vec![1.0; 16])],
+            )
+            .expect("mutate graph corpus");
+        let stale_graph_page = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/graph?project=demo&limit=1&cursor={graph_cursor}"
+                    ))
+                    .body(Body::empty())
+                    .expect("stale graph request"),
+            )
+            .await
+            .expect("stale graph response");
+        assert_eq!(stale_graph_page.status(), StatusCode::CONFLICT);
 
         let invalid = app
             .oneshot(
@@ -6566,6 +7151,10 @@ mod tests {
         let decoded = decode_document_cursor(&valid).expect("decode valid cursor");
         assert_eq!(decoded.id, "feedface");
         assert_eq!(decoded.updated_at, now);
+        assert_eq!(bounded_graph_label(&"x".repeat(1024)).len(), 512);
+        let unicode = bounded_graph_label(&"é".repeat(512));
+        assert_eq!(unicode.len(), 512);
+        assert_eq!(unicode.chars().count(), 256);
     }
 
     #[tokio::test]

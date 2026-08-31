@@ -849,7 +849,7 @@ const MAX_EVIDENCE_METADATA_DEPTH: usize = 8;
 const MAX_EVIDENCE_METADATA_ITEMS: usize = 64;
 const MAX_EVIDENCE_METADATA_STRING_BYTES: usize = 4 * 1024;
 
-fn sanitize_evidence_metadata(value: &serde_json::Value) -> serde_json::Value {
+pub(crate) fn sanitize_evidence_metadata(value: &serde_json::Value) -> serde_json::Value {
     fn sensitive(key: &str) -> bool {
         let key = key
             .chars()

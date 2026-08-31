@@ -58,6 +58,21 @@ Cycles are deduplicated by typed node ID and relationship identity. Expansion st
 node, edge, byte, time, and cancellation budget and reports partial/truncated state plus a cursor.
 Core retrieval and exact document reads never depend on graph availability.
 
+The v1 HTTP root accepts `project`, `source`, bounded `query`, opaque `cursor`, and a page `limit`
+of at most 100. `focus_document_id` switches to a bounded one-hop neighborhood and cannot be mixed
+with root search or pagination. `edge_kind`, `origin`, and `min_confidence` filter relationships on
+the server before serialization. Responses disclose `truncated`, the enforced node/edge limits,
+and derivation status. Desktop forwards the same typed fields and rejects malformed IDs, unknown
+edge kinds, invalid origins, and out-of-range confidence before contacting the local service.
+
+Hierarchy, explicit document links/backlinks, whitelisted thread/series metadata, authors, and
+entities are request-derived from canonical records. Source proximity and chronological adjacency
+are deterministic derived relationships. Only the exact metadata keys `thread_id`,
+`conversation_id`, `series_id`, `author`, `authors`, and `entities` participate; arbitrary metadata
+and credential-shaped fields do not. The derivation status explicitly reports semantic neighbors
+as disabled. Because these edges are not persisted, rebuild and rollback are deterministic fresh
+requests rather than mutations of canonical evidence.
+
 ## Compatibility
 
 HTTP and Desktop consume this same contract. Additive fields are compatible within v1. Removing a

@@ -125,9 +125,25 @@ export type BrainGraphEdge = {
 
 export type BrainGraphPage = {
   contract_version?: 'cortana.knowledge-graph.v1'
+  corpus_revision?: number
+  response_bytes?: number
   nodes: BrainGraphNode[]
   edges: BrainGraphEdge[]
   next_cursor: string | null
+  truncated?: boolean
+  limits?: {
+    page_size: number
+    max_nodes: number
+    max_edges: number
+    max_response_bytes: number
+  }
+  derivation?: {
+    version: string
+    mode: 'request-derived'
+    semantic_neighbors_enabled: boolean
+    rebuild_required: boolean
+    failures: string[]
+  }
 }
 
 export type SourceSummary = {
