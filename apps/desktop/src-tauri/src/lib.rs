@@ -28,6 +28,7 @@ mod services;
 mod settings;
 mod source_jobs;
 mod updater;
+mod vault_exports;
 
 const BACKEND_ORIGIN: &str = "http://127.0.0.1:7331";
 const MAIN_WINDOW: &str = "main";
@@ -255,6 +256,20 @@ struct DocumentListRequest {
     source: Option<String>,
     query: Option<String>,
     cursor: Option<String>,
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GraphRequest {
+    project: Option<String>,
+    source: Option<String>,
+    query: Option<String>,
+    cursor: Option<String>,
+    focus_document_id: Option<String>,
+    edge_kind: Option<String>,
+    origin: Option<String>,
+    min_confidence: Option<f32>,
     limit: usize,
 }
 
@@ -502,9 +517,9 @@ async fn brain_documents(
 #[tauri::command]
 async fn brain_graph(
     backend: State<'_, BackendClient>,
-    request: DocumentListRequest,
+    request: GraphRequest,
 ) -> Result<Value, String> {
-    validate_document_list_request(&request)?;
+    validate_graph_request(&request)?;
     let mut url = Url::parse(BACKEND_ORIGIN)
         .map_err(|error| format!("invalid fixed Cortana runtime URL: {error}"))?;
     url.set_path("/v1/graph");
@@ -522,6 +537,18 @@ async fn brain_graph(
         }
         if let Some(cursor) = request.cursor {
             query.append_pair("cursor", &cursor);
+        }
+        if let Some(focus_document_id) = request.focus_document_id {
+            query.append_pair("focus_document_id", &focus_document_id);
+        }
+        if let Some(edge_kind) = request.edge_kind {
+            query.append_pair("edge_kind", &edge_kind);
+        }
+        if let Some(origin) = request.origin {
+            query.append_pair("origin", &origin);
+        }
+        if let Some(min_confidence) = request.min_confidence {
+            query.append_pair("min_confidence", &min_confidence.to_string());
         }
     }
     backend.request_url(Method::GET, url, None).await
@@ -955,6 +982,33 @@ async fn desktop_settings_import(
 }
 
 #[tauri::command]
+async fn desktop_vault_export_start(
+    app: AppHandle,
+    exports: State<'_, vault_exports::VaultExportState>,
+    workspaces: Vec<String>,
+    dry_run: bool,
+    approved: bool,
+) -> Result<Option<vault_exports::VaultExportSnapshot>, String> {
+    exports.start(&app, workspaces, dry_run, approved).await
+}
+
+#[tauri::command]
+fn desktop_vault_export_status(
+    exports: State<'_, vault_exports::VaultExportState>,
+    id: String,
+) -> Result<vault_exports::VaultExportSnapshot, String> {
+    exports.status(&id)
+}
+
+#[tauri::command]
+fn desktop_vault_export_cancel(
+    exports: State<'_, vault_exports::VaultExportState>,
+    id: String,
+) -> Result<vault_exports::VaultExportSnapshot, String> {
+    exports.cancel(&id)
+}
+
+#[tauri::command]
 fn desktop_installer_start(
     app: AppHandle,
     installer: State<'_, installer::InstallerState>,
@@ -1190,6 +1244,62 @@ fn validate_document_list_request(request: &DocumentListRequest) -> Result<(), S
         .is_some_and(|cursor| cursor.is_empty() || cursor.len() > MAX_DOCUMENT_CURSOR_LENGTH)
     {
         return Err("invalid document cursor".into());
+    }
+    Ok(())
+}
+
+fn validate_graph_request(request: &GraphRequest) -> Result<(), String> {
+    validate_document_list_request(&DocumentListRequest {
+        project: request.project.clone(),
+        source: request.source.clone(),
+        query: request.query.clone(),
+        cursor: request.cursor.clone(),
+        limit: request.limit,
+    })?;
+    if let Some(id) = request.focus_document_id.as_deref() {
+        validate_document_id(id)?;
+        if request.cursor.is_some() || request.query.is_some() {
+            return Err("graph focus cannot be combined with cursor or query".into());
+        }
+    }
+    if request.edge_kind.as_deref().is_some_and(|kind| {
+        !matches!(
+            kind,
+            "contains"
+                | "references"
+                | "backlink"
+                | "nearby"
+                | "same-thread"
+                | "authored-by"
+                | "mentions"
+                | "temporal"
+                | "semantically-related"
+                | "supports"
+                | "contradicts"
+                | "reinforces"
+                | "supersedes"
+                | "observes"
+                | "derives"
+                | "depends-on"
+                | "defines"
+                | "calls"
+                | "imports"
+        )
+    }) {
+        return Err("unsupported graph edge kind".into());
+    }
+    if request
+        .origin
+        .as_deref()
+        .is_some_and(|origin| !matches!(origin, "explicit" | "derived" | "inferred"))
+    {
+        return Err("unsupported graph relationship origin".into());
+    }
+    if request
+        .min_confidence
+        .is_some_and(|value| !value.is_finite() || !(0.0..=1.0).contains(&value))
+    {
+        return Err("minimum confidence must be between zero and one".into());
     }
     Ok(())
 }
@@ -1446,6 +1556,7 @@ pub fn run() {
         .manage(installer::InstallerState::default())
         .manage(source_jobs::SourceJobState::default())
         .manage(updater::UpdaterState::default())
+        .manage(vault_exports::VaultExportState::default())
         .invoke_handler(tauri::generate_handler![
             brain_status,
             brain_answer,
@@ -1483,6 +1594,9 @@ pub fn run() {
             desktop_secret_storage_migrate,
             desktop_settings_export,
             desktop_settings_import,
+            desktop_vault_export_start,
+            desktop_vault_export_status,
+            desktop_vault_export_cancel,
             desktop_path_pick,
             desktop_readiness_scan,
             desktop_embedding_generation_migrate,
@@ -2493,6 +2607,26 @@ mod tests {
         assert!(validate_document_list_request(&invalid_scope).is_err());
         assert!(validate_document_id(&"a".repeat(64)).is_ok());
         assert!(validate_document_id("../store.sqlite3").is_err());
+
+        let focused_graph = GraphRequest {
+            project: Some("work".into()),
+            source: None,
+            query: None,
+            cursor: None,
+            focus_document_id: Some("a".repeat(64)),
+            edge_kind: Some("references".into()),
+            origin: Some("explicit".into()),
+            min_confidence: None,
+            limit: 100,
+        };
+        assert!(validate_graph_request(&focused_graph).is_ok());
+        assert!(
+            validate_graph_request(&GraphRequest {
+                focus_document_id: Some("../store.sqlite3".into()),
+                ..focused_graph
+            })
+            .is_err()
+        );
     }
 
     #[test]
@@ -2787,7 +2921,10 @@ mod tests {
                 .iter()
                 .map(|service| service["name"].as_str().expect("service name"))
                 .collect::<Vec<_>>();
-            assert_eq!(names, vec!["embedding", "server", "sync", "backup"]);
+            assert_eq!(
+                names,
+                vec!["embedding", "server", "sync", "backup", "vault"]
+            );
             for service in services {
                 for key in [
                     "label",

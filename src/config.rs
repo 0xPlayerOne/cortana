@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::knowledge_graph::EdgeKind;
+
 const MAX_CONFIGURED_SOURCES: usize = 128;
 // Buzz community assignment keeps bounded counts and lengths: the identity
 // file may hold more communities than any single workspace should index, and
@@ -42,6 +44,8 @@ pub struct Config {
     pub query: QueryConfig,
     #[serde(default)]
     pub memory: MemoryConfig,
+    #[serde(default)]
+    pub knowledge_graph: KnowledgeGraphConfig,
     #[serde(default)]
     pub auth: AuthConfig,
     #[serde(default)]
@@ -179,6 +183,38 @@ pub struct MemoryConfig {
     pub default_confidence: f32,
     #[serde(default = "default_memory_importance")]
     pub default_importance: f32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct KnowledgeGraphConfig {
+    /// Released edge derivations. Omitting one disables only that projection;
+    /// canonical documents, memories, and stored provenance remain unchanged.
+    #[serde(default = "default_graph_edge_kinds")]
+    pub enabled_edge_kinds: Vec<EdgeKind>,
+}
+
+impl Default for KnowledgeGraphConfig {
+    fn default() -> Self {
+        Self {
+            enabled_edge_kinds: default_graph_edge_kinds(),
+        }
+    }
+}
+
+fn default_graph_edge_kinds() -> Vec<EdgeKind> {
+    vec![
+        EdgeKind::Contains,
+        EdgeKind::References,
+        EdgeKind::Backlink,
+        EdgeKind::Nearby,
+        EdgeKind::SameThread,
+        EdgeKind::AuthoredBy,
+        EdgeKind::Mentions,
+        EdgeKind::Temporal,
+        EdgeKind::Supports,
+        EdgeKind::Contradicts,
+        EdgeKind::Derives,
+    ]
 }
 
 impl Default for MemoryConfig {
@@ -426,6 +462,7 @@ impl Default for Config {
             ingestion: IngestionConfig::default(),
             query: QueryConfig::default(),
             memory: MemoryConfig::default(),
+            knowledge_graph: KnowledgeGraphConfig::default(),
             auth: AuthConfig::default(),
             connectors: ConnectorConfig::default(),
             runtime: RuntimeConfig::default(),
@@ -525,6 +562,27 @@ impl Config {
 }
 
 fn validate_source_definitions(config: &Config) -> Result<()> {
+    let enabled_graph_edges = config
+        .knowledge_graph
+        .enabled_edge_kinds
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>();
+    anyhow::ensure!(
+        enabled_graph_edges.len() == config.knowledge_graph.enabled_edge_kinds.len(),
+        "knowledge graph enabled edge kinds must be unique"
+    );
+    anyhow::ensure!(
+        !enabled_graph_edges.contains(&EdgeKind::SemanticallyRelated),
+        "semantic graph neighbors are not released; remove semantically-related"
+    );
+    let released_graph_edges = default_graph_edge_kinds()
+        .into_iter()
+        .collect::<HashSet<_>>();
+    anyhow::ensure!(
+        enabled_graph_edges.is_subset(&released_graph_edges),
+        "knowledge graph enabled edge kinds must be a subset of released derivations"
+    );
     anyhow::ensure!(
         (1..=1_000_000).contains(&config.memory.max_active),
         "memory max_active must be between 1 and 1000000"
@@ -1024,6 +1082,37 @@ fn default_project() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graph_edge_derivations_can_be_disabled_without_changing_storage_config() {
+        let config: Config = toml::from_str(
+            r#"
+            [knowledge_graph]
+            enabled_edge_kinds = ["contains", "references"]
+            "#,
+        )
+        .expect("knowledge graph config");
+        validate_source_definitions(&config).expect("released edge policy");
+        assert_eq!(
+            config.knowledge_graph.enabled_edge_kinds,
+            vec![EdgeKind::Contains, EdgeKind::References]
+        );
+    }
+
+    #[test]
+    fn graph_edge_policy_rejects_duplicates_and_unreleased_inference() {
+        for enabled_edge_kinds in [
+            vec![EdgeKind::Contains, EdgeKind::Contains],
+            vec![EdgeKind::Contains, EdgeKind::SemanticallyRelated],
+            vec![EdgeKind::Contains, EdgeKind::Imports],
+        ] {
+            let config = Config {
+                knowledge_graph: KnowledgeGraphConfig { enabled_edge_kinds },
+                ..Config::default()
+            };
+            assert!(validate_source_definitions(&config).is_err());
+        }
+    }
 
     #[test]
     fn optional_chat_sources_require_explicit_enablement() {

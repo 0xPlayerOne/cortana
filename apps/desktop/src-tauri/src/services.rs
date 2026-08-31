@@ -17,7 +17,7 @@ use crate::settings;
 // valid cold start is not reported as a Desktop failure at 60 seconds.
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const MAX_OUTPUT_BYTES: usize = 64 * 1024;
-const SERVICE_NAMES: [&str; 4] = ["embedding", "server", "sync", "backup"];
+const SERVICE_NAMES: [&str; 5] = ["embedding", "server", "sync", "backup", "vault"];
 const CORE_SERVICE_NAMES: [&str; 2] = ["embedding", "server"];
 const ACTIONS: [&str; 3] = ["start", "stop", "restart"];
 const ACTIVITY_ACTIONS: [&str; 4] = ["install", "start", "stop", "restart"];
@@ -664,6 +664,18 @@ mod tests {
 
     #[test]
     fn reports_reject_unknown_services_and_bound_errors() {
+        let valid = serde_json::json!({
+            "platform": "macos",
+            "supported": true,
+            "services": [
+                {"name":"embedding","label":"ai.cortana.embedding","installed":true,"loaded":true},
+                {"name":"server","label":"ai.cortana.server","installed":true,"loaded":true},
+                {"name":"sync","label":"ai.cortana.sync","installed":false,"loaded":false},
+                {"name":"backup","label":"ai.cortana.backup","installed":true,"loaded":true},
+                {"name":"vault","label":"ai.cortana.vault","installed":false,"loaded":false}
+            ]
+        });
+        assert!(parse_report(valid.to_string().as_bytes(), b"", true).is_ok());
         let report = serde_json::json!({
             "platform": "macos",
             "supported": true,

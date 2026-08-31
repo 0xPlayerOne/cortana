@@ -205,6 +205,24 @@ pub struct DocumentSummary {
     pub project: String,
     pub chunk_count: usize,
     pub content_chars: usize,
+    #[serde(skip)]
+    pub acl: Vec<String>,
+    #[serde(skip)]
+    pub content_revision: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct DocumentGraphLink {
+    pub source: DocumentSummary,
+    pub target: DocumentSummary,
+}
+
+#[derive(Clone, Debug)]
+pub struct DocumentGraphMetadata {
+    pub document_id: String,
+    pub thread_key: Option<String>,
+    pub authors: Vec<String>,
+    pub entities: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -3790,7 +3808,7 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
             "SELECT d.id,d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,d.acl_json,
-                    COUNT(c.id),
+                    d.content_hash,COUNT(c.id),
                     CASE WHEN length(d.content)>0 THEN length(d.content)
                          ELSE COALESCE(SUM(length(c.content)),0) END
              FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
@@ -3829,10 +3847,11 @@ impl Store {
                                     Box::new(error),
                                 )
                             })?;
+                        let content_revision = row.get::<_, String>(8)?;
                         let chunk_count =
-                            usize::try_from(row.get::<_, i64>(8)?).unwrap_or(usize::MAX);
-                        let content_chars =
                             usize::try_from(row.get::<_, i64>(9)?).unwrap_or(usize::MAX);
+                        let content_chars =
+                            usize::try_from(row.get::<_, i64>(10)?).unwrap_or(usize::MAX);
                         Ok((
                             DocumentSummary {
                                 id: row.get(0)?,
@@ -3844,6 +3863,8 @@ impl Store {
                                 project: row.get(6)?,
                                 chunk_count,
                                 content_chars,
+                                acl: acl.clone(),
+                                content_revision,
                             },
                             acl,
                         ))
@@ -3873,6 +3894,246 @@ impl Store {
             documents,
             has_more,
         })
+    }
+
+    pub fn document_summary_scoped(
+        &self,
+        id: &str,
+        principal_acl: &[String],
+    ) -> Result<Option<DocumentSummary>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let record = connection
+            .query_row(
+                "SELECT d.id,d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,
+                        d.acl_json,d.content_hash,
+                        (SELECT COUNT(*) FROM chunks c WHERE c.document_id=d.id),
+                        CASE WHEN length(d.content)>0 THEN length(d.content)
+                             ELSE COALESCE((SELECT SUM(length(c.content))
+                                            FROM chunks c WHERE c.document_id=d.id),0) END
+                 FROM documents d WHERE d.id=?1",
+                [id],
+                |row| {
+                    let acl_json = row.get::<_, String>(7)?;
+                    let acl = serde_json::from_str::<Vec<String>>(&acl_json).map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(7, Type::Text, Box::new(error))
+                    })?;
+                    Ok(DocumentSummary {
+                        id: row.get(0)?,
+                        source: row.get(1)?,
+                        source_id: row.get(2)?,
+                        title: row.get(3)?,
+                        uri: row.get(4)?,
+                        updated_at: row.get(5)?,
+                        project: row.get(6)?,
+                        chunk_count: usize::try_from(row.get::<_, i64>(9)?).unwrap_or(usize::MAX),
+                        content_chars: usize::try_from(row.get::<_, i64>(10)?)
+                            .unwrap_or(usize::MAX),
+                        acl,
+                        content_revision: row.get(8)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(record.filter(|document| acl_allows(&document.acl, principal_acl)))
+    }
+
+    pub fn graph_document_links_scoped(
+        &self,
+        document_ids: &[String],
+        principal_acl: &[String],
+        limit: usize,
+    ) -> Result<Vec<DocumentGraphLink>> {
+        if document_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let document_ids_json = serde_json::to_string(document_ids)?;
+        let scan_limit = limit.clamp(1, 400).saturating_mul(4);
+        let mut statement = connection.prepare(
+            "WITH page_documents(id) AS (
+               SELECT value FROM json_each(?1) WHERE type='text'
+             ), candidate_links(source_id,target_id) AS (
+               SELECT source.id,target.id
+               FROM page_documents page
+               JOIN document_links link ON link.document_id=page.id
+               JOIN documents source ON source.id=link.document_id
+               JOIN documents target
+                 ON target.project=source.project
+                AND target.id<>source.id
+                AND (target.id=link.target
+                     OR (target.source=source.source AND target.source_id=link.target)
+                     OR target.uri=link.target)
+               UNION
+               SELECT source.id,target.id
+               FROM page_documents page
+               JOIN documents target ON target.id=page.id
+               JOIN document_links link
+                 ON link.target=target.id
+                 OR link.target=target.source_id
+                 OR (target.uri IS NOT NULL AND link.target=target.uri)
+               JOIN documents source
+                 ON source.id=link.document_id
+                AND source.project=target.project
+                AND source.id<>target.id
+                AND (link.target=target.id
+                     OR (source.source=target.source AND link.target=target.source_id)
+                     OR link.target=target.uri)
+             )
+             SELECT source.id,source.source,source.source_id,source.title,source.uri,
+                    source.updated_at,source.project,source.acl_json,source.content_hash,
+                    target.id,target.source,target.source_id,target.title,target.uri,
+                    target.updated_at,target.project,target.acl_json,target.content_hash
+             FROM candidate_links candidate
+             JOIN documents source ON source.id=candidate.source_id
+             JOIN documents target ON target.id=candidate.target_id
+             ORDER BY source.updated_at DESC,source.id DESC,target.updated_at DESC,target.id DESC
+             LIMIT ?2",
+        )?;
+        let rows = statement
+            .query_map(
+                params![
+                    document_ids_json,
+                    i64::try_from(scan_limit).unwrap_or(1_600)
+                ],
+                |row| {
+                    let source_acl_json = row.get::<_, String>(7)?;
+                    let target_acl_json = row.get::<_, String>(16)?;
+                    let source_acl = serde_json::from_str::<Vec<String>>(&source_acl_json)
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                7,
+                                Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    let target_acl = serde_json::from_str::<Vec<String>>(&target_acl_json)
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                16,
+                                Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    Ok(DocumentGraphLink {
+                        source: DocumentSummary {
+                            id: row.get(0)?,
+                            source: row.get(1)?,
+                            source_id: row.get(2)?,
+                            title: row.get(3)?,
+                            uri: row.get(4)?,
+                            updated_at: row.get(5)?,
+                            project: row.get(6)?,
+                            chunk_count: 0,
+                            content_chars: 0,
+                            acl: source_acl,
+                            content_revision: row.get(8)?,
+                        },
+                        target: DocumentSummary {
+                            id: row.get(9)?,
+                            source: row.get(10)?,
+                            source_id: row.get(11)?,
+                            title: row.get(12)?,
+                            uri: row.get(13)?,
+                            updated_at: row.get(14)?,
+                            project: row.get(15)?,
+                            chunk_count: 0,
+                            content_chars: 0,
+                            acl: target_acl,
+                            content_revision: row.get(17)?,
+                        },
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows
+            .into_iter()
+            .filter(|link| {
+                acl_allows(&link.source.acl, principal_acl)
+                    && acl_allows(&link.target.acl, principal_acl)
+            })
+            .take(limit.clamp(1, 400))
+            .collect())
+    }
+
+    pub fn graph_document_metadata_scoped(
+        &self,
+        document_ids: &[String],
+        principal_acl: &[String],
+    ) -> Result<Vec<DocumentGraphMetadata>> {
+        if document_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let document_ids_json = serde_json::to_string(document_ids)?;
+        let mut statement = connection.prepare(
+            "WITH page_documents(id) AS (
+               SELECT value FROM json_each(?1) WHERE type='text'
+             )
+             SELECT d.id,d.acl_json,
+                    CASE
+                      WHEN json_type(d.metadata_json,'$.thread_id')='text'
+                        AND length(json_extract(d.metadata_json,'$.thread_id'))<=256
+                        THEN json_extract(d.metadata_json,'$.thread_id')
+                      WHEN json_type(d.metadata_json,'$.conversation_id')='text'
+                        AND length(json_extract(d.metadata_json,'$.conversation_id'))<=256
+                        THEN json_extract(d.metadata_json,'$.conversation_id')
+                      WHEN json_type(d.metadata_json,'$.series_id')='text'
+                        AND length(json_extract(d.metadata_json,'$.series_id'))<=256
+                        THEN json_extract(d.metadata_json,'$.series_id')
+                    END,
+                    CASE WHEN json_type(d.metadata_json,'$.author')='text'
+                               AND length(json_extract(d.metadata_json,'$.author'))<=256
+                         THEN json_extract(d.metadata_json,'$.author') END,
+                    COALESCE((SELECT json_group_array(value)
+                              FROM json_each(d.metadata_json,'$.authors')
+                              WHERE json_type(d.metadata_json,'$.authors')='array'
+                                AND type='text' AND CAST(key AS INTEGER)<16
+                                AND length(value)<=256),'[]'),
+                    COALESCE((SELECT json_group_array(value)
+                              FROM json_each(d.metadata_json,'$.entities')
+                              WHERE json_type(d.metadata_json,'$.entities')='array'
+                                AND type='text' AND CAST(key AS INTEGER)<32
+                                AND length(value)<=256),'[]')
+             FROM page_documents page JOIN documents d ON d.id=page.id
+             ORDER BY d.updated_at DESC,d.id DESC",
+        )?;
+        let rows = statement
+            .query_map([document_ids_json], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut metadata = Vec::with_capacity(rows.len());
+        for (document_id, acl_json, thread_key, author, authors_json, entities_json) in rows {
+            let acl = serde_json::from_str::<Vec<String>>(&acl_json)?;
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            let mut authors = serde_json::from_str::<Vec<String>>(&authors_json)?;
+            if let Some(author) = author {
+                authors.push(author);
+            }
+            authors.retain(|value| safe_graph_metadata_value(value));
+            authors.sort();
+            authors.dedup();
+            let mut entities = serde_json::from_str::<Vec<String>>(&entities_json)?;
+            entities.retain(|value| safe_graph_metadata_value(value));
+            entities.sort();
+            entities.dedup();
+            metadata.push(DocumentGraphMetadata {
+                document_id,
+                thread_key: thread_key.filter(|value| safe_graph_metadata_value(value)),
+                authors,
+                entities,
+            });
+        }
+        Ok(metadata)
     }
 
     pub fn document_scoped(
@@ -3977,6 +4238,8 @@ impl Store {
                 project,
                 chunk_count: usize::try_from(chunk_count).unwrap_or(usize::MAX),
                 content_chars: usize::try_from(content_chars).unwrap_or(usize::MAX),
+                acl: acl.clone(),
+                content_revision: String::new(),
             },
             content,
             metadata,
@@ -5080,6 +5343,10 @@ fn metadata_reference_strings(value: &Value) -> Vec<String> {
     let mut values = values.into_iter().collect::<Vec<_>>();
     values.sort();
     values
+}
+
+fn safe_graph_metadata_value(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 256 && !value.chars().any(char::is_control)
 }
 
 fn collect_metadata_reference_strings(value: &Value, values: &mut HashSet<String>) {

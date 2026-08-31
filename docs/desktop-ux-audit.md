@@ -271,6 +271,21 @@ Verify:
 
 Accessibility is a release requirement, not optional polish.
 
+For deterministic knowledge-browser and graph regression coverage, run:
+
+```bash
+bun run test:knowledge-accessibility
+```
+
+The `Knowledge accessibility` pull-request workflow runs that command in Chromium and uploads a
+bounded JSON report plus desktop reduced-motion, desktop 200%-zoom, and mobile screenshots. The
+gate exercises keyboard entry and graph selection, WCAG 2.2 AA axe rules, accessible graph-filter
+names, live selection status, reduced motion, responsive layout, and console errors against the
+provider-free demo fixture. It contains no private source content. It complements the published
+package host-launch lane; a passing renderer report is not evidence that VoiceOver, NVDA, native
+dialogs, browser OAuth, tray behavior, updater behavior, or operating-system trust passed in a
+signed package.
+
 ### Security
 
 Verify:

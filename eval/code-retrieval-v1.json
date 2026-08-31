@@ -14,7 +14,7 @@
       "id": "store",
       "path": "src/store.rs",
       "symbol": "code_relations",
-      "expected_line": 4172,
+      "expected_line": 4435,
       "expected_fragment": "pub fn code_relations"
     },
     {
@@ -84,7 +84,7 @@
       "id": "api",
       "path": "src/api.rs",
       "symbol": "code_symbols",
-      "expected_line": 1870,
+      "expected_line": 2578,
       "expected_fragment": "async fn code_symbols"
     }
   ],

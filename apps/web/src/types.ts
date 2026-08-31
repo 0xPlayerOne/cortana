@@ -52,25 +52,100 @@ export type BrainDocumentPage = {
   next_cursor: string | null
 }
 
+export type BrainGraphNodeKind =
+  | 'workspace'
+  | 'source'
+  | 'document'
+  | 'chunk'
+  | 'entity'
+  | 'memory'
+  | 'observation'
+  | 'mental-model'
+  | 'repository'
+  | 'file'
+  | 'symbol'
+
 export type BrainGraphNode = {
   id: string
-  kind: 'workspace' | 'source' | 'document'
+  kind: BrainGraphNodeKind
   label: string
   project: string
   source: string | null
   document_id: string | null
+  canonical_record_id?: string | null
+  contract_version?: 'cortana.knowledge-graph.v1'
+  updated_at?: string
+  acl?: string[]
+  content_revision?: string
+  lifecycle_status?: string
+  representation_contract_version?: string
+  derivation_version?: string
+  memory_revision?: number
+  supporting_memory_ids?: string[]
+  contradicting_memory_ids?: string[]
+  citation_authority?: boolean
 }
 
 export type BrainGraphEdge = {
   source: string
   target: string
-  kind: 'contains'
+  kind:
+    | 'contains'
+    | 'references'
+    | 'backlink'
+    | 'nearby'
+    | 'same-thread'
+    | 'authored-by'
+    | 'mentions'
+    | 'temporal'
+    | 'semantically-related'
+    | 'supports'
+    | 'contradicts'
+    | 'reinforces'
+    | 'supersedes'
+    | 'observes'
+    | 'derives'
+    | 'depends-on'
+    | 'defines'
+    | 'calls'
+    | 'imports'
+  contract_version?: 'cortana.knowledge-graph.v1'
+  origin?: 'explicit' | 'derived' | 'inferred'
+  derivation_version?: string
+  confidence?: number | null
+  citation_authority?: boolean
+  updated_at?: string
+  project?: string
+  acl?: string[]
+  support?: {
+    record_ids: string[]
+    invalidation_keys: string[]
+  }
 }
 
 export type BrainGraphPage = {
+  contract_version?: 'cortana.knowledge-graph.v1'
+  corpus_revision?: number
+  response_bytes?: number
   nodes: BrainGraphNode[]
   edges: BrainGraphEdge[]
   next_cursor: string | null
+  truncated?: boolean
+  limits?: {
+    page_size: number
+    max_nodes: number
+    max_edges: number
+    max_response_bytes: number
+  }
+  derivation?: {
+    version: string
+    mode: 'request-derived'
+    semantic_neighbors_enabled: boolean
+    enabled_edge_kinds: BrainGraphEdge['kind'][]
+    disabled_edge_kinds: BrainGraphEdge['kind'][]
+    rebuild_required: boolean
+    failures: string[]
+  }
 }
 
 export type SourceSummary = {
@@ -445,6 +520,34 @@ export type DesktopSettingsImport = {
   settings: DesktopPortableSettings
 }
 
+export type DesktopVaultExportReport = {
+  output: string
+  workspaces: string[]
+  documents: number
+  content_rewrites: number
+  unchanged_documents: number
+  deleted_documents: number
+  dry_run: boolean
+  files: string[]
+  files_truncated: boolean
+  previous_vault: string | null
+}
+
+export type DesktopVaultExport = {
+  id: string
+  status: 'running' | 'cancelling' | 'succeeded' | 'failed' | 'cancelled'
+  phase: string
+  workspaces: string[]
+  output: string
+  dry_run: boolean
+  documents_completed: number
+  files_written: number
+  started_at_unix_seconds: number
+  completed_at_unix_seconds: number | null
+  report: DesktopVaultExportReport | null
+  error: string | null
+}
+
 export type DesktopSourceJob = {
   id: string
   operation: 'connection-check' | 'validation' | 'authorization' | 'trial-sync' | 'initial-sync'
@@ -545,7 +648,7 @@ export type DesktopServiceReport = {
   supported: boolean
   activity?: DesktopServiceActivity | null
   services: Array<{
-    name: 'embedding' | 'server' | 'sync' | 'backup'
+    name: 'embedding' | 'server' | 'sync' | 'backup' | 'vault'
     label: string
     installed: boolean
     loaded: boolean

@@ -1,5 +1,7 @@
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   Check,
   CircleStop,
   Download,
@@ -10,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Settings2,
   Trash2,
   Upload,
@@ -1351,6 +1354,7 @@ function ServicesSection({
     report.services.some(
       (service) =>
         service.name !== 'sync' &&
+        service.name !== 'vault' &&
         (service.name !== 'embedding' || settings.embedding.provider === 'local') &&
         !service.installed
     )
@@ -2542,6 +2546,7 @@ function WorkspaceSection({
   const [logoError, setLogoError] = useState('')
   const [logoLoading, setLogoLoading] = useState<string | null>(null)
   const [workspaceThemes, setWorkspaceThemes] = useState(readWorkspaceThemePreferences)
+  const [workspaceQuery, setWorkspaceQuery] = useState('')
   const hasWorkspaceSources = (workspaceId: string) =>
     settings.sources.some((source) => source.project === workspaceId)
 
@@ -2625,16 +2630,56 @@ function WorkspaceSection({
       }
     })
   }
+  const visibleWorkspaces = settings.workspaces
+    .map((workspace, index) => ({ workspace, index }))
+    .filter(({ workspace }) => {
+      const query = workspaceQuery.trim().toLocaleLowerCase()
+      return (
+        !query ||
+        workspace.name.toLocaleLowerCase().includes(query) ||
+        workspace.id.toLocaleLowerCase().includes(query) ||
+        workspace.account_label?.toLocaleLowerCase().includes(query)
+      )
+    })
+
+  const moveWorkspace = (index: number, offset: -1 | 1) =>
+    update((current) => {
+      const destination = index + offset
+      if (destination < 0 || destination >= current.workspaces.length) return current
+      const workspaces = [...current.workspaces]
+      const [workspace] = workspaces.splice(index, 1)
+      if (!workspace) return current
+      workspaces.splice(destination, 0, workspace)
+      return { ...current, workspaces }
+    })
 
   return (
     <SettingsSection
       title="Workspaces"
-      description="Create up to four isolated query scopes. Sources and accounts can be assigned to one scope. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
+      description="Create isolated query scopes and assign each source or account to one workspace. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
     >
+      {settings.workspaces.length > 6 && (
+        <Field
+          label="Find workspace"
+          hint={`${visibleWorkspaces.length} of ${settings.workspaces.length} shown`}
+          wide
+        >
+          <div className="settings-search-input">
+            <Search size={14} aria-hidden="true" />
+            <Input
+              type="search"
+              value={workspaceQuery}
+              onChange={(event) => setWorkspaceQuery(event.target.value)}
+              placeholder="Search name, ID, or account label"
+              autoComplete="off"
+            />
+          </div>
+        </Field>
+      )}
       <div
-        className={`workspace-settings-grid workspace-settings-grid--${settings.workspaces.length}`}
+        className={`workspace-settings-grid workspace-settings-grid--${visibleWorkspaces.length}`}
       >
-        {settings.workspaces.map((workspace, index) => (
+        {visibleWorkspaces.map(({ workspace, index }) => (
           <SettingsCard className="workspace-card" key={`workspace-${index}`}>
             <div className="workspace-card-heading">
               <WorkspaceLogo workspace={workspace} size="large" />
@@ -2666,34 +2711,56 @@ function WorkspaceSection({
                 />
               </label>
               {settings.workspaces.length > 1 && (
-                <Button
-                  variant="danger"
-                  type="button"
-                  className=""
-                  aria-label={`Remove ${workspace.name}`}
-                  disabled={hasWorkspaceSources(workspace.id)}
-                  tooltip={
-                    hasWorkspaceSources(workspace.id)
-                      ? 'Move assigned sources before removing this workspace'
-                      : 'Remove workspace'
-                  }
-                  onClick={() =>
-                    applyConfirmed(
-                      confirm(
-                        `Remove the ${workspace.name} workspace? This changes only the settings draft and does not delete indexed data.`
-                      ),
-                      () =>
-                        update((current) => ({
-                          ...current,
-                          workspaces: current.workspaces.filter(
-                            (_, position) => position !== index
-                          ),
-                        }))
-                    )
-                  }
-                >
-                  <Trash2 size={15} />
-                </Button>
+                <div className="workspace-order-actions">
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    aria-label={`Move ${workspace.name} up`}
+                    disabled={index === 0}
+                    tooltip="Move workspace up"
+                    onClick={() => moveWorkspace(index, -1)}
+                  >
+                    <ArrowUp size={15} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    type="button"
+                    aria-label={`Move ${workspace.name} down`}
+                    disabled={index === settings.workspaces.length - 1}
+                    tooltip="Move workspace down"
+                    onClick={() => moveWorkspace(index, 1)}
+                  >
+                    <ArrowDown size={15} />
+                  </Button>
+                  <Button
+                    variant="danger"
+                    type="button"
+                    className=""
+                    aria-label={`Remove ${workspace.name}`}
+                    disabled={hasWorkspaceSources(workspace.id)}
+                    tooltip={
+                      hasWorkspaceSources(workspace.id)
+                        ? 'Move assigned sources before removing this workspace'
+                        : 'Remove workspace'
+                    }
+                    onClick={() =>
+                      applyConfirmed(
+                        confirm(
+                          `Remove the ${workspace.name} workspace? This changes only the settings draft and does not delete indexed data.`
+                        ),
+                        () =>
+                          update((current) => ({
+                            ...current,
+                            workspaces: current.workspaces.filter(
+                              (_, position) => position !== index
+                            ),
+                          }))
+                      )
+                    }
+                  >
+                    <Trash2 size={15} />
+                  </Button>
+                </div>
               )}
             </div>
             <div className="workspace-identity-row">
@@ -2769,10 +2836,10 @@ function WorkspaceSection({
       <Button
         variant="secondary"
         type="button"
-        disabled={settings.workspaces.length >= 4}
+        disabled={settings.workspaces.length >= 128}
         onClick={addWorkspace}
       >
-        <Plus size={15} /> Add workspace ({settings.workspaces.length}/4)
+        <Plus size={15} /> Add workspace ({settings.workspaces.length}/128)
       </Button>
     </SettingsSection>
   )

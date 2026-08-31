@@ -304,7 +304,7 @@ fn ensure_services_stopped(report: &services::ServiceReport) -> Result<(), Strin
         .filter(|service| {
             matches!(
                 service.name.as_str(),
-                "embedding" | "server" | "sync" | "backup"
+                "embedding" | "server" | "sync" | "backup" | "vault"
             ) && service_is_running(service)
         })
         .map(|service| service.name.as_str())
@@ -448,7 +448,7 @@ mod tests {
             platform: "test".into(),
             supported,
             activity: None,
-            services: ["embedding", "server", "sync", "backup"]
+            services: ["embedding", "server", "sync", "backup", "vault"]
                 .into_iter()
                 .map(|name| services::ServiceStatus {
                     name: name.into(),
