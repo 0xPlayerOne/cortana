@@ -13,7 +13,10 @@ use toml::{Table, Value};
 
 use crate::secure_storage;
 
-const MAX_WORKSPACES: usize = 4;
+/// A resource guard, not a product-sized workspace cap. The Desktop UI and
+/// configuration must comfortably support the M10 25-workspace fixture while
+/// malformed imports remain bounded.
+const MAX_WORKSPACES: usize = 128;
 const MAX_SOURCES: usize = 128;
 const MAX_AUTH_PRINCIPALS: usize = 64;
 const MAX_SECRET_BYTES: usize = 16 * 1024;
@@ -858,13 +861,12 @@ fn workspace_value(workspace: &WorkspaceSettings) -> Value {
     Value::Table(table)
 }
 
-/// Keep source scopes that predate the four-workspace Desktop surface.
+/// Keep source scopes that predate the explicit Desktop workspace surface.
 ///
 /// The backend permits arbitrary project scopes when no explicit workspace
 /// table exists, and existing installations may therefore contain sources
-/// such as `community` or `agents`. Desktop intentionally renders only the
-/// first four workspaces, but a save must not orphan those source scopes and
-/// make the backend reject its own configuration on the next restart.
+/// such as `community` or `agents`. A save must not orphan those source scopes
+/// and make the backend reject its own configuration on the next restart.
 fn workspace_values(root: &Table, update: &SettingsUpdate) -> Vec<Value> {
     let mut values = update
         .workspaces
@@ -3378,21 +3380,23 @@ mod tests {
         validate_update(&mut cache_disabled).expect("zero cache values are valid opt-outs");
 
         let mut update = valid_update(temp.path());
-        for (id, name) in [("personal", "Personal"), ("special", "Special"), ("lab", "Lab")] {
+        for index in 1..25 {
             update.workspaces.push(WorkspaceSettings {
-                id: id.into(),
-                name: name.into(),
+                id: format!("workspace-{index:02}"),
+                name: format!("Workspace {index:02}"),
                 account_label: None,
                 color: None,
             });
         }
-        validate_update(&mut update).expect("four workspaces are supported");
-        update.workspaces.push(WorkspaceSettings {
-            id: "fifth".into(),
-            name: "Fifth".into(),
-            account_label: None,
-            color: None,
-        });
+        validate_update(&mut update).expect("twenty-five workspaces are supported");
+        for index in 25..129 {
+            update.workspaces.push(WorkspaceSettings {
+                id: format!("workspace-{index:03}"),
+                name: format!("Workspace {index:03}"),
+                account_label: None,
+                color: None,
+            });
+        }
         assert!(validate_update(&mut update).is_err());
 
         let mut update = valid_update(temp.path());
@@ -3551,13 +3555,41 @@ mod tests {
             .iter()
             .map(|workspace| workspace.id.as_str())
             .collect();
-        assert_eq!(ids, vec!["work", "personal", "special", "agents"]);
+        assert_eq!(
+            ids,
+            vec!["work", "personal", "special", "agents", "community"]
+        );
         assert_eq!(workspaces[2].name, "Special");
         assert_eq!(workspaces[3].name, "Agents");
     }
 
     #[test]
-    fn settings_save_preserves_legacy_source_scopes_outside_visible_workspaces() {
+    fn configured_workspaces_preserve_twenty_five_explicit_scopes() {
+        let mut config = Table::new();
+        config.insert(
+            "workspaces".into(),
+            Value::Array(
+                (0..25)
+                    .map(|index| {
+                        workspace_value(&WorkspaceSettings {
+                            id: format!("workspace-{index:02}"),
+                            name: format!("Workspace {index:02}"),
+                            account_label: None,
+                            color: None,
+                        })
+                    })
+                    .collect(),
+            ),
+        );
+
+        let workspaces = configured_workspaces(&config);
+        assert_eq!(workspaces.len(), 25);
+        assert_eq!(workspaces[0].id, "workspace-00");
+        assert_eq!(workspaces[24].id, "workspace-24");
+    }
+
+    #[test]
+    fn settings_save_promotes_legacy_source_scopes_without_orphaning_sources() {
         let temp = tempfile::tempdir().expect("temp directory");
         let config_path = temp.path().join("config/config.toml");
         fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
@@ -3606,22 +3638,8 @@ mod tests {
                 .iter()
                 .map(|workspace| workspace.id.as_str())
                 .collect::<Vec<_>>(),
-            vec!["work", "personal", "special", "agents"]
+            vec!["work", "personal", "special", "agents", "community"]
         );
-
-        let mut unsafe_update = valid_update(temp.path());
-        unsafe_update.workspaces = current.workspaces.clone();
-        unsafe_update.sources = current.sources.clone();
-        unsafe_update
-            .sources
-            .iter_mut()
-            .find(|source| source.project == "community")
-            .expect("legacy community source")
-            .enabled = true;
-        let error = store
-            .save(unsafe_update)
-            .expect_err("enabled legacy sources must be assigned first");
-        assert!(error.contains("not assigned to a visible workspace"));
 
         let mut update = valid_update(temp.path());
         update.workspaces = current.workspaces;

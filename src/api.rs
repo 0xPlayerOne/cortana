@@ -55,6 +55,7 @@ const MAX_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_QUERY_LENGTH: usize = 256;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
+const MAX_VISIBLE_WORKSPACES: usize = 128;
 const READY_EMBEDDING_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const READY_STORE_STATS_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -1860,8 +1861,7 @@ fn fallback_workspaces(
 ) -> Vec<WorkspaceConfig> {
     if !configured.is_empty() {
         // Explicit configuration is authoritative. Never silently hide a
-        // workspace (and its source assignment) from the operator UI; only
-        // synthesized fallback workspaces are bounded below.
+        // workspace (and its source assignment) from the operator UI.
         return configured.to_vec();
     }
     let mut project_ids: BTreeSet<String> = source_projects
@@ -1881,7 +1881,7 @@ fn fallback_workspaces(
         }
     }
     for project in project_ids {
-        if workspaces.len() >= 3 {
+        if workspaces.len() >= MAX_VISIBLE_WORKSPACES {
             break;
         }
         workspaces.push(WorkspaceConfig {
@@ -1893,7 +1893,6 @@ fn fallback_workspaces(
     }
 
     if !workspaces.is_empty() {
-        workspaces.truncate(3);
         return workspaces;
     }
 
@@ -4590,7 +4589,7 @@ mod tests {
     }
 
     #[test]
-    fn fallback_workspaces_prefer_core_scopes_and_bound_other_projects() {
+    fn fallback_workspaces_prefer_core_scopes_without_hiding_other_projects() {
         let workspaces = fallback_workspaces(
             &[],
             ["community", "special", "agents", "work", "personal"]
@@ -4601,7 +4600,10 @@ mod tests {
             .iter()
             .map(|workspace| workspace.id.as_str())
             .collect();
-        assert_eq!(ids, vec!["work", "personal", "special"]);
+        assert_eq!(
+            ids,
+            vec!["work", "personal", "special", "agents", "community"]
+        );
         assert_eq!(workspaces[0].name, "Work");
 
         let explicit = vec![WorkspaceConfig {

@@ -2629,7 +2629,7 @@ function WorkspaceSection({
   return (
     <SettingsSection
       title="Workspaces"
-      description="Create up to four isolated query scopes. Sources and accounts can be assigned to one scope. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
+      description="Create isolated query scopes and assign each source or account to one workspace. Workspace logos stay local to this Desktop profile and never enter the index or portable settings export."
     >
       <div
         className={`workspace-settings-grid workspace-settings-grid--${settings.workspaces.length}`}
