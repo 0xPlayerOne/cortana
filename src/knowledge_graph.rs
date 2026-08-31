@@ -101,6 +101,7 @@ pub enum EdgeKind {
     Mentions,
     Temporal,
     SemanticallyRelated,
+    Supports,
     Contradicts,
     Reinforces,
     Supersedes,
@@ -161,6 +162,7 @@ pub struct GraphEdge {
     pub origin: EdgeOrigin,
     pub derivation_version: &'static str,
     pub confidence: Option<f32>,
+    pub citation_authority: bool,
     pub updated_at: String,
     pub project: String,
     pub acl: Vec<String>,
@@ -193,6 +195,7 @@ impl GraphEdge {
             origin,
             derivation_version: GraphContract::DEFAULT_DERIVATION_VERSION,
             confidence: None,
+            citation_authority: matches!(origin, EdgeOrigin::Explicit),
             updated_at: updated_at.into(),
             project,
             acl,
@@ -206,6 +209,11 @@ impl GraphEdge {
         }
         self.confidence = Some(confidence);
         Ok(self)
+    }
+
+    pub fn with_citation_authority(mut self, citation_authority: bool) -> Self {
+        self.citation_authority = citation_authority;
+        self
     }
 
     pub fn validate(&self) -> Result<()> {

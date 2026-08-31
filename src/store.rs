@@ -205,6 +205,10 @@ pub struct DocumentSummary {
     pub project: String,
     pub chunk_count: usize,
     pub content_chars: usize,
+    #[serde(skip)]
+    pub acl: Vec<String>,
+    #[serde(skip)]
+    pub content_revision: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -3790,7 +3794,7 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
             "SELECT d.id,d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,d.acl_json,
-                    COUNT(c.id),
+                    d.content_hash,COUNT(c.id),
                     CASE WHEN length(d.content)>0 THEN length(d.content)
                          ELSE COALESCE(SUM(length(c.content)),0) END
              FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
@@ -3829,10 +3833,11 @@ impl Store {
                                     Box::new(error),
                                 )
                             })?;
+                        let content_revision = row.get::<_, String>(8)?;
                         let chunk_count =
-                            usize::try_from(row.get::<_, i64>(8)?).unwrap_or(usize::MAX);
-                        let content_chars =
                             usize::try_from(row.get::<_, i64>(9)?).unwrap_or(usize::MAX);
+                        let content_chars =
+                            usize::try_from(row.get::<_, i64>(10)?).unwrap_or(usize::MAX);
                         Ok((
                             DocumentSummary {
                                 id: row.get(0)?,
@@ -3844,6 +3849,8 @@ impl Store {
                                 project: row.get(6)?,
                                 chunk_count,
                                 content_chars,
+                                acl: acl.clone(),
+                                content_revision,
                             },
                             acl,
                         ))
@@ -3977,6 +3984,8 @@ impl Store {
                 project,
                 chunk_count: usize::try_from(chunk_count).unwrap_or(usize::MAX),
                 content_chars: usize::try_from(content_chars).unwrap_or(usize::MAX),
+                acl: acl.clone(),
+                content_revision: String::new(),
             },
             content,
             metadata,

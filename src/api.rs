@@ -37,6 +37,9 @@ use crate::{
     contracts::API_CONTRACT_VERSION,
     derived::{DerivedMemoryResponse, derive_authorized_memory},
     embed::Embedder,
+    knowledge_graph::{
+        EdgeKind, EdgeOrigin, GraphContract, GraphEdge, GraphNodeId, NodeKind, RelationshipSupport,
+    },
     memory::MemoryInput,
     observation::ObservationCandidateInput,
     retrieval,
@@ -581,19 +584,26 @@ struct DocumentListResponse {
 
 #[derive(Debug, Serialize)]
 struct GraphNode {
-    id: String,
-    kind: &'static str,
+    contract_version: &'static str,
+    id: GraphNodeId,
+    kind: NodeKind,
     label: String,
     project: String,
     source: Option<String>,
+    canonical_record_id: Option<String>,
+    /// Compatibility alias for pre-M10 Desktop clients.
     document_id: Option<String>,
+    updated_at: String,
+    acl: Vec<String>,
+    content_revision: String,
+    lifecycle_status: &'static str,
     #[serde(flatten)]
     derived: Option<GraphDerivedMetadata>,
 }
 
 #[derive(Debug, Serialize)]
 struct GraphDerivedMetadata {
-    contract_version: String,
+    representation_contract_version: String,
     derivation_version: String,
     memory_revision: u64,
     supporting_memory_ids: Vec<String>,
@@ -602,14 +612,8 @@ struct GraphDerivedMetadata {
 }
 
 #[derive(Debug, Serialize)]
-struct GraphEdge {
-    source: String,
-    target: String,
-    kind: &'static str,
-}
-
-#[derive(Debug, Serialize)]
 struct GraphResponse {
+    contract_version: &'static str,
     nodes: Vec<GraphNode>,
     edges: Vec<GraphEdge>,
     next_cursor: Option<String>,
@@ -1198,52 +1202,100 @@ async fn graph(
             let mut workspaces = BTreeSet::new();
             let mut sources = BTreeSet::new();
             for document in &page.documents {
-                let workspace_id = format!("workspace:{}", serde_json::json!([document.project]));
-                let source_id = format!(
-                    "source:{}",
-                    serde_json::json!([document.project, document.source])
+                let workspace_id = GraphNodeId::new(NodeKind::Workspace, &document.project)
+                    .map_err(internal_error)?;
+                let source_id = GraphNodeId::new(
+                    NodeKind::Source,
+                    serde_json::json!([document.project, document.source]).to_string(),
+                )
+                .map_err(internal_error)?;
+                let document_id =
+                    GraphNodeId::new(NodeKind::Document, &document.id).map_err(internal_error)?;
+                let invalidation_key = format!(
+                    "document:{}@sha256:{}",
+                    document.id, document.content_revision
                 );
                 if workspaces.insert(workspace_id.clone()) {
                     nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
                         id: workspace_id.clone(),
-                        kind: "workspace",
+                        kind: NodeKind::Workspace,
                         label: document.project.clone(),
                         project: document.project.clone(),
                         source: None,
+                        canonical_record_id: Some(document.project.clone()),
                         document_id: None,
+                        updated_at: document.updated_at.clone(),
+                        acl: Vec::new(),
+                        content_revision: document.content_revision.clone(),
+                        lifecycle_status: "active",
                         derived: None,
                     });
                 }
                 if sources.insert(source_id.clone()) {
                     nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
                         id: source_id.clone(),
-                        kind: "source",
+                        kind: NodeKind::Source,
                         label: document.source.clone(),
                         project: document.project.clone(),
                         source: Some(document.source.clone()),
+                        canonical_record_id: Some(document.source.clone()),
                         document_id: None,
+                        updated_at: document.updated_at.clone(),
+                        acl: Vec::new(),
+                        content_revision: document.content_revision.clone(),
+                        lifecycle_status: "active",
                         derived: None,
                     });
-                    edges.push(GraphEdge {
-                        source: workspace_id,
-                        target: source_id.clone(),
-                        kind: "contains",
-                    });
+                    edges.push(
+                        GraphEdge::new(
+                            workspace_id,
+                            source_id.clone(),
+                            EdgeKind::Contains,
+                            EdgeOrigin::Explicit,
+                            &document.updated_at,
+                            &document.project,
+                            document.acl.clone(),
+                            RelationshipSupport {
+                                record_ids: vec![document.id.clone()],
+                                invalidation_keys: vec![invalidation_key.clone()],
+                            },
+                        )
+                        .map_err(internal_error)?,
+                    );
                 }
                 nodes.push(GraphNode {
-                    id: format!("document:{}", document.id),
-                    kind: "document",
+                    contract_version: GraphContract::VERSION,
+                    id: document_id.clone(),
+                    kind: NodeKind::Document,
                     label: document.title.clone(),
                     project: document.project.clone(),
                     source: Some(document.source.clone()),
+                    canonical_record_id: Some(document.id.clone()),
                     document_id: Some(document.id.clone()),
+                    updated_at: document.updated_at.clone(),
+                    acl: document.acl.clone(),
+                    content_revision: document.content_revision.clone(),
+                    lifecycle_status: "active",
                     derived: None,
                 });
-                edges.push(GraphEdge {
-                    source: source_id,
-                    target: format!("document:{}", document.id),
-                    kind: "contains",
-                });
+                edges.push(
+                    GraphEdge::new(
+                        source_id,
+                        document_id,
+                        EdgeKind::Contains,
+                        EdgeOrigin::Explicit,
+                        &document.updated_at,
+                        &document.project,
+                        document.acl.clone(),
+                        RelationshipSupport {
+                            record_ids: vec![document.id.clone()],
+                            invalidation_keys: vec![invalidation_key],
+                        },
+                    )
+                    .map_err(internal_error)?,
+                );
             }
             if params.include_derived {
                 let derived = derive_authorized_memories(
@@ -1255,23 +1307,31 @@ async fn graph(
                 .map_err(internal_error)?;
                 let mut memory_nodes = BTreeSet::new();
                 for representation in derived.representations {
-                    let derived_id = representation.id.clone();
+                    let node_kind = match representation.kind {
+                        crate::derived::DerivedKind::Experience => NodeKind::Memory,
+                        crate::derived::DerivedKind::Observation => NodeKind::Observation,
+                        crate::derived::DerivedKind::MentalModel => NodeKind::MentalModel,
+                        crate::derived::DerivedKind::Belief => NodeKind::MentalModel,
+                    };
+                    let derived_id =
+                        GraphNodeId::new(node_kind, &representation.id).map_err(internal_error)?;
                     let supporting_memory_ids = representation.supporting_memory_ids.clone();
                     let contradicting_memory_ids = representation.contradicting_memory_ids.clone();
                     nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
                         id: derived_id.clone(),
-                        kind: match representation.kind {
-                            crate::derived::DerivedKind::Experience => "memory-experience",
-                            crate::derived::DerivedKind::Observation => "memory-observation",
-                            crate::derived::DerivedKind::MentalModel => "memory-mental-model",
-                            crate::derived::DerivedKind::Belief => "memory-belief",
-                        },
+                        kind: node_kind,
                         label: representation.statement,
                         project: representation.project.clone(),
                         source: None,
+                        canonical_record_id: None,
                         document_id: None,
+                        updated_at: representation.freshness.clone(),
+                        acl: representation.acl.clone(),
+                        content_revision: representation.provenance.support_digest.clone(),
+                        lifecycle_status: "active",
                         derived: Some(GraphDerivedMetadata {
-                            contract_version: representation.contract_version,
+                            representation_contract_version: representation.contract_version,
                             derivation_version: representation.provenance.engine_version,
                             memory_revision: representation.memory_revision,
                             supporting_memory_ids,
@@ -1280,56 +1340,107 @@ async fn graph(
                         }),
                     });
                     for memory_id in representation.supporting_memory_ids {
-                        let node_id = format!("memory:{memory_id}");
+                        let node_id = GraphNodeId::new(NodeKind::Memory, &memory_id)
+                            .map_err(internal_error)?;
                         if memory_nodes.insert(node_id.clone()) {
                             nodes.push(GraphNode {
+                                contract_version: GraphContract::VERSION,
                                 id: node_id.clone(),
-                                kind: "canonical-memory",
-                                label: memory_id,
+                                kind: NodeKind::Memory,
+                                label: memory_id.clone(),
                                 project: representation.project.clone(),
                                 source: None,
+                                canonical_record_id: Some(memory_id.clone()),
                                 document_id: None,
+                                updated_at: representation.freshness.clone(),
+                                acl: representation.acl.clone(),
+                                content_revision: representation.memory_revision.to_string(),
+                                lifecycle_status: "active",
                                 derived: None,
                             });
                         }
-                        edges.push(GraphEdge {
-                            source: node_id,
-                            target: derived_id.clone(),
-                            kind: "supports",
-                        });
+                        edges.push(
+                            GraphEdge::new(
+                                node_id,
+                                derived_id.clone(),
+                                EdgeKind::Supports,
+                                EdgeOrigin::Derived,
+                                &representation.freshness,
+                                &representation.project,
+                                representation.acl.clone(),
+                                RelationshipSupport {
+                                    record_ids: vec![memory_id.clone()],
+                                    invalidation_keys: vec![format!(
+                                        "memory:{memory_id}@revision:{}",
+                                        representation.memory_revision
+                                    )],
+                                },
+                            )
+                            .and_then(|edge| edge.with_confidence(representation.confidence))
+                            .map_err(internal_error)?,
+                        );
                     }
                     for memory_id in representation.contradicting_memory_ids {
-                        let node_id = format!("memory:{memory_id}");
+                        let node_id = GraphNodeId::new(NodeKind::Memory, &memory_id)
+                            .map_err(internal_error)?;
                         if memory_nodes.insert(node_id.clone()) {
                             nodes.push(GraphNode {
+                                contract_version: GraphContract::VERSION,
                                 id: node_id.clone(),
-                                kind: "canonical-memory",
-                                label: memory_id,
+                                kind: NodeKind::Memory,
+                                label: memory_id.clone(),
                                 project: representation.project.clone(),
                                 source: None,
+                                canonical_record_id: Some(memory_id.clone()),
                                 document_id: None,
+                                updated_at: representation.freshness.clone(),
+                                acl: representation.acl.clone(),
+                                content_revision: representation.memory_revision.to_string(),
+                                lifecycle_status: "active",
                                 derived: None,
                             });
                         }
-                        edges.push(GraphEdge {
-                            source: node_id,
-                            target: derived_id.clone(),
-                            kind: "contradicts",
-                        });
+                        edges.push(
+                            GraphEdge::new(
+                                node_id,
+                                derived_id.clone(),
+                                EdgeKind::Contradicts,
+                                EdgeOrigin::Derived,
+                                &representation.freshness,
+                                &representation.project,
+                                representation.acl.clone(),
+                                RelationshipSupport {
+                                    record_ids: vec![memory_id.clone()],
+                                    invalidation_keys: vec![format!(
+                                        "memory:{memory_id}@revision:{}",
+                                        representation.memory_revision
+                                    )],
+                                },
+                            )
+                            .and_then(|edge| edge.with_confidence(representation.confidence))
+                            .map_err(internal_error)?,
+                        );
                     }
                 }
                 for relation in derived.relations {
-                    let relation_id = relation.id.clone();
+                    let relation_id = GraphNodeId::new(NodeKind::MentalModel, &relation.id)
+                        .map_err(internal_error)?;
                     let supporting_memory_ids = relation.supporting_memory_ids.clone();
                     nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
                         id: relation_id.clone(),
-                        kind: "memory-relation",
+                        kind: NodeKind::MentalModel,
                         label: format!("{}: {}", relation.predicate, relation.object),
                         project: relation.project.clone(),
                         source: None,
+                        canonical_record_id: None,
                         document_id: None,
+                        updated_at: relation.freshness.clone(),
+                        acl: relation.acl.clone(),
+                        content_revision: relation.provenance.support_digest.clone(),
+                        lifecycle_status: "active",
                         derived: Some(GraphDerivedMetadata {
-                            contract_version: relation.contract_version,
+                            representation_contract_version: relation.contract_version,
                             derivation_version: relation.provenance.engine_version,
                             memory_revision: relation.memory_revision,
                             supporting_memory_ids,
@@ -1338,23 +1449,45 @@ async fn graph(
                         }),
                     });
                     for memory_id in relation.supporting_memory_ids {
-                        let node_id = format!("memory:{memory_id}");
+                        let node_id = GraphNodeId::new(NodeKind::Memory, &memory_id)
+                            .map_err(internal_error)?;
                         if memory_nodes.insert(node_id.clone()) {
                             nodes.push(GraphNode {
+                                contract_version: GraphContract::VERSION,
                                 id: node_id.clone(),
-                                kind: "canonical-memory",
-                                label: memory_id,
+                                kind: NodeKind::Memory,
+                                label: memory_id.clone(),
                                 project: relation.project.clone(),
                                 source: None,
+                                canonical_record_id: Some(memory_id.clone()),
                                 document_id: None,
+                                updated_at: relation.freshness.clone(),
+                                acl: relation.acl.clone(),
+                                content_revision: relation.memory_revision.to_string(),
+                                lifecycle_status: "active",
                                 derived: None,
                             });
                         }
-                        edges.push(GraphEdge {
-                            source: node_id,
-                            target: relation_id.clone(),
-                            kind: "derives",
-                        });
+                        edges.push(
+                            GraphEdge::new(
+                                node_id,
+                                relation_id.clone(),
+                                EdgeKind::Derives,
+                                EdgeOrigin::Derived,
+                                &relation.freshness,
+                                &relation.project,
+                                relation.acl.clone(),
+                                RelationshipSupport {
+                                    record_ids: vec![memory_id.clone()],
+                                    invalidation_keys: vec![format!(
+                                        "memory:{memory_id}@revision:{}",
+                                        relation.memory_revision
+                                    )],
+                                },
+                            )
+                            .and_then(|edge| edge.with_confidence(relation.confidence))
+                            .map_err(internal_error)?,
+                        );
                     }
                 }
             }
@@ -1369,6 +1502,7 @@ async fn graph(
                 started,
             );
             Ok(Json(GraphResponse {
+                contract_version: GraphContract::VERSION,
                 nodes,
                 edges,
                 next_cursor,
@@ -4765,14 +4899,14 @@ mod tests {
             serde_json::from_slice(&graph_body).expect("graph JSON");
         let observation = graph_json["nodes"]
             .as_array()
-            .and_then(|nodes| {
-                nodes
-                    .iter()
-                    .find(|node| node["kind"] == "memory-observation")
-            })
+            .and_then(|nodes| nodes.iter().find(|node| node["kind"] == "observation"))
             .expect("derived observation node");
         assert_eq!(
             observation["contract_version"],
+            crate::knowledge_graph::GraphContract::VERSION
+        );
+        assert_eq!(
+            observation["representation_contract_version"],
             crate::derived::DERIVED_MEMORY_CONTRACT_VERSION
         );
         assert_eq!(
@@ -6250,6 +6384,31 @@ mod tests {
             serde_json::from_slice(&graph_body).expect("graph JSON");
         assert_eq!(graph_value["nodes"].as_array().map(Vec::len), Some(4));
         assert_eq!(graph_value["edges"].as_array().map(Vec::len), Some(3));
+        assert_eq!(
+            graph_value["contract_version"],
+            crate::knowledge_graph::GraphContract::VERSION
+        );
+        let document_node = graph_value["nodes"]
+            .as_array()
+            .and_then(|nodes| nodes.iter().find(|node| node["kind"] == "document"))
+            .expect("document graph node");
+        assert_eq!(document_node["canonical_record_id"], id);
+        assert_eq!(
+            document_node["contract_version"],
+            graph_value["contract_version"]
+        );
+        let contains = graph_value["edges"]
+            .as_array()
+            .and_then(|edges| edges.iter().find(|edge| edge["kind"] == "contains"))
+            .expect("contains graph edge");
+        assert_eq!(contains["origin"], "explicit");
+        assert_eq!(contains["citation_authority"], true);
+        assert!(contains["support"]["record_ids"].as_array().is_some());
+        assert!(
+            contains["support"]["invalidation_keys"]
+                .as_array()
+                .is_some()
+        );
 
         let invalid = app
             .oneshot(

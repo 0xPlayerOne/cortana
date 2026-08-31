@@ -18,7 +18,7 @@ any time.
 
 Supported relationship types are `contains`, `references`, `backlink`, `nearby`, `same-thread`,
 `authored-by`, `mentions`, `temporal`, `semantically-related`, `contradicts`, `reinforces`,
-`supersedes`, `observes`, `derives`, `depends-on`, `defines`, `calls`, and `imports`.
+`supports`, `supersedes`, `observes`, `derives`, `depends-on`, `defines`, `calls`, and `imports`.
 
 Each relationship carries:
 

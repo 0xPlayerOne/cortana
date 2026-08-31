@@ -939,7 +939,20 @@ function GraphView({
             <ul>
               {selectedEdges.map((edge) => (
                 <li key={`${edge.source}:${edge.target}:${edge.kind}`}>
-                  {edge.kind === 'contains' ? 'Contained by its workspace or source' : edge.kind}
+                  <span>
+                    {edge.kind === 'contains' ? 'Contained by its workspace or source' : edge.kind}
+                  </span>
+                  {edge.origin && (
+                    <small>
+                      {edge.origin === 'inferred'
+                        ? `Inferred relationship${edge.confidence == null ? '' : ` · ${Math.round(edge.confidence * 100)}% confidence`}`
+                        : `${edge.origin[0].toUpperCase()}${edge.origin.slice(1)} relationship`}
+                      {edge.support
+                        ? ` · ${edge.support.record_ids.length} supporting record${edge.support.record_ids.length === 1 ? '' : 's'}`
+                        : ''}
+                      {edge.citation_authority ? ' · citation-capable' : ' · not citation evidence'}
+                    </small>
+                  )}
                 </li>
               ))}
             </ul>

@@ -52,22 +52,79 @@ export type BrainDocumentPage = {
   next_cursor: string | null
 }
 
+export type BrainGraphNodeKind =
+  | 'workspace'
+  | 'source'
+  | 'document'
+  | 'chunk'
+  | 'entity'
+  | 'memory'
+  | 'observation'
+  | 'mental-model'
+  | 'repository'
+  | 'file'
+  | 'symbol'
+
 export type BrainGraphNode = {
   id: string
-  kind: 'workspace' | 'source' | 'document'
+  kind: BrainGraphNodeKind
   label: string
   project: string
   source: string | null
   document_id: string | null
+  canonical_record_id?: string | null
+  contract_version?: 'cortana.knowledge-graph.v1'
+  updated_at?: string
+  acl?: string[]
+  content_revision?: string
+  lifecycle_status?: string
+  representation_contract_version?: string
+  derivation_version?: string
+  memory_revision?: number
+  supporting_memory_ids?: string[]
+  contradicting_memory_ids?: string[]
+  citation_authority?: boolean
 }
 
 export type BrainGraphEdge = {
   source: string
   target: string
-  kind: 'contains'
+  kind:
+    | 'contains'
+    | 'references'
+    | 'backlink'
+    | 'nearby'
+    | 'same-thread'
+    | 'authored-by'
+    | 'mentions'
+    | 'temporal'
+    | 'semantically-related'
+    | 'supports'
+    | 'contradicts'
+    | 'reinforces'
+    | 'supersedes'
+    | 'observes'
+    | 'derives'
+    | 'depends-on'
+    | 'defines'
+    | 'calls'
+    | 'imports'
+  contract_version?: 'cortana.knowledge-graph.v1'
+  origin?: 'explicit' | 'derived' | 'inferred'
+  derivation_version?: string
+  confidence?: number | null
+  citation_authority?: boolean
+  updated_at?: string
+  project?: string
+  acl?: string[]
+  support?: {
+    record_ids: string[]
+    invalidation_keys: string[]
+  }
 }
 
 export type BrainGraphPage = {
+  contract_version?: 'cortana.knowledge-graph.v1'
   nodes: BrainGraphNode[]
   edges: BrainGraphEdge[]
   next_cursor: string | null

@@ -290,7 +290,19 @@ test('graph supports bounded filtering and explains selected relationships', () 
             document_id: 'two',
           },
         ],
-        edges: [{ source: 'source:code', target: 'document:one', kind: 'contains' }],
+        edges: [
+          {
+            source: 'source:code',
+            target: 'document:one',
+            kind: 'contains',
+            origin: 'explicit',
+            citation_authority: true,
+            support: {
+              record_ids: ['one'],
+              invalidation_keys: ['document:one@sha256:abc'],
+            },
+          },
+        ],
         next_cursor: null,
       }}
       onSelectDocument={() => {}}
@@ -304,6 +316,9 @@ test('graph supports bounded filtering and explains selected relationships', () 
   fireEvent.click(screen.getByRole('button', { name: /Open document: Release notes/ }))
   expect(screen.getByRole('complementary', { name: 'Selected graph node' })).toBeTruthy()
   expect(screen.getByText('Contained by its workspace or source')).toBeTruthy()
+  expect(
+    screen.getByText('Explicit relationship · 1 supporting record · citation-capable')
+  ).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Open document' })).toBeTruthy()
 })
 

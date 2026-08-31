@@ -772,47 +772,94 @@ export async function getGraph(
 ): Promise<BrainGraphPage> {
   if (isDemoMode) {
     const page = await getDocuments(project, source, query, cursor, signal)
+    const contractVersion = 'cortana.knowledge-graph.v1' as const
+    const derivationVersion = 'cortana.graph-derivation.v1'
     const nodes: BrainGraphPage['nodes'] = []
     const edges: BrainGraphPage['edges'] = []
     const seen = new Set<string>()
     for (const document of page.documents) {
-      const workspaceId = `workspace:${JSON.stringify([document.project])}`
-      const sourceId = `source:${JSON.stringify([document.project, document.source])}`
+      const workspaceId = `workspace:${encodeURIComponent(document.project)}`
+      const sourceId = `source:${encodeURIComponent(JSON.stringify([document.project, document.source]))}`
+      const documentId = `document:${encodeURIComponent(document.id)}`
+      const invalidationKey = `document:${document.id}@updated:${document.updated_at}`
       if (!seen.has(workspaceId)) {
         seen.add(workspaceId)
         nodes.push({
+          contract_version: contractVersion,
           id: workspaceId,
           kind: 'workspace',
           label: document.project,
           project: document.project,
           source: null,
+          canonical_record_id: document.project,
           document_id: null,
+          updated_at: document.updated_at,
+          acl: [],
+          content_revision: document.updated_at,
+          lifecycle_status: 'active',
         })
       }
       if (!seen.has(sourceId)) {
         seen.add(sourceId)
         nodes.push({
+          contract_version: contractVersion,
           id: sourceId,
           kind: 'source',
           label: document.source,
           project: document.project,
           source: document.source,
+          canonical_record_id: document.source,
           document_id: null,
+          updated_at: document.updated_at,
+          acl: [],
+          content_revision: document.updated_at,
+          lifecycle_status: 'active',
         })
-        edges.push({ source: workspaceId, target: sourceId, kind: 'contains' })
+        edges.push({
+          contract_version: contractVersion,
+          source: workspaceId,
+          target: sourceId,
+          kind: 'contains',
+          origin: 'explicit',
+          derivation_version: derivationVersion,
+          confidence: null,
+          citation_authority: true,
+          updated_at: document.updated_at,
+          project: document.project,
+          acl: [],
+          support: { record_ids: [document.id], invalidation_keys: [invalidationKey] },
+        })
       }
-      const documentId = `document:${document.id}`
       nodes.push({
+        contract_version: contractVersion,
         id: documentId,
         kind: 'document',
         label: document.title,
         project: document.project,
         source: document.source,
+        canonical_record_id: document.id,
         document_id: document.id,
+        updated_at: document.updated_at,
+        acl: [],
+        content_revision: document.updated_at,
+        lifecycle_status: 'active',
       })
-      edges.push({ source: sourceId, target: documentId, kind: 'contains' })
+      edges.push({
+        contract_version: contractVersion,
+        source: sourceId,
+        target: documentId,
+        kind: 'contains',
+        origin: 'explicit',
+        derivation_version: derivationVersion,
+        confidence: null,
+        citation_authority: true,
+        updated_at: document.updated_at,
+        project: document.project,
+        acl: [],
+        support: { record_ids: [document.id], invalidation_keys: [invalidationKey] },
+      })
     }
-    return { nodes, edges, next_cursor: page.next_cursor }
+    return { contract_version: contractVersion, nodes, edges, next_cursor: page.next_cursor }
   }
   const request = {
     project: project || null,
