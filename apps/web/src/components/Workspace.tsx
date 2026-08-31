@@ -379,7 +379,7 @@ function BrainDocumentView({
               <span key={label}>ACL: {label}</span>
             ))}
           </div>
-          <div className="document-copy-actions" aria-label="Document copy actions">
+          <div className="document-copy-actions" role="group" aria-label="Document copy actions">
             <WorkspaceButton
               variant="ghost"
               onClick={() => void copyDocumentValue(document.content, 'Canonical content copied.')}
