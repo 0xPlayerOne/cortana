@@ -1470,8 +1470,11 @@ async fn graph(
                         derived: None,
                     });
                 }
-                let relationship_acl = require_acl_intersection(&link.source.acl, &link.target.acl)
-                    .map_err(internal_error)?;
+                let Ok(relationship_acl) =
+                    require_acl_intersection(&link.source.acl, &link.target.acl)
+                else {
+                    continue;
+                };
                 let support = RelationshipSupport {
                     record_ids: vec![link.source.id.clone(), link.target.id.clone()],
                     invalidation_keys: vec![
@@ -1601,6 +1604,10 @@ async fn graph(
                     let right = graph_documents
                         .get(&pair[1])
                         .expect("known thread document");
+                    let Ok(relationship_acl) = require_acl_intersection(&left.acl, &right.acl)
+                    else {
+                        continue;
+                    };
                     edges.push(
                         GraphEdge::new(
                             GraphNodeId::new(NodeKind::Document, &left.id)
@@ -1611,8 +1618,7 @@ async fn graph(
                             EdgeOrigin::Explicit,
                             &right.updated_at,
                             &right.project,
-                            require_acl_intersection(&left.acl, &right.acl)
-                                .map_err(internal_error)?,
+                            relationship_acl,
                             RelationshipSupport {
                                 record_ids: vec![left.id.clone(), right.id.clone()],
                                 invalidation_keys: vec![
@@ -1647,8 +1653,10 @@ async fn graph(
                 for pair in documents.windows(2) {
                     let older = pair[0];
                     let newer = pair[1];
-                    let relationship_acl =
-                        require_acl_intersection(&older.acl, &newer.acl).map_err(internal_error)?;
+                    let Ok(relationship_acl) = require_acl_intersection(&older.acl, &newer.acl)
+                    else {
+                        continue;
+                    };
                     let support = RelationshipSupport {
                         record_ids: vec![older.id.clone(), newer.id.clone()],
                         invalidation_keys: vec![
@@ -7591,6 +7599,7 @@ mod tests {
             )
             .await
             .expect("admin graph response");
+        assert_eq!(admin_graph.status(), StatusCode::OK);
         let admin_graph_value = serde_json::from_slice::<serde_json::Value>(
             &to_bytes(admin_graph.into_body(), 1024 * 1024)
                 .await
