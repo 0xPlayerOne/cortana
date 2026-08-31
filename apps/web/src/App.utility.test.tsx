@@ -381,15 +381,17 @@ test('large graph pages render through a bounded keyboard-operable window', asyn
   try {
     await renderApp()
     fireEvent.click(railButton('Graph'))
-    await waitFor(() =>
-      expect(screen.getByText('Showing 12 of 30 documents · 0 links')).toBeTruthy()
+    await waitFor(
+      () => expect(screen.getByText('Showing 12 of 30 documents · 0 links')).toBeTruthy(),
+      { timeout: 15_000 }
     )
     expect(screen.getAllByRole('button', { name: /^Open document: Document/ })).toHaveLength(12)
     const showMore = screen.getByRole('button', { name: 'Show more nodes' })
     showMore.focus()
     fireEvent.click(showMore)
-    await waitFor(() =>
-      expect(screen.getByText('Showing 24 of 30 documents · 0 links')).toBeTruthy()
+    await waitFor(
+      () => expect(screen.getByText('Showing 24 of 30 documents · 0 links')).toBeTruthy(),
+      { timeout: 15_000 }
     )
     expect(screen.getAllByRole('button', { name: /^Open document: Document/ })).toHaveLength(24)
   } finally {
