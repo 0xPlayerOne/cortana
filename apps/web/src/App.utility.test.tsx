@@ -354,7 +354,9 @@ test('graph view renders indexed document nodes when the graph endpoint responds
     node.focus()
     fireEvent.keyDown(node, { key: 'Enter' })
     fireEvent.click(node)
-    const selection = screen.getByRole('complementary', { name: 'Selected graph node' })
+    const selection = await waitFor(() =>
+      screen.getByRole('complementary', { name: 'Selected graph node' })
+    )
     expect(selection.getAttribute('aria-live')).toBe('polite')
     expect(within(selection).getByRole('button', { name: 'Open document' })).toBeTruthy()
   } finally {
