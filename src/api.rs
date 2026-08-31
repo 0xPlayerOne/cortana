@@ -39,6 +39,7 @@ use crate::{
     embed::Embedder,
     knowledge_graph::{
         EdgeKind, EdgeOrigin, GraphContract, GraphEdge, GraphNodeId, NodeKind, RelationshipSupport,
+        require_acl_intersection,
     },
     memory::MemoryInput,
     observation::ObservationCandidateInput,
@@ -1201,6 +1202,7 @@ async fn graph(
             let mut edges = Vec::new();
             let mut workspaces = BTreeSet::new();
             let mut sources = BTreeSet::new();
+            let mut document_nodes = BTreeSet::new();
             for document in &page.documents {
                 let workspace_id = GraphNodeId::new(NodeKind::Workspace, &document.project)
                     .map_err(internal_error)?;
@@ -1265,6 +1267,7 @@ async fn graph(
                         .map_err(internal_error)?,
                     );
                 }
+                document_nodes.insert(document_id.clone());
                 nodes.push(GraphNode {
                     contract_version: GraphContract::VERSION,
                     id: document_id.clone(),
@@ -1293,6 +1296,79 @@ async fn graph(
                             record_ids: vec![document.id.clone()],
                             invalidation_keys: vec![invalidation_key],
                         },
+                    )
+                    .map_err(internal_error)?,
+                );
+            }
+            let page_document_ids = page
+                .documents
+                .iter()
+                .map(|document| document.id.clone())
+                .collect::<Vec<_>>();
+            let document_links = state
+                .store
+                .graph_document_links_scoped(&page_document_ids, &acl, 200)
+                .map_err(internal_error)?;
+            for link in document_links {
+                let source_id = GraphNodeId::new(NodeKind::Document, &link.source.id)
+                    .map_err(internal_error)?;
+                let target_id = GraphNodeId::new(NodeKind::Document, &link.target.id)
+                    .map_err(internal_error)?;
+                if document_nodes.insert(target_id.clone()) {
+                    nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
+                        id: target_id.clone(),
+                        kind: NodeKind::Document,
+                        label: link.target.title.clone(),
+                        project: link.target.project.clone(),
+                        source: Some(link.target.source.clone()),
+                        canonical_record_id: Some(link.target.id.clone()),
+                        document_id: Some(link.target.id.clone()),
+                        updated_at: link.target.updated_at.clone(),
+                        acl: link.target.acl.clone(),
+                        content_revision: link.target.content_revision.clone(),
+                        lifecycle_status: "active",
+                        derived: None,
+                    });
+                }
+                let relationship_acl = require_acl_intersection(&link.source.acl, &link.target.acl)
+                    .map_err(internal_error)?;
+                let support = RelationshipSupport {
+                    record_ids: vec![link.source.id.clone(), link.target.id.clone()],
+                    invalidation_keys: vec![
+                        format!(
+                            "document:{}@sha256:{}",
+                            link.source.id, link.source.content_revision
+                        ),
+                        format!(
+                            "document:{}@sha256:{}",
+                            link.target.id, link.target.content_revision
+                        ),
+                    ],
+                };
+                edges.push(
+                    GraphEdge::new(
+                        source_id.clone(),
+                        target_id.clone(),
+                        EdgeKind::References,
+                        EdgeOrigin::Explicit,
+                        &link.source.updated_at,
+                        &link.source.project,
+                        relationship_acl.clone(),
+                        support.clone(),
+                    )
+                    .map_err(internal_error)?,
+                );
+                edges.push(
+                    GraphEdge::new(
+                        target_id,
+                        source_id,
+                        EdgeKind::Backlink,
+                        EdgeOrigin::Explicit,
+                        &link.source.updated_at,
+                        &link.source.project,
+                        relationship_acl,
+                        support,
                     )
                     .map_err(internal_error)?,
                 );
@@ -6238,7 +6314,11 @@ mod tests {
                             - chrono::Duration::seconds(i64::try_from(index).unwrap_or_default()),
                         project: "demo".into(),
                         acl: Vec::new(),
-                        metadata: serde_json::json!({"kind": "note"}),
+                        metadata: if index == 0 {
+                            serde_json::json!({"kind": "note", "references": ["note-1"]})
+                        } else {
+                            serde_json::json!({"kind": "note"})
+                        },
                     },
                     &[(content.into(), vec![1.0; 16])],
                 )
@@ -6383,7 +6463,7 @@ mod tests {
         let graph_value: serde_json::Value =
             serde_json::from_slice(&graph_body).expect("graph JSON");
         assert_eq!(graph_value["nodes"].as_array().map(Vec::len), Some(4));
-        assert_eq!(graph_value["edges"].as_array().map(Vec::len), Some(3));
+        assert_eq!(graph_value["edges"].as_array().map(Vec::len), Some(5));
         assert_eq!(
             graph_value["contract_version"],
             crate::knowledge_graph::GraphContract::VERSION
@@ -6409,6 +6489,14 @@ mod tests {
                 .as_array()
                 .is_some()
         );
+        let relationship_kinds = graph_value["edges"]
+            .as_array()
+            .expect("graph edges")
+            .iter()
+            .filter_map(|edge| edge["kind"].as_str())
+            .collect::<Vec<_>>();
+        assert!(relationship_kinds.contains(&"references"));
+        assert!(relationship_kinds.contains(&"backlink"));
 
         let invalid = app
             .oneshot(

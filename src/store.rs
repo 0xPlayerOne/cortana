@@ -211,6 +211,12 @@ pub struct DocumentSummary {
     pub content_revision: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct DocumentGraphLink {
+    pub source: DocumentSummary,
+    pub target: DocumentSummary,
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct DocumentReference {
     pub id: String,
@@ -3880,6 +3886,104 @@ impl Store {
             documents,
             has_more,
         })
+    }
+
+    pub fn graph_document_links_scoped(
+        &self,
+        document_ids: &[String],
+        principal_acl: &[String],
+        limit: usize,
+    ) -> Result<Vec<DocumentGraphLink>> {
+        if document_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let document_ids_json = serde_json::to_string(document_ids)?;
+        let scan_limit = limit.clamp(1, 400).saturating_mul(4);
+        let mut statement = connection.prepare(
+            "WITH page_documents(id) AS (
+               SELECT value FROM json_each(?1) WHERE type='text'
+             )
+             SELECT source.id,source.source,source.source_id,source.title,source.uri,
+                    source.updated_at,source.project,source.acl_json,source.content_hash,
+                    target.id,target.source,target.source_id,target.title,target.uri,
+                    target.updated_at,target.project,target.acl_json,target.content_hash
+             FROM page_documents page
+             JOIN document_links link ON link.document_id=page.id
+             JOIN documents source ON source.id=link.document_id
+             JOIN documents target
+               ON target.project=source.project
+              AND target.id<>source.id
+              AND (target.id=link.target
+                   OR (target.source=source.source AND target.source_id=link.target)
+                   OR target.uri=link.target)
+             ORDER BY source.updated_at DESC,source.id DESC,target.updated_at DESC,target.id DESC
+             LIMIT ?2",
+        )?;
+        let rows = statement
+            .query_map(
+                params![
+                    document_ids_json,
+                    i64::try_from(scan_limit).unwrap_or(1_600)
+                ],
+                |row| {
+                    let source_acl_json = row.get::<_, String>(7)?;
+                    let target_acl_json = row.get::<_, String>(16)?;
+                    let source_acl = serde_json::from_str::<Vec<String>>(&source_acl_json)
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                7,
+                                Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    let target_acl = serde_json::from_str::<Vec<String>>(&target_acl_json)
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                16,
+                                Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    Ok(DocumentGraphLink {
+                        source: DocumentSummary {
+                            id: row.get(0)?,
+                            source: row.get(1)?,
+                            source_id: row.get(2)?,
+                            title: row.get(3)?,
+                            uri: row.get(4)?,
+                            updated_at: row.get(5)?,
+                            project: row.get(6)?,
+                            chunk_count: 0,
+                            content_chars: 0,
+                            acl: source_acl,
+                            content_revision: row.get(8)?,
+                        },
+                        target: DocumentSummary {
+                            id: row.get(9)?,
+                            source: row.get(10)?,
+                            source_id: row.get(11)?,
+                            title: row.get(12)?,
+                            uri: row.get(13)?,
+                            updated_at: row.get(14)?,
+                            project: row.get(15)?,
+                            chunk_count: 0,
+                            content_chars: 0,
+                            acl: target_acl,
+                            content_revision: row.get(17)?,
+                        },
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows
+            .into_iter()
+            .filter(|link| {
+                acl_allows(&link.source.acl, principal_acl)
+                    && acl_allows(&link.target.acl, principal_acl)
+            })
+            .take(limit.clamp(1, 400))
+            .collect())
     }
 
     pub fn document_scoped(

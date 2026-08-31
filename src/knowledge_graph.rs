@@ -285,8 +285,14 @@ fn percent_encode(bytes: &[u8]) -> String {
 pub fn require_acl_intersection(left: &[String], right: &[String]) -> Result<Vec<String>> {
     let left = left.iter().cloned().collect::<BTreeSet<_>>();
     let right = right.iter().cloned().collect::<BTreeSet<_>>();
+    if left.is_empty() {
+        return Ok(right.into_iter().collect());
+    }
+    if right.is_empty() {
+        return Ok(left.into_iter().collect());
+    }
     let intersection = left.intersection(&right).cloned().collect::<Vec<_>>();
-    if !left.is_empty() && !right.is_empty() && intersection.is_empty() {
+    if intersection.is_empty() {
         return Err(anyhow!(
             "graph relationship support has no shared ACL visibility"
         ));
@@ -306,5 +312,9 @@ mod tests {
             vec!["team"]
         );
         assert!(require_acl_intersection(&["work".into()], &["personal".into()]).is_err());
+        assert_eq!(
+            require_acl_intersection(&[], &["work".into()]).expect("public plus scoped"),
+            vec!["work"]
+        );
     }
 }
