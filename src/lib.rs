@@ -17,6 +17,7 @@ pub mod evaluation;
 pub mod github_oauth;
 pub mod google_oauth;
 pub mod integration;
+pub mod knowledge_evaluation;
 pub mod knowledge_graph;
 pub mod mcp;
 pub mod memory;

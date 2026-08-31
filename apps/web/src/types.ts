@@ -141,6 +141,8 @@ export type BrainGraphPage = {
     version: string
     mode: 'request-derived'
     semantic_neighbors_enabled: boolean
+    enabled_edge_kinds: BrainGraphEdge['kind'][]
+    disabled_edge_kinds: BrainGraphEdge['kind'][]
     rebuild_required: boolean
     failures: string[]
   }

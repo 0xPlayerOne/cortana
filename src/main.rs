@@ -109,6 +109,13 @@ enum Command {
         fixture: Option<PathBuf>,
         #[arg(
             long,
+            conflicts_with_all = ["fixture", "model", "memory", "memory_private_evidence"],
+            help = "Evaluate large-corpus knowledge navigation and released graph edges"
+        )]
+        knowledge: bool,
+        #[arg(
+            long,
+            conflicts_with = "knowledge",
             help = "Evaluate planner+synthesis against the configured query model"
         )]
         model: bool,
@@ -704,11 +711,18 @@ async fn main() -> Result<()> {
     }
     if let Some(Command::Eval {
         fixture,
+        knowledge,
         model,
         memory,
         memory_private_evidence,
     }) = cli.command.as_ref()
     {
+        if *knowledge {
+            let report = cortana::knowledge_evaluation::run_default().await?;
+            println!("{}", serde_json::to_string_pretty(&report)?);
+            anyhow::ensure!(report.passed, "knowledge evaluation thresholds failed");
+            return Ok(());
+        }
         if let Some(path) = memory_private_evidence {
             let report = cortana::memory_evaluation::verify_private_evidence(path)?;
             println!("{}", serde_json::to_string_pretty(&report)?);

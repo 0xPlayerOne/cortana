@@ -114,6 +114,28 @@ pub enum EdgeKind {
 }
 
 impl EdgeKind {
+    pub const ALL: [Self; 19] = [
+        Self::Contains,
+        Self::References,
+        Self::Backlink,
+        Self::Nearby,
+        Self::SameThread,
+        Self::AuthoredBy,
+        Self::Mentions,
+        Self::Temporal,
+        Self::SemanticallyRelated,
+        Self::Supports,
+        Self::Contradicts,
+        Self::Reinforces,
+        Self::Supersedes,
+        Self::Observes,
+        Self::Derives,
+        Self::DependsOn,
+        Self::Defines,
+        Self::Calls,
+        Self::Imports,
+    ];
+
     pub const fn is_directional(self) -> bool {
         !matches!(
             self,

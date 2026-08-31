@@ -70,6 +70,7 @@ pub struct AppState {
     auth: Arc<RwLock<AuthRuntime>>,
     ingestion: Arc<IngestionStatus>,
     workspaces: Arc<Vec<WorkspaceConfig>>,
+    graph_edge_kinds: Arc<BTreeSet<EdgeKind>>,
     answer: AnswerEngine,
     retrieval_tuning: retrieval::RetrievalTuning,
     memory_defaults: crate::memory::MemoryDefaults,
@@ -116,6 +117,12 @@ impl AppState {
             auth: Arc::new(RwLock::new(AuthRuntime::new(AuthPolicy::default(), false))),
             ingestion: Arc::new(IngestionStatus::default()),
             workspaces: Arc::new(Vec::new()),
+            graph_edge_kinds: Arc::new(
+                crate::config::KnowledgeGraphConfig::default()
+                    .enabled_edge_kinds
+                    .into_iter()
+                    .collect(),
+            ),
             answer,
             retrieval_tuning: retrieval::RetrievalTuning::default(),
             memory_defaults: crate::memory::MemoryDefaults::default(),
@@ -128,6 +135,14 @@ impl AppState {
     pub fn with_config(mut self, config: &Config, scheduled: bool) -> Self {
         self.ingestion = Arc::new(IngestionStatus::from_config(config, scheduled));
         self.workspaces = Arc::new(config.workspaces.clone());
+        self.graph_edge_kinds = Arc::new(
+            config
+                .knowledge_graph
+                .enabled_edge_kinds
+                .iter()
+                .copied()
+                .collect(),
+        );
         self.memory_defaults = crate::memory::MemoryDefaults {
             confidence: config.memory.default_confidence,
             importance: config.memory.default_importance,
@@ -667,6 +682,8 @@ struct GraphDerivationStatus {
     version: &'static str,
     mode: &'static str,
     semantic_neighbors_enabled: bool,
+    enabled_edge_kinds: Vec<EdgeKind>,
+    disabled_edge_kinds: Vec<EdgeKind>,
     rebuild_required: bool,
     failures: Vec<String>,
 }
@@ -1861,6 +1878,7 @@ async fn graph(
                     }
                 }
             }
+            edges.retain(|edge| state.graph_edge_kinds.contains(&edge.kind));
             if let Some(kind) = params.edge_kind {
                 edges.retain(|edge| edge.kind == kind);
             }
@@ -1933,6 +1951,11 @@ async fn graph(
                     version: GraphContract::DEFAULT_DERIVATION_VERSION,
                     mode: "request-derived",
                     semantic_neighbors_enabled: false,
+                    enabled_edge_kinds: state.graph_edge_kinds.iter().copied().collect(),
+                    disabled_edge_kinds: EdgeKind::ALL
+                        .into_iter()
+                        .filter(|kind| !state.graph_edge_kinds.contains(kind))
+                        .collect(),
                     rebuild_required: false,
                     failures: Vec::new(),
                 },
@@ -6957,6 +6980,16 @@ mod tests {
         assert_eq!(
             graph_value["derivation"]["semantic_neighbors_enabled"],
             false
+        );
+        assert!(
+            graph_value["derivation"]["enabled_edge_kinds"]
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind == "references"))
+        );
+        assert!(
+            graph_value["derivation"]["disabled_edge_kinds"]
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind == "semantically-related"))
         );
         assert!(!String::from_utf8_lossy(&graph_body).contains("must-not-become-a-graph-node"));
         assert_eq!(
