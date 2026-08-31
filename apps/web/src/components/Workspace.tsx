@@ -217,7 +217,12 @@ export function Workspace({
         </Tabs>
       )}
       {documentLoading ? (
-        <EmptyState title="Opening document" detail="Loading the canonical indexed content…" busy />
+        <EmptyState
+          title="Opening document"
+          detail="Loading the canonical indexed content…"
+          announceAs="status"
+          busy
+        />
       ) : tab === 'document' && document ? (
         <BrainDocumentView document={document} onSelectDocument={onSelectDocument} />
       ) : tab === 'graph' ? (
@@ -250,6 +255,7 @@ export function Workspace({
           title="Cortana could not reach the brain"
           detail={`${error}. Start the Rust API or add ?demo=1 to preview the workspace.`}
           action={onRetry}
+          announceAs="alert"
         />
       ) : tab === 'document' ? (
         <EmptyState
@@ -260,6 +266,7 @@ export function Workspace({
         <EmptyState
           title="Searching your brain"
           detail="Fusing semantic and exact-term evidence…"
+          announceAs="status"
           busy
         />
       ) : evidence.length === 0 && !hasResults ? (
@@ -371,7 +378,7 @@ function BrainDocumentView({
               <span key={label}>ACL: {label}</span>
             ))}
           </div>
-          <div className="graph-actions" aria-label="Document copy actions">
+          <div className="document-copy-actions" aria-label="Document copy actions">
             <WorkspaceButton
               variant="ghost"
               onClick={() => void copyDocumentValue(document.content, 'Canonical content copied.')}
@@ -850,11 +857,19 @@ function GraphView({
       <EmptyState
         title="Loading knowledge graph"
         detail="Mapping indexed workspaces and documents…"
+        announceAs="status"
       />
     )
   }
   if (graphError && nodes.length === 0) {
-    return <EmptyState title="Graph unavailable" detail={graphError} action={onRetry} />
+    return (
+      <EmptyState
+        title="Graph unavailable"
+        detail={graphError}
+        action={onRetry}
+        announceAs="alert"
+      />
+    )
   }
   if (!graphLoading && nodes.length === 0 && normalizedFilter) {
     return (
@@ -952,9 +967,7 @@ function GraphView({
             value={graphOrigin}
             onChange={(event) =>
               onGraphOriginChange?.(
-                event.target.value as
-                  | NonNullable<BrainGraphPage['edges'][number]['origin']>
-                  | 'all'
+                event.target.value as NonNullable<BrainGraphPage['edges'][number]['origin']> | 'all'
               )
             }
           >
@@ -1016,14 +1029,14 @@ function GraphView({
         </span>
       </div>
       {graphError && onRetry && (
-        <div className="graph-actions">
+        <div className="graph-overlay-actions">
           <WorkspaceButton variant="ghost" type="button" className="link-button" onClick={onRetry}>
             Retry graph
           </WorkspaceButton>
         </div>
       )}
       {(graphFocused || graphCanGoBack || graphCanGoForward) && (
-        <div className="graph-actions">
+        <div className="graph-overlay-actions">
           <WorkspaceButton
             variant="ghost"
             type="button"
@@ -1112,7 +1125,7 @@ function GraphView({
         </button>
       ))}
       {selectedNode && (
-        <aside className="graph-selection" aria-label="Selected graph node">
+        <aside className="graph-selection" aria-label="Selected graph node" aria-live="polite">
           <strong>{selectedNode.label}</strong>
           <span>
             {selectedNode.kind === 'workspace'
@@ -1148,7 +1161,7 @@ function GraphView({
             </ul>
           )}
           {selectedNode.document_id && (
-            <div className="graph-actions">
+            <div className="graph-selection-actions">
               <WorkspaceButton
                 variant="ghost"
                 onClick={() =>
@@ -1218,14 +1231,20 @@ function EmptyState({
   detail,
   action,
   busy = false,
+  announceAs,
 }: {
   title: string
   detail: string
   action?: () => void
   busy?: boolean
+  announceAs?: 'alert' | 'status'
 }) {
   return (
-    <Empty className="m-4 min-h-64 border">
+    <Empty
+      className="m-4 min-h-64 border"
+      role={announceAs}
+      aria-live={announceAs === 'status' ? 'polite' : undefined}
+    >
       <EmptyHeader>
         <EmptyMedia variant="icon">
           {busy ? <Spinner aria-label="Loading" /> : <Search aria-hidden="true" />}

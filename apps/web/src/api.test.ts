@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test'
 
-import { getReflection, getStatus } from './api'
+import { getGraph, getReflection, getStatus } from './api'
+import type { BrainGraphPage } from './types'
 
 const originalFetch = globalThis.fetch
 
@@ -29,6 +30,64 @@ describe('status transport', () => {
     ) as unknown as typeof fetch
 
     await expect(getStatus()).rejects.toThrow('Status request failed (503)')
+  })
+})
+
+describe('graph transport', () => {
+  const validGraph: BrainGraphPage = {
+    nodes: [
+      {
+        id: 'document:one',
+        kind: 'document',
+        label: 'One',
+        project: 'work',
+        source: 'work-code',
+        document_id: 'one',
+      },
+    ],
+    edges: [],
+    next_cursor: null,
+  }
+
+  test('accepts a bounded graph response', async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(Response.json(validGraph))
+    ) as unknown as typeof fetch
+
+    await expect(getGraph('work')).resolves.toEqual(validGraph)
+  })
+
+  test('rejects malformed, dangling, or unsafe graph records before rendering', async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        Response.json({
+          ...validGraph,
+          edges: [{ source: 'document:one', target: 'document:missing', kind: 'references' }],
+        })
+      )
+    ) as unknown as typeof fetch
+
+    await expect(getGraph('work')).rejects.toThrow('Graph response was malformed')
+
+    globalThis.fetch = mock(() =>
+      Promise.resolve(
+        Response.json({
+          ...validGraph,
+          edges: [
+            {
+              source: 'document:one',
+              target: 'document:one',
+              kind: 'references',
+              origin: 'inferred',
+              confidence: 2,
+              support: 'not provenance',
+            },
+          ],
+        })
+      )
+    ) as unknown as typeof fetch
+
+    await expect(getGraph('work')).rejects.toThrow('Graph response was malformed')
   })
 })
 

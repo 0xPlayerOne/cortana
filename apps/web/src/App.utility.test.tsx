@@ -58,6 +58,13 @@ const state = {
       ) => Promise<ContextBundle>)
     | null,
   getDocument: null as ((id: string, signal?: AbortSignal) => Promise<BrainDocument>) | null,
+  getGraph: null as
+    | ((
+        project?: string,
+        signal?: AbortSignal,
+        options?: { edgeKind?: BrainGraphPage['edges'][number]['kind'] }
+      ) => Promise<BrainGraphPage>)
+    | null,
   graph: null as BrainGraphPage | null,
 }
 
@@ -67,6 +74,7 @@ const resetState = () => {
   state.context = null
   state.getContext = null
   state.getDocument = null
+  state.getGraph = null
   state.graph = null
 }
 
@@ -89,10 +97,19 @@ mock.module('./api', () => ({
     state.getDocument
       ? state.getDocument(id, signal)
       : Promise.reject(new Error('Document unavailable')),
-  getGraph: () =>
-    state.graph
-      ? Promise.resolve(state.graph)
-      : Promise.reject(new Error('Graph data unavailable')),
+  getGraph: (
+    _project?: string,
+    _source?: string,
+    _query?: string,
+    _cursor?: string,
+    signal?: AbortSignal,
+    options?: { edgeKind?: BrainGraphPage['edges'][number]['kind'] }
+  ) =>
+    state.getGraph
+      ? state.getGraph(_project, signal, options)
+      : state.graph
+        ? Promise.resolve(state.graph)
+        : Promise.reject(new Error('Graph data unavailable')),
   getContext: (query: string, project?: string, source?: string, signal?: AbortSignal) =>
     state.getContext
       ? state.getContext(query, project, source, signal)
@@ -118,6 +135,14 @@ const RAIL_LABELS = [
   'Settings',
   'Help',
 ]
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => {
+    resolve = next
+  })
+  return { promise, resolve }
+}
 
 function railButton(label: string) {
   const rail = screen.getByRole('navigation', { name: 'Primary navigation' })
@@ -182,6 +207,9 @@ test('Graph is a separate full-screen sidebar view and Timeline remains result-o
   await waitFor(() =>
     expect(screen.getByRole('heading', { name: 'Graph unavailable' })).toBeTruthy()
   )
+  expect(
+    within(screen.getByRole('alert')).getByRole('heading', { name: 'Graph unavailable' })
+  ).toBeTruthy()
   expect(screen.queryByRole('tab', { name: 'Graph' })).toBeNull()
   expect(railButton('Graph').hasAttribute('data-active')).toBe(true)
   expect(screen.getByLabelText('Search your knowledge')).toBeTruthy()
@@ -322,9 +350,94 @@ test('graph view renders indexed document nodes when the graph endpoint responds
     await renderApp()
     fireEvent.click(railButton('Graph'))
     await waitFor(() => expect(screen.getByText('Showing 1 of 1 document · 0 links')).toBeTruthy())
-    expect(screen.getByRole('button', { name: 'Open document: Release process' })).toBeTruthy()
+    const node = screen.getByRole('button', { name: 'Open document: Release process' })
+    node.focus()
+    fireEvent.keyDown(node, { key: 'Enter' })
+    fireEvent.click(node)
+    const selection = screen.getByRole('complementary', { name: 'Selected graph node' })
+    expect(selection.getAttribute('aria-live')).toBe('polite')
+    expect(within(selection).getByRole('button', { name: 'Open document' })).toBeTruthy()
   } finally {
     state.graph = null
+  }
+})
+
+test('large graph pages render through a bounded keyboard-operable window', async () => {
+  state.graph = {
+    nodes: Array.from({ length: 30 }, (_, index) => ({
+      id: `document:${index}`,
+      kind: 'document' as const,
+      label: `Document ${index}`,
+      project: 'work',
+      source: 'work-code',
+      document_id: `document-${index}`,
+    })),
+    edges: [],
+    next_cursor: null,
+  }
+
+  try {
+    await renderApp()
+    fireEvent.click(railButton('Graph'))
+    await waitFor(() =>
+      expect(screen.getByText('Showing 12 of 30 documents · 0 links')).toBeTruthy()
+    )
+    expect(screen.getAllByRole('button', { name: /^Open document: Document/ })).toHaveLength(12)
+    const showMore = screen.getByRole('button', { name: 'Show more nodes' })
+    showMore.focus()
+    fireEvent.click(showMore)
+    await waitFor(() =>
+      expect(screen.getByText('Showing 24 of 30 documents · 0 links')).toBeTruthy()
+    )
+    expect(screen.getAllByRole('button', { name: /^Open document: Document/ })).toHaveLength(24)
+  } finally {
+    state.graph = null
+  }
+})
+
+test('closing and reopening graph aborts and discards a stale expansion response', async () => {
+  const stale = deferred<BrainGraphPage>()
+  const fresh = deferred<BrainGraphPage>()
+  let staleSignal: AbortSignal | undefined
+  state.getGraph = (_project, signal) => {
+    if (staleSignal) return fresh.promise
+    staleSignal = signal
+    return stale.promise
+  }
+  const page = (label: string): BrainGraphPage => ({
+    nodes: [
+      {
+        id: `document:${label}`,
+        kind: 'document',
+        label,
+        project: 'work',
+        source: 'work-code',
+        document_id: `${label}-id`,
+      },
+    ],
+    edges: [],
+    next_cursor: null,
+  })
+
+  try {
+    await renderApp()
+    fireEvent.click(railButton('Graph'))
+    const loading = await screen.findByRole('heading', { name: 'Loading knowledge graph' })
+    expect(loading.closest('[role="status"]')).toBeTruthy()
+    fireEvent.click(railButton('Knowledge'))
+    await waitFor(() => expect(staleSignal?.aborted).toBe(true))
+    fireEvent.click(railButton('Graph'))
+
+    fresh.resolve(page('Fresh graph node'))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Open document: Fresh graph node' })).toBeTruthy()
+    )
+    stale.resolve(page('Stale graph node'))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Open document: Stale graph node' })).toBeNull()
+    )
+  } finally {
+    state.getGraph = null
   }
 })
 

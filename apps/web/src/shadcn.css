@@ -2189,11 +2189,29 @@ select:focus-visible {
   font-size: 11px;
 }
 
-.graph-actions {
+.graph-overlay-actions {
   position: absolute;
   top: 16px;
   right: 18px;
   z-index: 2;
+}
+
+.document-copy-actions,
+.graph-selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.document-copy-actions [role='status'] {
+  flex-basis: 100%;
+}
+
+.graph-selection-actions [data-slot='button'] {
+  height: auto;
+  min-height: 30px;
+  white-space: normal;
 }
 
 .graph-pagination {
