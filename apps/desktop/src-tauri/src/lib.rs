@@ -2921,7 +2921,10 @@ mod tests {
                 .iter()
                 .map(|service| service["name"].as_str().expect("service name"))
                 .collect::<Vec<_>>();
-            assert_eq!(names, vec!["embedding", "server", "sync", "backup"]);
+            assert_eq!(
+                names,
+                vec!["embedding", "server", "sync", "backup", "vault"]
+            );
             for service in services {
                 for key in [
                     "label",

@@ -54,7 +54,15 @@ fn vault_export_is_scoped_incremental_atomic_and_reversible() {
         "one",
         "first body",
         vec!["work".into()],
-        serde_json::json!({"folder": "Research", "access_token": "must-not-export"}),
+        serde_json::json!({
+            "folder": "Research",
+            "attachments": [
+                "https://cdn.example.test/research/diagram.png",
+                "/Users/private/secret.pdf",
+                "javascript:alert(1)"
+            ],
+            "access_token": "must-not-export"
+        }),
     );
     insert_document(
         &store,
@@ -82,8 +90,13 @@ fn vault_export_is_scoped_incremental_atomic_and_reversible() {
     assert!(markdown.contains("cortana_document_id:"));
     assert!(markdown.contains("workspace: \"work\""));
     assert!(markdown.contains("source_id: \"one\""));
+    assert!(
+        markdown.contains("attachments:\n  - \"https://cdn.example.test/research/diagram.png\"")
+    );
     assert!(markdown.contains("first body"));
     assert!(!markdown.contains("must-not-export"));
+    assert!(!markdown.contains("/Users/private"));
+    assert!(!markdown.contains("javascript:"));
     assert!(!markdown.contains("private body"));
     assert!(first.files[0].ends_with("work/notes/Research/one.md"));
     assert!(output.join(".cortana-vault.json").is_file());

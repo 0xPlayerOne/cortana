@@ -648,7 +648,7 @@ export type DesktopServiceReport = {
   supported: boolean
   activity?: DesktopServiceActivity | null
   services: Array<{
-    name: 'embedding' | 'server' | 'sync' | 'backup'
+    name: 'embedding' | 'server' | 'sync' | 'backup' | 'vault'
     label: string
     installed: boolean
     loaded: boolean

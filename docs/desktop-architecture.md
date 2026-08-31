@@ -294,7 +294,7 @@ install the safe query-only service set (embedding when the configured provider 
 and backup) through the fixed `service install --no-web` command. macOS uses per-user launchd jobs;
 Linux uses per-user systemd units and timers without requiring root; Windows uses per-user Task
 Scheduler tasks without administrator access. It accepts only the fixed
-`embedding`, `server`, `sync`, and `backup` IDs with `start`, `stop`, or `restart`.
+`embedding`, `server`, `sync`, `backup`, and `vault` IDs with `start`, `stop`, or `restart`.
 Every action requires an explicit confirmation and is audited without command output or secrets.
 An uninstalled sync job remains absent until the dedicated validation-gated **Enable recurring sync**
 action is confirmed. Desktop
@@ -305,6 +305,9 @@ Desktop stores validated sync and backup intervals in the owner-only `service-sc
 the active configuration. Core and recurring installs pass those saved intervals to the bundled
 runtime; changing an installed schedule surfaces a separate explicit apply action rather than
 silently rewriting a running job.
+The derived-vault schedule is a separate CLI opt-in with an explicit absolute destination,
+workspace allowlist, and interval. Desktop exposes its status and individual controls after it is
+installed, but core or recurring-sync actions never opt into it.
 Each approved installer command is capped at ten minutes; a timeout is recorded as a retryable
 failure with bounded, sanitized output. Service actions are serialized so a retry cannot overlap a
 running action, and the latest running, succeeded, failed, or cancelled record is persisted in the
@@ -317,8 +320,9 @@ sections. Health checks read the last saved local configuration and native memor
 Desktop never contacts a separate memory service.
 
 Start All, Stop All, and Restart All are narrower than the individual controls: they operate only
-on `embedding` and `server`, in dependency-safe order. They always exclude `sync` and `backup`, so
-a whole-app action cannot schedule ingestion or trigger a backup.
+on `embedding` and `server`, in dependency-safe order. They always exclude `sync`, `backup`, and
+`vault`, so a whole-app action cannot schedule ingestion, trigger a backup, or publish a derived
+vault.
 
 Desktop manages named bearer principals without exposing credentials to the renderer. The webview
 edits only principal names, environment-variable references, scopes, and ACL labels. Write-only

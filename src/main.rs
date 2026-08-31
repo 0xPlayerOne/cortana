@@ -580,6 +580,28 @@ enum ServiceAction {
             help = "Install the recurring sync job (disabled by default for safe query-only operation)"
         )]
         enable_sync_service: bool,
+        #[arg(
+            long,
+            requires_all = ["vault_output", "vault_workspaces"],
+            help = "Install an explicitly approved recurring derived-vault export"
+        )]
+        enable_vault_service: bool,
+        #[arg(long, value_name = "DIR", requires = "enable_vault_service")]
+        vault_output: Option<PathBuf>,
+        #[arg(
+            long = "vault-workspace",
+            value_name = "ID",
+            requires = "enable_vault_service"
+        )]
+        vault_workspaces: Vec<String>,
+        #[arg(
+            long,
+            default_value_t = 86_400,
+            value_parser = clap::value_parser!(u64).range(60..),
+            requires = "enable_vault_service",
+            help = "Interval for an explicitly approved recurring vault export"
+        )]
+        vault_seconds: u64,
     },
     /// Print current background service states.
     Status {
@@ -602,6 +624,7 @@ enum ServiceName {
     Server,
     Sync,
     Backup,
+    Vault,
 }
 
 impl ServiceName {
@@ -611,6 +634,7 @@ impl ServiceName {
             Self::Server => "server",
             Self::Sync => "sync",
             Self::Backup => "backup",
+            Self::Vault => "vault",
         }
     }
 }
@@ -2199,6 +2223,10 @@ fn manage_service(
             backup_seconds,
             no_embedding_service,
             enable_sync_service,
+            enable_vault_service,
+            vault_output,
+            vault_workspaces,
+            vault_seconds,
         } => {
             if *enable_sync_service {
                 ensure_recurring_sync_validated(config)?;
@@ -2214,6 +2242,37 @@ fn manage_service(
                 .clone()
                 .unwrap_or(std::env::current_dir()?)
                 .canonicalize()?;
+            let vault_output = if *enable_vault_service {
+                let output = vault_output.as_ref().context("vault output is required")?;
+                let name = output
+                    .file_name()
+                    .context("vault output must be a named directory")?;
+                let parent = output
+                    .parent()
+                    .context("vault output must have a parent directory")?
+                    .canonicalize()
+                    .with_context(|| {
+                        format!("vault output parent does not exist: {}", output.display())
+                    })?;
+                let selected = vault_workspaces.iter().cloned().collect::<BTreeSet<_>>();
+                anyhow::ensure!(
+                    selected.len() == vault_workspaces.len(),
+                    "scheduled vault workspaces must be unique"
+                );
+                for workspace in &selected {
+                    anyhow::ensure!(
+                        config.workspaces.iter().any(|item| item.id == *workspace),
+                        "scheduled vault workspace is not configured: {workspace}"
+                    );
+                }
+                Some(parent.join(name))
+            } else {
+                anyhow::ensure!(
+                    vault_output.is_none() && vault_workspaces.is_empty(),
+                    "vault scheduling requires explicit approval"
+                );
+                None
+            };
             service::install(
                 config,
                 service::InstallOptions {
@@ -2226,6 +2285,10 @@ fn manage_service(
                     install_embedding: !no_embedding_service
                         && supervisor::uses_local_service(config),
                     install_sync: *enable_sync_service,
+                    install_vault: *enable_vault_service,
+                    vault_output: vault_output.as_deref(),
+                    vault_workspaces,
+                    vault_seconds: *vault_seconds,
                 },
             )
         }
@@ -4536,12 +4599,13 @@ mod tests {
     use clap::Parser;
 
     use super::{
-        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, MemoryAction, SourceControl,
-        SourceLimits, SyncLock, SyncOverrides, SyncRunStatus, chunk, cleanup_connector_spools,
-        configured_connector_command, context_bundle, ensure_recurring_sync_validated,
-        failure_status, flush_ingest_batch, ingest_documents, is_budget_exceeded, manage_memory,
-        private_file, require_sync_validation, run_connector_to_spool, validate_configured_source,
-        validate_connector_spool, validation_overrides, write_bounded_candidate_json,
+        AclAction, Cancellation, Cli, Command, DEFAULT_CONTEXT_LIMIT, MemoryAction, ServiceAction,
+        SourceControl, SourceLimits, SyncLock, SyncOverrides, SyncRunStatus, chunk,
+        cleanup_connector_spools, configured_connector_command, context_bundle,
+        ensure_recurring_sync_validated, failure_status, flush_ingest_batch, ingest_documents,
+        is_budget_exceeded, manage_memory, private_file, require_sync_validation,
+        run_connector_to_spool, validate_configured_source, validate_connector_spool,
+        validation_overrides, write_bounded_candidate_json,
     };
     use cortana::chunking::chunk_document;
     use cortana::config::{Config, SourceConfig};
@@ -5340,6 +5404,58 @@ mod tests {
         let error = Cli::try_parse_from(["cortana", "export-vault", "/tmp/cortana-vault"])
             .expect_err("workspace selection is required");
         assert!(error.to_string().contains("--workspace"));
+    }
+
+    #[test]
+    fn recurring_vault_service_requires_explicit_scope_and_destination() {
+        Cli::try_parse_from(["cortana", "service", "install"])
+            .expect("safe service install remains available without a vault schedule");
+        let cli = Cli::try_parse_from([
+            "cortana",
+            "service",
+            "install",
+            "--enable-vault-service",
+            "--vault-output",
+            "/tmp/cortana-vault",
+            "--vault-workspace",
+            "work",
+            "--vault-seconds",
+            "3600",
+        ])
+        .expect("approved vault schedule");
+        match cli.command.expect("command") {
+            Command::Service {
+                action:
+                    ServiceAction::Install {
+                        enable_vault_service,
+                        vault_output,
+                        vault_workspaces,
+                        vault_seconds,
+                        ..
+                    },
+            } => {
+                assert!(enable_vault_service);
+                assert_eq!(
+                    vault_output,
+                    Some(std::path::PathBuf::from("/tmp/cortana-vault"))
+                );
+                assert_eq!(vault_workspaces, ["work"]);
+                assert_eq!(vault_seconds, 3_600);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+        for args in [
+            vec!["cortana", "service", "install", "--enable-vault-service"],
+            vec![
+                "cortana",
+                "service",
+                "install",
+                "--vault-output",
+                "/tmp/cortana-vault",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
     }
 
     #[tokio::test]

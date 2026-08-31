@@ -1354,6 +1354,7 @@ function ServicesSection({
     report.services.some(
       (service) =>
         service.name !== 'sync' &&
+        service.name !== 'vault' &&
         (service.name !== 'embedding' || settings.embedding.provider === 'local') &&
         !service.installed
     )

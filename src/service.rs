@@ -8,11 +8,12 @@ use serde::Serialize;
 
 use crate::config::Config;
 
-const LABELS: [&str; 4] = [
+const LABELS: [&str; 5] = [
     "ai.cortana.embedding",
     "ai.cortana.server",
     "ai.cortana.sync",
     "ai.cortana.backup",
+    "ai.cortana.vault",
 ];
 
 #[derive(Debug, Serialize)]
@@ -42,9 +43,14 @@ pub struct InstallOptions<'a> {
     pub backup_seconds: u64,
     pub install_embedding: bool,
     pub install_sync: bool,
+    pub install_vault: bool,
+    pub vault_output: Option<&'a Path>,
+    pub vault_workspaces: &'a [String],
+    pub vault_seconds: u64,
 }
 
 pub fn install(config: &Config, options: InstallOptions<'_>) -> Result<()> {
+    validate_vault_schedule(&options)?;
     #[cfg(target_os = "windows")]
     {
         return install_windows(config, options);
@@ -85,15 +91,7 @@ fn install_launchd(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         "--config".into(),
         options.config.display().to_string(),
     ];
-    let jobs = configured_jobs(
-        &common,
-        options.web_dir,
-        options.sync_seconds,
-        options.backup_seconds,
-        options.install_embedding,
-        options.install_sync,
-        options.no_web,
-    );
+    let jobs = configured_jobs(&common, options.web_dir, &JobOptions::from(&options));
 
     for label in LABELS {
         bootout(label)?;
@@ -116,21 +114,18 @@ fn install_launchd(config: &Config, options: InstallOptions<'_>) -> Result<()> {
 fn configured_jobs(
     common: &[String],
     web_dir: Option<&Path>,
-    sync_seconds: u64,
-    backup_seconds: u64,
-    install_embedding: bool,
-    install_sync: bool,
-    no_web: bool,
+    options: &JobOptions<'_>,
 ) -> Vec<Job> {
     let mut jobs = Vec::new();
-    if install_embedding {
+    if options.install_embedding {
         jobs.push(Job {
             label: "ai.cortana.embedding",
             arguments: [common.to_vec(), vec!["embedding-service".into()]].concat(),
             schedule: Schedule::KeepAlive,
+            writable_paths: Vec::new(),
         });
     }
-    let server_arguments = if no_web {
+    let server_arguments = if options.no_web {
         [common.to_vec(), vec!["serve".into(), "--no-web".into()]].concat()
     } else {
         let web_dir = web_dir.expect("web directory required for workspace service");
@@ -148,8 +143,9 @@ fn configured_jobs(
         label: "ai.cortana.server",
         arguments: server_arguments,
         schedule: Schedule::KeepAlive,
+        writable_paths: Vec::new(),
     });
-    if install_sync {
+    if options.install_sync {
         jobs.push(Job {
             label: "ai.cortana.sync",
             arguments: [
@@ -157,7 +153,8 @@ fn configured_jobs(
                 vec!["sync".into(), "--require-validation".into()],
             ]
             .concat(),
-            schedule: Schedule::Interval(sync_seconds),
+            schedule: Schedule::Interval(options.sync_seconds),
+            writable_paths: Vec::new(),
         });
     }
     jobs.push(Job {
@@ -167,9 +164,87 @@ fn configured_jobs(
             vec!["backup".into(), "--keep".into(), "14".into()],
         ]
         .concat(),
-        schedule: Schedule::Interval(backup_seconds),
+        schedule: Schedule::Interval(options.backup_seconds),
+        writable_paths: Vec::new(),
     });
+    if let Some(output) = options.vault_output {
+        let mut arguments = [
+            common.to_vec(),
+            vec!["export-vault".into(), output.display().to_string()],
+        ]
+        .concat();
+        for workspace in options.vault_workspaces {
+            arguments.extend(["--workspace".into(), workspace.clone()]);
+        }
+        jobs.push(Job {
+            label: "ai.cortana.vault",
+            arguments,
+            schedule: Schedule::Interval(options.vault_seconds),
+            writable_paths: output.parent().map(Path::to_path_buf).into_iter().collect(),
+        });
+    }
     jobs
+}
+
+struct JobOptions<'a> {
+    sync_seconds: u64,
+    backup_seconds: u64,
+    install_embedding: bool,
+    install_sync: bool,
+    no_web: bool,
+    vault_output: Option<&'a Path>,
+    vault_workspaces: &'a [String],
+    vault_seconds: u64,
+}
+
+impl<'a> From<&'a InstallOptions<'a>> for JobOptions<'a> {
+    fn from(options: &'a InstallOptions<'a>) -> Self {
+        Self {
+            sync_seconds: options.sync_seconds,
+            backup_seconds: options.backup_seconds,
+            install_embedding: options.install_embedding,
+            install_sync: options.install_sync,
+            no_web: options.no_web,
+            vault_output: options.vault_output.filter(|_| options.install_vault),
+            vault_workspaces: options.vault_workspaces,
+            vault_seconds: options.vault_seconds,
+        }
+    }
+}
+
+fn validate_vault_schedule(options: &InstallOptions<'_>) -> Result<()> {
+    anyhow::ensure!(
+        options.install_vault == options.vault_output.is_some(),
+        "vault scheduling requires explicit enablement and an output directory"
+    );
+    if !options.install_vault {
+        anyhow::ensure!(
+            options.vault_workspaces.is_empty(),
+            "vault workspaces require explicit vault scheduling approval"
+        );
+        return Ok(());
+    }
+    let output = options.vault_output.context("vault output is required")?;
+    anyhow::ensure!(
+        output.is_absolute(),
+        "scheduled vault output must be absolute"
+    );
+    let parent = output
+        .parent()
+        .context("scheduled vault output must have a parent")?;
+    anyhow::ensure!(
+        parent.is_dir(),
+        "scheduled vault output parent does not exist"
+    );
+    anyhow::ensure!(
+        !options.vault_workspaces.is_empty(),
+        "scheduled vault export requires at least one workspace"
+    );
+    anyhow::ensure!(
+        options.vault_seconds >= 60,
+        "vault schedule must be at least 60 seconds"
+    );
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
@@ -199,15 +274,7 @@ fn install_windows(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         "--config".into(),
         options.config.display().to_string(),
     ];
-    let jobs = configured_jobs(
-        &common,
-        options.web_dir,
-        options.sync_seconds,
-        options.backup_seconds,
-        options.install_embedding,
-        options.install_sync,
-        options.no_web,
-    );
+    let jobs = configured_jobs(&common, options.web_dir, &JobOptions::from(&options));
 
     for label in LABELS {
         windows_delete_task(label)?;
@@ -417,6 +484,7 @@ fn windows_task_name(label: &str) -> Result<&'static str> {
         "ai.cortana.server" => Ok(r"\Cortana-server"),
         "ai.cortana.sync" => Ok(r"\Cortana-sync"),
         "ai.cortana.backup" => Ok(r"\Cortana-backup"),
+        "ai.cortana.vault" => Ok(r"\Cortana-vault"),
         _ => Err(anyhow::anyhow!(
             "unsupported Cortana service label: {label}"
         )),
@@ -644,6 +712,7 @@ struct Job {
     label: &'static str,
     arguments: Vec<String>,
     schedule: Schedule,
+    writable_paths: Vec<PathBuf>,
 }
 
 #[derive(Clone, Copy)]
@@ -795,6 +864,7 @@ fn managed_services() -> impl Iterator<Item = (&'static str, &'static str)> {
         ("server", LABELS[1]),
         ("sync", LABELS[2]),
         ("backup", LABELS[3]),
+        ("vault", LABELS[4]),
     ]
     .into_iter()
 }
@@ -818,13 +888,18 @@ fn parse_launchctl_status(body: &str) -> (Option<String>, Option<u32>, Option<i3
     )
 }
 
-const SYSTEMD_SERVICE_UNITS: [&str; 4] = [
+const SYSTEMD_SERVICE_UNITS: [&str; 5] = [
     "cortana-embedding.service",
     "cortana.service",
     "cortana-sync.service",
     "cortana-backup.service",
+    "cortana-vault.service",
 ];
-const SYSTEMD_TIMER_UNITS: [&str; 2] = ["cortana-sync.timer", "cortana-backup.timer"];
+const SYSTEMD_TIMER_UNITS: [&str; 3] = [
+    "cortana-sync.timer",
+    "cortana-backup.timer",
+    "cortana-vault.timer",
+];
 
 fn install_systemd(config: &Config, options: InstallOptions<'_>) -> Result<()> {
     ensure_systemd_available()?;
@@ -853,15 +928,7 @@ fn install_systemd(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         "--config".into(),
         options.config.display().to_string(),
     ];
-    let jobs = configured_jobs(
-        &common,
-        options.web_dir,
-        options.sync_seconds,
-        options.backup_seconds,
-        options.install_embedding,
-        options.install_sync,
-        options.no_web,
-    );
+    let jobs = configured_jobs(&common, options.web_dir, &JobOptions::from(&options));
 
     for unit in SYSTEMD_SERVICE_UNITS
         .iter()
@@ -879,10 +946,11 @@ fn install_systemd(config: &Config, options: InstallOptions<'_>) -> Result<()> {
         let path = unit_directory.join(systemd_service_unit(name));
         let body = systemd_service_unit_body(config, job, name, options.working_directory);
         atomic_write(&path, body.as_bytes())?;
-        if matches!(name, "sync" | "backup") {
+        if matches!(name, "sync" | "backup" | "vault") {
             let seconds = match name {
                 "sync" => options.sync_seconds,
                 "backup" => options.backup_seconds,
+                "vault" => options.vault_seconds,
                 _ => unreachable!(),
             };
             let timer_path = unit_directory.join(systemd_timer_unit(name));
@@ -893,7 +961,7 @@ fn install_systemd(config: &Config, options: InstallOptions<'_>) -> Result<()> {
     systemd_run(&["daemon-reload"])?;
     for job in &jobs {
         let name = systemd_job_name(job.label).expect("validated service label");
-        let unit = if matches!(name, "sync" | "backup") {
+        let unit = if matches!(name, "sync" | "backup" | "vault") {
             systemd_timer_unit(name)
         } else {
             systemd_service_unit(name)
@@ -946,13 +1014,13 @@ fn systemd_service_status(
     unit_directory: &Path,
 ) -> ServiceStatus {
     let service_unit = systemd_service_unit(name);
-    let control_unit = if matches!(name, "sync" | "backup") {
+    let control_unit = if matches!(name, "sync" | "backup" | "vault") {
         systemd_timer_unit(name)
     } else {
         service_unit
     };
     let installed = unit_directory.join(service_unit).is_file()
-        && (!matches!(name, "sync" | "backup")
+        && (!matches!(name, "sync" | "backup" | "vault")
             || unit_directory.join(systemd_timer_unit(name)).is_file());
     let control = systemd_show(control_unit);
     let service = systemd_show(service_unit);
@@ -976,7 +1044,7 @@ fn systemd_service_status(
 
 fn systemd_action(name: &str, action: &str) -> Result<()> {
     anyhow::ensure!(
-        matches!(name, "embedding" | "server" | "sync" | "backup"),
+        matches!(name, "embedding" | "server" | "sync" | "backup" | "vault"),
         "unsupported Cortana service: {name}"
     );
     anyhow::ensure!(
@@ -985,7 +1053,7 @@ fn systemd_action(name: &str, action: &str) -> Result<()> {
     );
     ensure_systemd_available()?;
     let unit = match name {
-        "sync" | "backup" => systemd_timer_unit(name),
+        "sync" | "backup" | "vault" => systemd_timer_unit(name),
         _ => systemd_service_unit(name),
     };
     anyhow::ensure!(
@@ -1089,6 +1157,7 @@ fn systemd_service_unit(name: &str) -> &'static str {
         "server" => "cortana.service",
         "sync" => "cortana-sync.service",
         "backup" => "cortana-backup.service",
+        "vault" => "cortana-vault.service",
         _ => "cortana-invalid.service",
     }
 }
@@ -1097,6 +1166,7 @@ fn systemd_timer_unit(name: &str) -> &'static str {
     match name {
         "sync" => "cortana-sync.timer",
         "backup" => "cortana-backup.timer",
+        "vault" => "cortana-vault.timer",
         _ => "cortana-invalid.timer",
     }
 }
@@ -1107,6 +1177,7 @@ fn systemd_job_name(label: &str) -> Option<&'static str> {
         "ai.cortana.server" => Some("server"),
         "ai.cortana.sync" => Some("sync"),
         "ai.cortana.backup" => Some("backup"),
+        "ai.cortana.vault" => Some("vault"),
         _ => None,
     }
 }
@@ -1128,9 +1199,10 @@ fn systemd_service_unit_body(
         "server" => "Cortana second-brain API",
         "sync" => "Cortana knowledge source synchronization",
         "backup" => "Cortana verified backup",
+        "vault" => "Cortana derived Obsidian vault export",
         _ => "Cortana service",
     };
-    let service_type = if matches!(name, "sync" | "backup") {
+    let service_type = if matches!(name, "sync" | "backup" | "vault") {
         "oneshot"
     } else {
         "simple"
@@ -1151,8 +1223,13 @@ fn systemd_service_unit_body(
         .map(|home| home.join(".cache/huggingface"))
         .map(|path| systemd_quote(&path.display().to_string()))
         .unwrap_or_default();
+    let additional_writable_paths = job
+        .writable_paths
+        .iter()
+        .map(|path| format!(" {}", systemd_quote(&path.display().to_string())))
+        .collect::<String>();
     format!(
-        "[Unit]\nDescription={description}\nAfter={after}\n\n[Service]\nType={service_type}\nExecStart={arguments}\nWorkingDirectory={}\n{restart}UMask=0077\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths={}{}\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n{}",
+        "[Unit]\nDescription={description}\nAfter={after}\n\n[Service]\nType={service_type}\nExecStart={arguments}\nWorkingDirectory={}\n{restart}UMask=0077\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=read-only\nReadWritePaths={}{}{}\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\n{}",
         systemd_quote(&working_directory.display().to_string()),
         systemd_quote(&config.data_dir.display().to_string()),
         if home_cache.is_empty() {
@@ -1160,6 +1237,7 @@ fn systemd_service_unit_body(
         } else {
             format!(" {home_cache}")
         },
+        additional_writable_paths,
         if service_type == "simple" {
             "\n[Install]\nWantedBy=default.target\n"
         } else {
@@ -1169,10 +1247,10 @@ fn systemd_service_unit_body(
 }
 
 fn systemd_timer_unit_body(name: &str, seconds: u64) -> String {
-    let description = if name == "sync" {
-        "Synchronize Cortana knowledge sources"
-    } else {
-        "Back up Cortana"
+    let description = match name {
+        "sync" => "Synchronize Cortana knowledge sources",
+        "vault" => "Export Cortana derived Obsidian vault",
+        _ => "Back up Cortana",
     };
     let service = systemd_service_unit(name);
     format!(
@@ -1252,6 +1330,7 @@ mod tests {
                 label: "ai.cortana.sync",
                 arguments: vec!["cortana".into(), "a&b".into()],
                 schedule: Schedule::Interval(1),
+                writable_paths: Vec::new(),
             },
             Path::new("/tmp/a&b"),
             Path::new("/tmp/logs"),
@@ -1287,11 +1366,16 @@ mod tests {
         let safe = configured_jobs(
             &common,
             Some(Path::new("/tmp/web")),
-            900,
-            86_400,
-            true,
-            false,
-            false,
+            &JobOptions {
+                sync_seconds: 900,
+                backup_seconds: 86_400,
+                install_embedding: true,
+                install_sync: false,
+                no_web: false,
+                vault_output: None,
+                vault_workspaces: &[],
+                vault_seconds: 86_400,
+            },
         );
         assert!(
             safe.iter().all(|job| job.label != "ai.cortana.sync"),
@@ -1300,11 +1384,16 @@ mod tests {
         let scheduled = configured_jobs(
             &common,
             Some(Path::new("/tmp/web")),
-            900,
-            86_400,
-            true,
-            true,
-            false,
+            &JobOptions {
+                sync_seconds: 900,
+                backup_seconds: 86_400,
+                install_embedding: true,
+                install_sync: true,
+                no_web: false,
+                vault_output: None,
+                vault_workspaces: &[],
+                vault_seconds: 86_400,
+            },
         );
         let sync_job = scheduled
             .iter()
@@ -1326,7 +1415,20 @@ mod tests {
     #[test]
     fn no_web_install_uses_api_only_server_arguments() {
         let common = vec!["cortana".into(), "--config".into(), "config.toml".into()];
-        let jobs = configured_jobs(&common, None, 900, 86_400, true, false, true);
+        let jobs = configured_jobs(
+            &common,
+            None,
+            &JobOptions {
+                sync_seconds: 900,
+                backup_seconds: 86_400,
+                install_embedding: true,
+                install_sync: false,
+                no_web: true,
+                vault_output: None,
+                vault_workspaces: &[],
+                vault_seconds: 86_400,
+            },
+        );
         let server = jobs
             .iter()
             .find(|job| job.label == "ai.cortana.server")
@@ -1338,8 +1440,53 @@ mod tests {
     }
 
     #[test]
+    fn vault_schedule_is_explicit_scoped_and_writable_only_at_its_parent() {
+        let common = vec!["cortana".into(), "--config".into(), "config.toml".into()];
+        let workspaces = ["work".into(), "research".into()];
+        let jobs = configured_jobs(
+            &common,
+            None,
+            &JobOptions {
+                sync_seconds: 900,
+                backup_seconds: 86_400,
+                install_embedding: false,
+                install_sync: false,
+                no_web: true,
+                vault_output: Some(Path::new("/tmp/Derived Vault")),
+                vault_workspaces: &workspaces,
+                vault_seconds: 3_600,
+            },
+        );
+        let vault = jobs
+            .iter()
+            .find(|job| job.label == "ai.cortana.vault")
+            .expect("explicit vault job");
+        assert_eq!(
+            vault.arguments,
+            [
+                "cortana",
+                "--config",
+                "config.toml",
+                "export-vault",
+                "/tmp/Derived Vault",
+                "--workspace",
+                "work",
+                "--workspace",
+                "research",
+            ]
+        );
+        assert_eq!(vault.writable_paths, [PathBuf::from("/tmp")]);
+        assert!(matches!(vault.schedule, Schedule::Interval(3_600)));
+        let unit = systemd_service_unit_body(&Config::default(), vault, "vault", Path::new("/tmp"));
+        assert!(unit.contains("Type=oneshot"));
+        assert!(unit.contains("ReadWritePaths="));
+        assert!(unit.contains(" \"/tmp\""));
+    }
+
+    #[test]
     fn service_names_are_fixed_and_launchctl_status_is_structured() {
         assert_eq!(service_label("server").unwrap(), "ai.cortana.server");
+        assert_eq!(service_label("vault").unwrap(), "ai.cortana.vault");
         assert!(service_label("../server").is_err());
         assert_eq!(
             parse_launchctl_status("state = running\n\tpid = 123\n\tlast exit code = 0\n"),

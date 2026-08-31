@@ -313,6 +313,13 @@ fn render_document(detail: &DocumentDetail) -> RenderedDocument {
     if let Some(uri) = &summary.uri {
         markdown.push_str(&format!("source_uri: {}\n", yaml_string(uri)));
     }
+    let attachments = supported_attachment_uris(&detail.metadata);
+    if !attachments.is_empty() {
+        markdown.push_str("attachments:\n");
+        for uri in attachments {
+            markdown.push_str(&format!("  - {}\n", yaml_string(&uri)));
+        }
+    }
     if summary.acl.is_empty() {
         markdown.push_str("acl: []\n");
     } else {
@@ -335,6 +342,27 @@ fn render_document(detail: &DocumentDetail) -> RenderedDocument {
         content_sha256,
         canonical_revision: summary.content_revision.clone(),
     }
+}
+
+fn supported_attachment_uris(metadata: &serde_json::Value) -> Vec<String> {
+    let mut uris = metadata
+        .get("attachments")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(serde_json::Value::as_str)
+        .filter(|uri| {
+            uri.len() <= 4_096
+                && !uri.chars().any(char::is_control)
+                && matches!(uri.split_once(':'), Some(("https" | "http", _)))
+        })
+        .map(str::to_string)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(64)
+        .collect::<Vec<_>>();
+    uris.sort();
+    uris
 }
 
 fn read_existing_manifest(output: &Path) -> Result<Option<VaultManifest>> {

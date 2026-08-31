@@ -19,6 +19,7 @@ Cortana documentation is divided by authority. Each document should define one d
 | Desktop packaged-product acceptance                     | [Desktop UX audit](desktop-ux-audit.md)                                                                                                   |
 | Desktop shadcn migration baseline and architecture      | [Desktop shadcn migration record](desktop-shadcn-migration.md)                                                                            |
 | Services, readiness, backup, restore, and recovery      | [Operations](operations.md)                                                                                                               |
+| Derived Obsidian-compatible Markdown export             | [Derived Obsidian vault](obsidian-vault.md)                                                                                               |
 | Evaluation methods and evidence                         | [Evaluation](evaluation.md)                                                                                                               |
 | Planning and documentation ownership                    | [Planning and tracking](planning.md)                                                                                                      |
 | Architecture diagrams                                   | [Architecture](architecture/)                                                                                                             |
