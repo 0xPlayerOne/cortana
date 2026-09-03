@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.1](https://github.com/0xPlayerOne/cortana/compare/v0.56.0...v0.56.1) (2026-09-03)
+
+
+### Maintenance
+
+* **deps:** bump the cargo-dependencies group across 1 directory with 2 updates ([#2227](https://github.com/0xPlayerOne/cortana/issues/2227)) ([1d30cf0](https://github.com/0xPlayerOne/cortana/commit/1d30cf027c7eb66bd2e8dec1646fcda4a424a8b2))
+
 ## [0.56.0](https://github.com/0xPlayerOne/cortana/compare/v0.55.0...v0.56.0) (2026-08-31)
 
 
