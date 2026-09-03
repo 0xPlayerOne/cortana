@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.3](https://github.com/0xPlayerOne/cortana/compare/v0.56.2...v0.56.3) (2026-09-03)
+
+
+### Maintenance
+
+* **deps:** bump pypdf from 6.15.0 to 6.16.1 in the uv group across 1 directory ([#2233](https://github.com/0xPlayerOne/cortana/issues/2233)) ([d70a513](https://github.com/0xPlayerOne/cortana/commit/d70a5134f32c32bc83326cc62e6b909abfedf083))
+
 ## [0.56.2](https://github.com/0xPlayerOne/cortana/compare/v0.56.1...v0.56.2) (2026-09-03)
 
 
