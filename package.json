@@ -29,6 +29,7 @@
     "test": "bun scripts/run-js-tests.mjs",
     "test:unit": "bun scripts/run-js-tests.mjs && uv run pytest -m 'not integration and not smoke' && uv run python scripts/check-docs-consistency.py && bun run test:eval",
     "test:eval": "cargo test --test evaluation -- --nocapture",
+    "test:knowledge-accessibility": "node scripts/knowledge-accessibility-acceptance.mjs",
     "test:integration": "uv run pytest -m integration",
     "test:smoke": "uv run pytest -m smoke",
     "type-check": "uv run mypy src/cortana && cargo check --all-targets && bun run --cwd apps/web typecheck",

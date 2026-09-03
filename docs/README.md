@@ -19,15 +19,18 @@ Cortana documentation is divided by authority. Each document should define one d
 | Desktop packaged-product acceptance                     | [Desktop UX audit](desktop-ux-audit.md)                                                                                                   |
 | Desktop shadcn migration baseline and architecture      | [Desktop shadcn migration record](desktop-shadcn-migration.md)                                                                            |
 | Services, readiness, backup, restore, and recovery      | [Operations](operations.md)                                                                                                               |
+| Derived Obsidian-compatible Markdown export             | [Derived Obsidian vault](obsidian-vault.md)                                                                                               |
 | Evaluation methods and evidence                         | [Evaluation](evaluation.md)                                                                                                               |
 | Planning and documentation ownership                    | [Planning and tracking](planning.md)                                                                                                      |
 | Architecture diagrams                                   | [Architecture](architecture/)                                                                                                             |
 | Canonical entities and persistence                      | [Core entity contract](contracts/core-entities.md)                                                                                        |
 | Structured retrieval units                              | [Structured chunking](chunking.md)                                                                                                        |
+| Revision-aware code indexes and retrieval               | [Code intelligence](code-intelligence.md)                                                                                                 |
 | ContextBundle identity and pinning                      | [ContextBundle contract](contracts/context-bundle.md)                                                                                     |
 | Connector and reconciliation semantics                  | [Connector contract](contracts/connectors.md)                                                                                             |
 | Workspace, principal, and ACL mapping                   | [Identity contract](contracts/identity.md)                                                                                                |
 | Public API compatibility                                | [Public API contract](contracts/public-api.md)                                                                                            |
+| Knowledge graph identity and relationship semantics     | [Knowledge graph contract](contracts/knowledge-graph.md)                                                                                  |
 | ContextProvider compatibility and fixtures              | [ContextProvider contract](contracts/context-provider.md)                                                                                 |
 | Supported single-node container and VPS operations      | [Self-hosted deployment](self-hosted.md)                                                                                                  |
 | Security assets and trust boundaries                    | [Security and trust model](security-model.md)                                                                                             |

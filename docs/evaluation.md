@@ -42,6 +42,22 @@ The repository-owned `bun run test:eval` command executes the deterministic Rust
 the pinned synthetic fixture; it is part of `test:unit` so every validation run exercises the M5
 quality gate without contacting a provider or source.
 
+The same command also runs the provider-free knowledge-graph gate from
+`eval/knowledge-graph-v1.json`. The evaluator creates 25 workspaces, 100 sources, and 2,500
+documents and chunks in a disposable store, then exercises the real router and graph projection.
+It fails on ACL disclosure, missing canonical containment, invalid provenance, stale relationships
+after mutation, disabled-edge exposure, or a breached versioned latency, response-size, index-size,
+CPU, wall-clock, or memory threshold. Run only that integration contract with:
+
+```bash
+cortana eval --knowledge
+```
+
+The report records the exact fixture digest, platform, applied thresholds, p50/p95 latency,
+response bytes, store/index bytes, peak RSS, CPU and wall time, and sanitized failure reasons. The
+fixture is synthetic release-regression evidence; it is not an approved private corpus, a live
+connector trial, an interactive packaged-GUI review, or an operating-system trust result.
+
 ### Approved-corpus retrieval
 
 Run read-only against an explicitly approved local index and private manifest.
@@ -219,6 +235,13 @@ Cover:
 - operating-system trust.
 
 Headless tests and static package verification do not substitute for this lane.
+
+The repository's `bun run test:knowledge-accessibility` gate is a deterministic renderer check for
+the knowledge and graph surfaces. It uses the provider-free demo fixture and headless Chromium to
+exercise keyboard navigation, graph selection, accessible names, WCAG 2.2 AA axe rules, reduced
+motion, 200% zoom, mobile layout, and browser-console cleanliness. CI uploads its JSON report and
+screenshots as non-secret artifacts. This catches renderer regressions before packaging but does
+not replace the supported-platform package launch or manual VoiceOver, NVDA, or equivalent review.
 
 ### Release trust
 

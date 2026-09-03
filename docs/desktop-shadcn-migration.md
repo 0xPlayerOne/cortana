@@ -119,12 +119,18 @@ single renderer to the baseline and remove transition-only
 code before issue #2168 can accept performance.
 
 `bun run build` walks the Vite manifest recursively and enforces final single-renderer budgets:
-800,000 bytes for the application entry and its initial static graph, 950,000 bytes for the full
-production JavaScript graph excluding the demo-only fixture, and 210,000 bytes for application CSS.
+800,000 bytes for the application entry and its initial static graph, 960,000 bytes for the full
+production JavaScript graph excluding the demo-only fixture, and 220,000 bytes for application CSS.
 The #2167 cleanup measurement is 788,156 bytes initial JavaScript, 933,738 bytes complete production
 JavaScript, and 208,515 bytes CSS before minifier hash variation. These are uncompressed review
 ceilings, not performance claims; recursive measurement prevents manual chunking from hiding
 imports. The earlier transition measurements remain the historical comparison above.
+
+The reviewed M10 build measures 799,339 bytes of initial JavaScript, 955,954 bytes of complete
+production JavaScript, and 217,515 bytes of CSS. The initial ceiling remains unchanged: the bounded
+graph response validator is loaded only when graph data is requested. The narrowly expanded total
+and CSS ceilings account for the optional vault-management surface, graph provenance and filter
+controls, and accessible loading/error states while continuing to fail unbounded production growth.
 
 The added JavaScript packages use MIT or Apache-2.0 licenses. The bundled Geist font package uses
 OFL-1.1. No copyleft runtime, native library, hosted font request, or new executable is introduced.

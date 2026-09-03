@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "contract_version": "cortana.knowledge-evaluation.v1",
+  "corpus": {
+    "workspaces": 25,
+    "sources_per_workspace": 4,
+    "documents_per_workspace": 100,
+    "content_bytes_per_document": 512
+  },
+  "iterations": 12,
+  "thresholds": {
+    "max_startup_p95_ms": 1500,
+    "max_status_p95_ms": 1000,
+    "max_document_list_p95_ms": 500,
+    "max_search_p95_ms": 1500,
+    "max_document_view_p95_ms": 500,
+    "max_graph_open_p95_ms": 1500,
+    "max_graph_focus_p95_ms": 1500,
+    "max_graph_filter_p95_ms": 1500,
+    "max_concurrent_search_graph_p95_ms": 2500,
+    "max_response_bytes": 2097152,
+    "max_index_bytes": 268435456,
+    "max_peak_rss_bytes": 1073741824,
+    "max_working_set_estimate_bytes": 536870912,
+    "max_total_wall_ms": 30000,
+    "max_total_cpu_ms": 30000,
+    "min_edge_precision": 1.0,
+    "min_edge_coverage": 1.0,
+    "min_provenance_completeness": 1.0,
+    "max_acl_leaks": 0,
+    "max_false_inferences": 0,
+    "max_invalidation_failures": 0
+  },
+  "release": {
+    "enabled_by_default": [
+      "contains",
+      "references",
+      "backlink",
+      "nearby",
+      "same-thread",
+      "authored-by",
+      "mentions",
+      "temporal",
+      "supports",
+      "contradicts",
+      "derives"
+    ],
+    "disabled_by_default": [
+      "semantically-related",
+      "reinforces",
+      "supersedes",
+      "observes",
+      "depends-on",
+      "defines",
+      "calls",
+      "imports"
+    ]
+  }
+}

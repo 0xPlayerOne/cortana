@@ -159,6 +159,16 @@ function CortanaApplication() {
   const [graphAppendLoading, setGraphAppendLoading] = useState(false)
   const [graphError, setGraphError] = useState('')
   const [graphRetryNonce, setGraphRetryNonce] = useState(0)
+  const [graphFocusDocumentId, setGraphFocusDocumentId] = useState<string | null>(null)
+  const [graphEdgeKind, setGraphEdgeKind] = useState<
+    BrainGraphPage['edges'][number]['kind'] | 'all'
+  >('all')
+  const [graphOrigin, setGraphOrigin] = useState<
+    NonNullable<BrainGraphPage['edges'][number]['origin']> | 'all'
+  >('all')
+  const [graphMinConfidence, setGraphMinConfidence] = useState<number | null>(null)
+  const [graphFocusHistory, setGraphFocusHistory] = useState<Array<string | null>>([null])
+  const [graphFocusHistoryIndex, setGraphFocusHistoryIndex] = useState(0)
   const [pageVisible, setPageVisible] = useState(
     () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
   )
@@ -526,7 +536,13 @@ function CortanaApplication() {
       source || undefined,
       debouncedDocumentQuery || undefined,
       undefined,
-      controller.signal
+      controller.signal,
+      {
+        focusDocumentId: graphFocusDocumentId || undefined,
+        edgeKind: graphEdgeKind === 'all' ? undefined : graphEdgeKind,
+        origin: graphOrigin === 'all' ? undefined : graphOrigin,
+        minConfidence: graphMinConfidence ?? undefined,
+      }
     )
       .then((next) => {
         if (graphRequestRef.current !== requestId || controller.signal.aborted) return
@@ -547,6 +563,10 @@ function CortanaApplication() {
     debouncedDocumentQuery,
     documentFetchReady,
     graphRetryNonce,
+    graphFocusDocumentId,
+    graphEdgeKind,
+    graphOrigin,
+    graphMinConfidence,
     source,
     view,
     effectiveWorkspace,
@@ -916,6 +936,9 @@ function CortanaApplication() {
     setGraph(null)
     setGraphError('')
     setGraphLoading(false)
+    setGraphFocusDocumentId(null)
+    setGraphFocusHistory([null])
+    setGraphFocusHistoryIndex(0)
   }
 
   function scopeSources(nextWorkspace: string, nextSource = source) {
@@ -1269,6 +1292,10 @@ function CortanaApplication() {
   }
 
   function focusGraphNode(node: BrainGraphNode) {
+    if (node.kind === 'document' && node.document_id) {
+      navigateGraphFocus(node.document_id)
+      return
+    }
     if (node.kind === 'workspace') {
       chooseWorkspace(node.project)
       return
@@ -1276,6 +1303,21 @@ function CortanaApplication() {
     if (node.kind === 'source' && node.source) {
       chooseSource(node.source, node.project, false)
     }
+  }
+
+  function navigateGraphFocus(documentId: string | null) {
+    if (documentId === graphFocusDocumentId) return
+    const nextHistory = [...graphFocusHistory.slice(0, graphFocusHistoryIndex + 1), documentId]
+    setGraphFocusHistory(nextHistory)
+    setGraphFocusHistoryIndex(nextHistory.length - 1)
+    setGraphFocusDocumentId(documentId)
+  }
+
+  function navigateGraphHistory(offset: -1 | 1) {
+    const nextIndex = graphFocusHistoryIndex + offset
+    if (nextIndex < 0 || nextIndex >= graphFocusHistory.length) return
+    setGraphFocusHistoryIndex(nextIndex)
+    setGraphFocusDocumentId(graphFocusHistory[nextIndex] ?? null)
   }
 
   async function loadMoreDocuments() {
@@ -1862,6 +1904,18 @@ function CortanaApplication() {
               onSelect={setSelected}
               onSelectDocument={(id) => void chooseDocument(id)}
               onFocusGraphNode={focusGraphNode}
+              graphFocused={graphFocusDocumentId !== null}
+              onResetGraphFocus={() => navigateGraphFocus(null)}
+              graphCanGoBack={graphFocusHistoryIndex > 0}
+              graphCanGoForward={graphFocusHistoryIndex + 1 < graphFocusHistory.length}
+              onGraphBack={() => navigateGraphHistory(-1)}
+              onGraphForward={() => navigateGraphHistory(1)}
+              graphEdgeKind={graphEdgeKind}
+              onGraphEdgeKindChange={setGraphEdgeKind}
+              graphOrigin={graphOrigin}
+              onGraphOriginChange={setGraphOrigin}
+              graphMinConfidence={graphMinConfidence}
+              onGraphMinConfidenceChange={setGraphMinConfidence}
               onRetry={() => void runSearch(query)}
             />
             {!graphFullScreen && (

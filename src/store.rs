@@ -1,6 +1,7 @@
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -19,6 +20,10 @@ use sha2::{Digest, Sha256};
 use crate::auth::acl_allows;
 use crate::chunking::{CHUNKING_CONTRACT_VERSION, ChunkSpec};
 use crate::classification::{self, CandidateClassification};
+use crate::code_intelligence::{
+    CodeRelation, CodeSymbolFilters, ParseLimits, ParseOutput, RelationKind, RelationOrigin,
+    RelationPage, RelationQuery, SymbolSearchHit, parse_document, parser_cache_key,
+};
 use crate::consolidation::{
     self, ConsolidationDecision, ConsolidationOutcome, ConsolidationPolicy, PolicyContext,
 };
@@ -28,6 +33,9 @@ use crate::observation::{self, ObservationCandidate, ObservationCandidateInput};
 
 const DATABASE_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
 const SYNC_RUNS_PER_SOURCE: usize = 100;
+const MAX_CODE_INDEX_SCAN: usize = 10_000;
+const MAX_CODE_SYMBOL_SCAN: usize = 100_000;
+const MAX_CODE_RELATION_SCAN: usize = 100_000;
 
 struct ExistingMemory {
     id: String,
@@ -197,6 +205,24 @@ pub struct DocumentSummary {
     pub project: String,
     pub chunk_count: usize,
     pub content_chars: usize,
+    #[serde(skip)]
+    pub acl: Vec<String>,
+    #[serde(skip)]
+    pub content_revision: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct DocumentGraphLink {
+    pub source: DocumentSummary,
+    pub target: DocumentSummary,
+}
+
+#[derive(Clone, Debug)]
+pub struct DocumentGraphMetadata {
+    pub document_id: String,
+    pub thread_key: Option<String>,
+    pub authors: Vec<String>,
+    pub entities: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -281,6 +307,11 @@ impl Store {
                embedding_blob BLOB, chunk_key TEXT, strategy TEXT,
                parent_key TEXT, previous_key TEXT, next_key TEXT,
                start_byte INTEGER, end_byte INTEGER, policy_version TEXT);
+             CREATE TABLE IF NOT EXISTS code_indexes(
+               document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+               repository_id TEXT, revision TEXT, language TEXT NOT NULL,
+               parser_version TEXT NOT NULL, content_hash TEXT NOT NULL,
+               status TEXT NOT NULL, output_json TEXT NOT NULL);
              CREATE TABLE IF NOT EXISTS embedding_cache(
                fingerprint TEXT NOT NULL, content_hash TEXT NOT NULL,
                embedding_json TEXT NOT NULL, embedding_blob BLOB, hits INTEGER NOT NULL DEFAULT 0,
@@ -851,16 +882,22 @@ impl Store {
         let id = stable_id(&document.source, &document.source_id);
         let hash = document_hash(document)?;
         let mut connection = self.connection.lock().expect("store lock poisoned");
-        let previous: Option<(String, bool)> = connection
+        let previous: Option<(String, bool, Option<String>)> = connection
             .query_row(
-                "SELECT content_hash,length(content)>0 FROM documents WHERE id=?1",
+                "SELECT content_hash,length(content)>0,
+                        (SELECT output_json FROM code_indexes WHERE document_id=documents.id)
+                 FROM documents WHERE id=?1",
                 [&id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
         if previous
             .as_ref()
-            .is_some_and(|(previous_hash, has_content)| previous_hash == &hash && *has_content)
+            .is_some_and(|(previous_hash, has_content, code_index)| {
+                previous_hash == &hash
+                    && *has_content
+                    && code_index_current(document, code_index.as_deref())
+            })
         {
             return Ok(false);
         }
@@ -907,6 +944,7 @@ impl Store {
                 params![chunk_id, document.title, content],
             )?;
         }
+        replace_code_index(&transaction, &id, document)?;
         bump_corpus_revision(&transaction)?;
         transaction.commit()?;
         Ok(true)
@@ -924,22 +962,24 @@ impl Store {
         let id = stable_id(&document.source, &document.source_id);
         let hash = document_hash(document)?;
         let mut connection = self.connection.lock().expect("store lock poisoned");
-        let previous: Option<(String, bool, Option<String>)> = connection
+        let previous: Option<(String, bool, Option<String>, Option<String>)> = connection
             .query_row(
                 "SELECT d.content_hash,length(d.content)>0,
                         (SELECT c.policy_version FROM chunks c
-                         WHERE c.document_id=d.id ORDER BY c.ordinal LIMIT 1)
+                         WHERE c.document_id=d.id ORDER BY c.ordinal LIMIT 1),
+                        (SELECT output_json FROM code_indexes WHERE document_id=d.id)
                  FROM documents d WHERE d.id=?1",
                 [&id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .optional()?;
         if previous
             .as_ref()
-            .is_some_and(|(previous_hash, has_content, policy)| {
+            .is_some_and(|(previous_hash, has_content, policy, code_index)| {
                 previous_hash == &hash
                     && *has_content
                     && policy.as_deref() == Some(CHUNKING_CONTRACT_VERSION)
+                    && code_index_current(document, code_index.as_deref())
             })
         {
             return Ok(false);
@@ -996,6 +1036,7 @@ impl Store {
                 params![chunk_id, document.title, &spec.content],
             )?;
         }
+        replace_code_index(&transaction, &id, document)?;
         bump_corpus_revision(&transaction)?;
         transaction.commit()?;
         Ok(true)
@@ -1005,16 +1046,22 @@ impl Store {
         let id = stable_id(&document.source, &document.source_id);
         let hash = document_hash(document)?;
         let connection = self.connection.lock().expect("store lock poisoned");
-        let previous: Option<(String, bool)> = connection
+        let previous: Option<(String, bool, Option<String>)> = connection
             .query_row(
-                "SELECT content_hash,length(content)>0 FROM documents WHERE id=?1",
+                "SELECT content_hash,length(content)>0,
+                        (SELECT output_json FROM code_indexes WHERE document_id=documents.id)
+                 FROM documents WHERE id=?1",
                 [&id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()?;
         Ok(!previous
             .as_ref()
-            .is_some_and(|(previous_hash, has_content)| previous_hash == &hash && *has_content))
+            .is_some_and(|(previous_hash, has_content, code_index)| {
+                previous_hash == &hash
+                    && *has_content
+                    && code_index_current(document, code_index.as_deref())
+            }))
     }
 
     /// Structured chunking is a derived-index revision. A document with the
@@ -3761,7 +3808,7 @@ impl Store {
         let connection = self.connection.lock().expect("store lock poisoned");
         let mut statement = connection.prepare(
             "SELECT d.id,d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,d.acl_json,
-                    COUNT(c.id),
+                    d.content_hash,COUNT(c.id),
                     CASE WHEN length(d.content)>0 THEN length(d.content)
                          ELSE COALESCE(SUM(length(c.content)),0) END
              FROM documents d LEFT JOIN chunks c ON c.document_id=d.id
@@ -3800,10 +3847,11 @@ impl Store {
                                     Box::new(error),
                                 )
                             })?;
+                        let content_revision = row.get::<_, String>(8)?;
                         let chunk_count =
-                            usize::try_from(row.get::<_, i64>(8)?).unwrap_or(usize::MAX);
-                        let content_chars =
                             usize::try_from(row.get::<_, i64>(9)?).unwrap_or(usize::MAX);
+                        let content_chars =
+                            usize::try_from(row.get::<_, i64>(10)?).unwrap_or(usize::MAX);
                         Ok((
                             DocumentSummary {
                                 id: row.get(0)?,
@@ -3815,6 +3863,8 @@ impl Store {
                                 project: row.get(6)?,
                                 chunk_count,
                                 content_chars,
+                                acl: acl.clone(),
+                                content_revision,
                             },
                             acl,
                         ))
@@ -3844,6 +3894,246 @@ impl Store {
             documents,
             has_more,
         })
+    }
+
+    pub fn document_summary_scoped(
+        &self,
+        id: &str,
+        principal_acl: &[String],
+    ) -> Result<Option<DocumentSummary>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let record = connection
+            .query_row(
+                "SELECT d.id,d.source,d.source_id,d.title,d.uri,d.updated_at,d.project,
+                        d.acl_json,d.content_hash,
+                        (SELECT COUNT(*) FROM chunks c WHERE c.document_id=d.id),
+                        CASE WHEN length(d.content)>0 THEN length(d.content)
+                             ELSE COALESCE((SELECT SUM(length(c.content))
+                                            FROM chunks c WHERE c.document_id=d.id),0) END
+                 FROM documents d WHERE d.id=?1",
+                [id],
+                |row| {
+                    let acl_json = row.get::<_, String>(7)?;
+                    let acl = serde_json::from_str::<Vec<String>>(&acl_json).map_err(|error| {
+                        rusqlite::Error::FromSqlConversionFailure(7, Type::Text, Box::new(error))
+                    })?;
+                    Ok(DocumentSummary {
+                        id: row.get(0)?,
+                        source: row.get(1)?,
+                        source_id: row.get(2)?,
+                        title: row.get(3)?,
+                        uri: row.get(4)?,
+                        updated_at: row.get(5)?,
+                        project: row.get(6)?,
+                        chunk_count: usize::try_from(row.get::<_, i64>(9)?).unwrap_or(usize::MAX),
+                        content_chars: usize::try_from(row.get::<_, i64>(10)?)
+                            .unwrap_or(usize::MAX),
+                        acl,
+                        content_revision: row.get(8)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(record.filter(|document| acl_allows(&document.acl, principal_acl)))
+    }
+
+    pub fn graph_document_links_scoped(
+        &self,
+        document_ids: &[String],
+        principal_acl: &[String],
+        limit: usize,
+    ) -> Result<Vec<DocumentGraphLink>> {
+        if document_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let document_ids_json = serde_json::to_string(document_ids)?;
+        let scan_limit = limit.clamp(1, 400).saturating_mul(4);
+        let mut statement = connection.prepare(
+            "WITH page_documents(id) AS (
+               SELECT value FROM json_each(?1) WHERE type='text'
+             ), candidate_links(source_id,target_id) AS (
+               SELECT source.id,target.id
+               FROM page_documents page
+               JOIN document_links link ON link.document_id=page.id
+               JOIN documents source ON source.id=link.document_id
+               JOIN documents target
+                 ON target.project=source.project
+                AND target.id<>source.id
+                AND (target.id=link.target
+                     OR (target.source=source.source AND target.source_id=link.target)
+                     OR target.uri=link.target)
+               UNION
+               SELECT source.id,target.id
+               FROM page_documents page
+               JOIN documents target ON target.id=page.id
+               JOIN document_links link
+                 ON link.target=target.id
+                 OR link.target=target.source_id
+                 OR (target.uri IS NOT NULL AND link.target=target.uri)
+               JOIN documents source
+                 ON source.id=link.document_id
+                AND source.project=target.project
+                AND source.id<>target.id
+                AND (link.target=target.id
+                     OR (source.source=target.source AND link.target=target.source_id)
+                     OR link.target=target.uri)
+             )
+             SELECT source.id,source.source,source.source_id,source.title,source.uri,
+                    source.updated_at,source.project,source.acl_json,source.content_hash,
+                    target.id,target.source,target.source_id,target.title,target.uri,
+                    target.updated_at,target.project,target.acl_json,target.content_hash
+             FROM candidate_links candidate
+             JOIN documents source ON source.id=candidate.source_id
+             JOIN documents target ON target.id=candidate.target_id
+             ORDER BY source.updated_at DESC,source.id DESC,target.updated_at DESC,target.id DESC
+             LIMIT ?2",
+        )?;
+        let rows = statement
+            .query_map(
+                params![
+                    document_ids_json,
+                    i64::try_from(scan_limit).unwrap_or(1_600)
+                ],
+                |row| {
+                    let source_acl_json = row.get::<_, String>(7)?;
+                    let target_acl_json = row.get::<_, String>(16)?;
+                    let source_acl = serde_json::from_str::<Vec<String>>(&source_acl_json)
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                7,
+                                Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    let target_acl = serde_json::from_str::<Vec<String>>(&target_acl_json)
+                        .map_err(|error| {
+                            rusqlite::Error::FromSqlConversionFailure(
+                                16,
+                                Type::Text,
+                                Box::new(error),
+                            )
+                        })?;
+                    Ok(DocumentGraphLink {
+                        source: DocumentSummary {
+                            id: row.get(0)?,
+                            source: row.get(1)?,
+                            source_id: row.get(2)?,
+                            title: row.get(3)?,
+                            uri: row.get(4)?,
+                            updated_at: row.get(5)?,
+                            project: row.get(6)?,
+                            chunk_count: 0,
+                            content_chars: 0,
+                            acl: source_acl,
+                            content_revision: row.get(8)?,
+                        },
+                        target: DocumentSummary {
+                            id: row.get(9)?,
+                            source: row.get(10)?,
+                            source_id: row.get(11)?,
+                            title: row.get(12)?,
+                            uri: row.get(13)?,
+                            updated_at: row.get(14)?,
+                            project: row.get(15)?,
+                            chunk_count: 0,
+                            content_chars: 0,
+                            acl: target_acl,
+                            content_revision: row.get(17)?,
+                        },
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        Ok(rows
+            .into_iter()
+            .filter(|link| {
+                acl_allows(&link.source.acl, principal_acl)
+                    && acl_allows(&link.target.acl, principal_acl)
+            })
+            .take(limit.clamp(1, 400))
+            .collect())
+    }
+
+    pub fn graph_document_metadata_scoped(
+        &self,
+        document_ids: &[String],
+        principal_acl: &[String],
+    ) -> Result<Vec<DocumentGraphMetadata>> {
+        if document_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let document_ids_json = serde_json::to_string(document_ids)?;
+        let mut statement = connection.prepare(
+            "WITH page_documents(id) AS (
+               SELECT value FROM json_each(?1) WHERE type='text'
+             )
+             SELECT d.id,d.acl_json,
+                    CASE
+                      WHEN json_type(d.metadata_json,'$.thread_id')='text'
+                        AND length(json_extract(d.metadata_json,'$.thread_id'))<=256
+                        THEN json_extract(d.metadata_json,'$.thread_id')
+                      WHEN json_type(d.metadata_json,'$.conversation_id')='text'
+                        AND length(json_extract(d.metadata_json,'$.conversation_id'))<=256
+                        THEN json_extract(d.metadata_json,'$.conversation_id')
+                      WHEN json_type(d.metadata_json,'$.series_id')='text'
+                        AND length(json_extract(d.metadata_json,'$.series_id'))<=256
+                        THEN json_extract(d.metadata_json,'$.series_id')
+                    END,
+                    CASE WHEN json_type(d.metadata_json,'$.author')='text'
+                               AND length(json_extract(d.metadata_json,'$.author'))<=256
+                         THEN json_extract(d.metadata_json,'$.author') END,
+                    COALESCE((SELECT json_group_array(value)
+                              FROM json_each(d.metadata_json,'$.authors')
+                              WHERE json_type(d.metadata_json,'$.authors')='array'
+                                AND type='text' AND CAST(key AS INTEGER)<16
+                                AND length(value)<=256),'[]'),
+                    COALESCE((SELECT json_group_array(value)
+                              FROM json_each(d.metadata_json,'$.entities')
+                              WHERE json_type(d.metadata_json,'$.entities')='array'
+                                AND type='text' AND CAST(key AS INTEGER)<32
+                                AND length(value)<=256),'[]')
+             FROM page_documents page JOIN documents d ON d.id=page.id
+             ORDER BY d.updated_at DESC,d.id DESC",
+        )?;
+        let rows = statement
+            .query_map([document_ids_json], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut metadata = Vec::with_capacity(rows.len());
+        for (document_id, acl_json, thread_key, author, authors_json, entities_json) in rows {
+            let acl = serde_json::from_str::<Vec<String>>(&acl_json)?;
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            let mut authors = serde_json::from_str::<Vec<String>>(&authors_json)?;
+            if let Some(author) = author {
+                authors.push(author);
+            }
+            authors.retain(|value| safe_graph_metadata_value(value));
+            authors.sort();
+            authors.dedup();
+            let mut entities = serde_json::from_str::<Vec<String>>(&entities_json)?;
+            entities.retain(|value| safe_graph_metadata_value(value));
+            entities.sort();
+            entities.dedup();
+            metadata.push(DocumentGraphMetadata {
+                document_id,
+                thread_key: thread_key.filter(|value| safe_graph_metadata_value(value)),
+                authors,
+                entities,
+            });
+        }
+        Ok(metadata)
     }
 
     pub fn document_scoped(
@@ -3948,6 +4238,8 @@ impl Store {
                 project,
                 chunk_count: usize::try_from(chunk_count).unwrap_or(usize::MAX),
                 content_chars: usize::try_from(content_chars).unwrap_or(usize::MAX),
+                acl: acl.clone(),
+                content_revision: String::new(),
             },
             content,
             metadata,
@@ -3956,6 +4248,63 @@ impl Store {
             surrounding,
             truncated,
         }))
+    }
+
+    /// Load the canonical code document behind a repository-qualified source identity.
+    pub fn code_document_by_source_id_scoped(
+        &self,
+        source_id: &str,
+        project: Option<&str>,
+        principal_acl: &[String],
+    ) -> Result<Option<Document>> {
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let mut statement = connection.prepare(
+            "SELECT source,source_id,title,uri,updated_at,project,acl_json,metadata_json,content
+             FROM documents WHERE source_id=?1 AND (?2 IS NULL OR project=?2)
+             ORDER BY updated_at DESC LIMIT 8",
+        )?;
+        let rows = statement.query_map(params![source_id, project], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+            ))
+        })?;
+        for row in rows {
+            let (
+                source,
+                source_id,
+                title,
+                uri,
+                updated_at,
+                project,
+                acl_json,
+                metadata_json,
+                content,
+            ) = row?;
+            let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            return Ok(Some(Document {
+                source,
+                source_id,
+                title,
+                content,
+                uri,
+                updated_at: updated_at.parse()?,
+                project,
+                acl,
+                metadata: serde_json::from_str(&metadata_json)?,
+            }));
+        }
+        Ok(None)
     }
 
     pub fn all_chunks(
@@ -3967,13 +4316,264 @@ impl Store {
         let mut statement = connection.prepare(
             "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
                     c.embedding_blob,c.embedding_json,d.updated_at,c.strategy,
-                    c.parent_key,c.previous_key,c.next_key
+                    c.parent_key,c.previous_key,c.next_key,d.metadata_json
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
         )?;
         let rows = statement.query_map(params![project, source], row_to_chunk)?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    /// Search the rebuildable code-symbol projection after applying document ACLs.
+    /// Exact identifiers rank before qualified-name, signature, and documentation matches.
+    pub fn search_code_symbols(
+        &self,
+        query: &str,
+        project: Option<&str>,
+        source: Option<&str>,
+        filters: &CodeSymbolFilters,
+        principal_acl: &[String],
+        limit: usize,
+    ) -> Result<Vec<SymbolSearchHit>> {
+        let limit = limit.clamp(1, crate::retrieval::MAX_RESULT_LIMIT);
+        let query = query.trim().to_ascii_lowercase();
+        anyhow::ensure!(!query.is_empty(), "code symbol query is empty");
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let index_count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM code_indexes ci JOIN documents d ON d.id=ci.document_id
+             WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
+            params![project, source],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            usize::try_from(index_count).unwrap_or(usize::MAX) <= MAX_CODE_INDEX_SCAN,
+            "code symbol index scan budget exceeded"
+        );
+        let mut statement = connection.prepare(
+            "SELECT ci.output_json,d.acl_json FROM code_indexes ci
+             JOIN documents d ON d.id=ci.document_id
+             WHERE (?1 IS NULL OR d.project=?1) AND (?2 IS NULL OR d.source=?2)",
+        )?;
+        let rows = statement.query_map(params![project, source], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut matches = Vec::new();
+        let mut scanned = 0_usize;
+        for row in rows {
+            let (output_json, acl_json) = row?;
+            let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            let output: ParseOutput = serde_json::from_str(&output_json)?;
+            for symbol in output.symbols {
+                scanned = scanned.saturating_add(1);
+                anyhow::ensure!(
+                    scanned <= MAX_CODE_SYMBOL_SCAN,
+                    "code symbol scan budget exceeded"
+                );
+                if filters
+                    .repository_id
+                    .as_deref()
+                    .is_some_and(|value| symbol.repository_id.as_deref() != Some(value))
+                    || filters
+                        .revision
+                        .as_deref()
+                        .is_some_and(|value| symbol.revision.as_deref() != Some(value))
+                    || filters
+                        .language
+                        .is_some_and(|value| symbol.language != value)
+                    || filters
+                        .file
+                        .as_deref()
+                        .is_some_and(|value| symbol.file != value)
+                    || filters
+                        .qualified_name
+                        .as_deref()
+                        .is_some_and(|value| symbol.qualified_name != value)
+                {
+                    continue;
+                }
+                let exact = symbol.name.eq_ignore_ascii_case(&query)
+                    || symbol.qualified_name.eq_ignore_ascii_case(&query);
+                let searchable = format!(
+                    "{} {} {} {}",
+                    symbol.name,
+                    symbol.qualified_name,
+                    symbol.signature,
+                    symbol.documentation.as_deref().unwrap_or_default()
+                )
+                .to_ascii_lowercase();
+                if exact || searchable.contains(&query) {
+                    matches.push((exact, symbol));
+                }
+            }
+        }
+        matches.sort_by(|left, right| {
+            right
+                .0
+                .cmp(&left.0)
+                .then_with(|| left.1.qualified_name.cmp(&right.1.qualified_name))
+                .then_with(|| left.1.file.cmp(&right.1.file))
+        });
+        let exact_count = matches.iter().filter(|(exact, _)| *exact).count();
+        Ok(matches
+            .into_iter()
+            .take(limit)
+            .map(|(exact, symbol)| SymbolSearchHit {
+                symbol,
+                exact,
+                ambiguous: exact && exact_count > 1,
+            })
+            .collect())
+    }
+
+    /// Return a bounded, ACL-filtered graph page. Resolution and traversal operate only over
+    /// visible indexes, are repository/revision scoped, and never guess ambiguous targets.
+    #[allow(clippy::too_many_arguments)]
+    pub fn code_relations(
+        &self,
+        symbol_id: &str,
+        project: Option<&str>,
+        principal_acl: &[String],
+        query: RelationQuery,
+        depth: usize,
+        cursor: usize,
+        limit: usize,
+    ) -> Result<RelationPage> {
+        let limit = limit.clamp(1, crate::retrieval::MAX_RESULT_LIMIT);
+        let connection = self.connection.lock().expect("store lock poisoned");
+        let index_count: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM code_indexes ci JOIN documents d ON d.id=ci.document_id
+             WHERE (?1 IS NULL OR d.project=?1)",
+            [project],
+            |row| row.get(0),
+        )?;
+        anyhow::ensure!(
+            usize::try_from(index_count).unwrap_or(usize::MAX) <= MAX_CODE_INDEX_SCAN,
+            "code relation index scan budget exceeded"
+        );
+        let mut statement = connection.prepare(
+            "SELECT ci.output_json,d.acl_json FROM code_indexes ci
+             JOIN documents d ON d.id=ci.document_id WHERE (?1 IS NULL OR d.project=?1)",
+        )?;
+        let rows = statement.query_map([project], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut relations = Vec::<CodeRelation>::new();
+        let mut symbols = HashMap::<(Option<String>, Option<String>, String), Vec<String>>::new();
+        for row in rows {
+            let (output_json, acl_json) = row?;
+            let acl: Vec<String> = serde_json::from_str(&acl_json)?;
+            if !acl_allows(&acl, principal_acl) {
+                continue;
+            }
+            let output: ParseOutput = serde_json::from_str(&output_json)?;
+            for symbol in output.symbols {
+                for name in [symbol.name, symbol.qualified_name] {
+                    symbols
+                        .entry((symbol.repository_id.clone(), symbol.revision.clone(), name))
+                        .or_default()
+                        .push(symbol.id.clone());
+                }
+            }
+            anyhow::ensure!(
+                relations.len().saturating_add(output.relations.len()) <= MAX_CODE_RELATION_SCAN,
+                "code relation scan budget exceeded"
+            );
+            relations.extend(output.relations);
+        }
+
+        for relation in &mut relations {
+            if relation.to_symbol_id.is_some() {
+                continue;
+            }
+            let key = (
+                relation.repository_id.clone(),
+                relation.revision.clone(),
+                relation.to_name.clone(),
+            );
+            if let Some(candidates) = symbols.get(&key) {
+                let unique = candidates.iter().collect::<HashSet<_>>();
+                if unique.len() == 1 {
+                    relation.to_symbol_id = unique.into_iter().next().cloned();
+                    relation.resolved = true;
+                    relation.origin = RelationOrigin::Resolved;
+                    relation.confidence = relation.confidence.max(0.9);
+                } else if unique.len() > 1 {
+                    relation.origin = RelationOrigin::Ambiguous;
+                    relation.resolved = false;
+                    relation.confidence = relation.confidence.min(0.5);
+                }
+            }
+        }
+
+        let max_depth = match query {
+            RelationQuery::Impact => depth.clamp(1, 3),
+            _ => 1,
+        };
+        let mut frontier = HashSet::from([symbol_id.to_string()]);
+        let mut visited = frontier.clone();
+        let mut selected = Vec::<CodeRelation>::new();
+        let mut selected_ids = HashSet::<String>::new();
+        for _ in 0..max_depth {
+            let mut next = HashSet::<String>::new();
+            for relation in &relations {
+                let from = relation.from_symbol_id.as_deref();
+                let to = relation.to_symbol_id.as_deref();
+                let include = match query {
+                    RelationQuery::Neighborhood => {
+                        from.is_some_and(|id| frontier.contains(id))
+                            || to.is_some_and(|id| frontier.contains(id))
+                    }
+                    RelationQuery::Callers => {
+                        relation.kind == RelationKind::Call
+                            && to.is_some_and(|id| frontier.contains(id))
+                    }
+                    RelationQuery::Callees => {
+                        relation.kind == RelationKind::Call
+                            && from.is_some_and(|id| frontier.contains(id))
+                    }
+                    RelationQuery::Dependencies => {
+                        matches!(
+                            relation.kind,
+                            RelationKind::Import | RelationKind::Dependency
+                        ) && from.is_some_and(|id| frontier.contains(id))
+                    }
+                    RelationQuery::Impact => to.is_some_and(|id| frontier.contains(id)),
+                };
+                if !include {
+                    continue;
+                }
+                if selected_ids.insert(relation.id.clone()) {
+                    selected.push(relation.clone());
+                }
+                for adjacent in [from, to].into_iter().flatten() {
+                    if !visited.contains(adjacent) {
+                        next.insert(adjacent.to_string());
+                    }
+                }
+            }
+            if next.is_empty() {
+                break;
+            }
+            visited.extend(next.iter().cloned());
+            frontier = next;
+        }
+        selected.sort_by(|left, right| left.id.cmp(&right.id));
+        let total = selected.len();
+        let page = selected
+            .into_iter()
+            .skip(cursor)
+            .take(limit)
+            .collect::<Vec<_>>();
+        let next = cursor.saturating_add(page.len());
+        Ok(RelationPage {
+            relations: page,
+            next_cursor: (next < total).then(|| next.to_string()),
+            truncated: next < total,
+        })
     }
 
     pub fn semantic_ids(
@@ -4066,7 +4666,7 @@ impl Store {
         let sql = format!(
             "SELECT c.id,d.source,d.source_id,d.title,d.uri,c.content,d.acl_json,
                     c.embedding_blob,c.embedding_json,d.updated_at,c.strategy,
-                    c.parent_key,c.previous_key,c.next_key
+                    c.parent_key,c.previous_key,c.next_key,d.metadata_json
              FROM chunks c JOIN documents d ON d.id=c.document_id
              WHERE c.id IN ({placeholders})"
         );
@@ -4745,6 +5345,10 @@ fn metadata_reference_strings(value: &Value) -> Vec<String> {
     values
 }
 
+fn safe_graph_metadata_value(value: &str) -> bool {
+    !value.trim().is_empty() && value.len() <= 256 && !value.chars().any(char::is_control)
+}
+
 fn collect_metadata_reference_strings(value: &Value, values: &mut HashSet<String>) {
     if values.len() >= 256 {
         return;
@@ -4985,6 +5589,51 @@ struct SemanticCandidate {
     score: f32,
 }
 
+fn replace_code_index(
+    transaction: &Transaction<'_>,
+    document_id: &str,
+    document: &Document,
+) -> Result<()> {
+    transaction.execute(
+        "DELETE FROM code_indexes WHERE document_id=?1",
+        [document_id],
+    )?;
+    if document.metadata.get("code").is_none() {
+        return Ok(());
+    }
+    let output = parse_document(document, &ParseLimits::default(), &AtomicBool::new(false));
+    let repository_id = document
+        .metadata
+        .get("code")
+        .and_then(|value| value.get("repository_id"))
+        .and_then(Value::as_str);
+    let revision = document
+        .metadata
+        .get("code")
+        .and_then(|value| value.get("revision"))
+        .and_then(Value::as_str);
+    let output_json = serde_json::to_string(&output)?;
+    transaction.execute(
+        "INSERT INTO code_indexes(document_id,repository_id,revision,language,parser_version,content_hash,status,output_json)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![document_id, repository_id, revision, output.language.as_str(), &output.parser_version,
+            &output.content_hash, format!("{:?}", output.status).to_ascii_lowercase(), output_json],
+    )?;
+    Ok(())
+}
+
+fn code_index_current(document: &Document, output_json: Option<&str>) -> bool {
+    if document.metadata.get("code").is_none() {
+        return output_json.is_none();
+    }
+    output_json
+        .and_then(|value| serde_json::from_str::<ParseOutput>(value).ok())
+        .is_some_and(|output| {
+            output.parser_version == crate::code_intelligence::BOUNDED_PARSER_VERSION
+                && output.cache_key == parser_cache_key(document, &ParseLimits::default())
+        })
+}
+
 impl PartialEq for SemanticCandidate {
     fn eq(&self, other: &Self) -> bool {
         self.score.to_bits() == other.score.to_bits() && self.id == other.id
@@ -5043,6 +5692,9 @@ fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
         parent_key: row.get(11)?,
         previous_key: row.get(12)?,
         next_key: row.get(13)?,
+        metadata: serde_json::from_str(&row.get::<_, String>(14)?).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(14, Type::Text, Box::new(error))
+        })?,
     })
 }
 
@@ -5483,13 +6135,20 @@ fn hex_digest(value: &[u8]) -> String {
 }
 
 fn document_hash(document: &Document) -> Result<String> {
+    let mut metadata = document.metadata.clone();
+    if let Some(code) = metadata.get_mut("code").and_then(Value::as_object_mut) {
+        // Observation time is useful provenance, but it is not part of the
+        // searchable payload or derived-index identity. Excluding it lets an
+        // unchanged repository scan reuse chunks, embeddings, and relations.
+        code.remove("observed_at");
+    }
     let value = serde_json::to_vec(&serde_json::json!({
         "title": document.title,
         "content": document.content,
         "uri": document.uri,
         "project": document.project,
         "acl": document.acl,
-        "metadata": document.metadata,
+        "metadata": metadata,
     }))?;
     Ok(hex_digest(&value))
 }
@@ -5578,6 +6237,270 @@ mod tests {
             !store
                 .upsert_structured(&value, &embedded)
                 .expect("idempotent insert")
+        );
+    }
+
+    #[test]
+    fn code_symbol_projection_is_revision_aware_ambiguous_and_acl_scoped() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut work = document("repo:src/work.rs", "pub fn shared_symbol() {}");
+        work.source = "code".into();
+        work.acl = vec!["work".into()];
+        work.metadata = serde_json::json!({"code": {"repository_id": "repo", "revision": "aaa:main:committed"}});
+        let mut private = document("repo:src/private.rs", "pub fn shared_symbol() {}");
+        private.source = "code".into();
+        private.acl = vec!["personal".into()];
+        private.metadata = serde_json::json!({"code": {"repository_id": "repo-private", "revision": "aaa:main:committed"}});
+        store
+            .upsert(&work, &[(work.content.clone(), vec![1.0])])
+            .expect("work index");
+        store
+            .upsert(&private, &[(private.content.clone(), vec![1.0])])
+            .expect("private index");
+
+        let work_results = store
+            .search_code_symbols(
+                "shared_symbol",
+                Some("demo"),
+                Some("code"),
+                &CodeSymbolFilters::default(),
+                &["work".into()],
+                10,
+            )
+            .expect("work lookup");
+        assert_eq!(work_results.len(), 1);
+        assert!(
+            !work_results[0].ambiguous,
+            "hidden definitions cannot create ambiguity"
+        );
+        let old_id = work_results[0].symbol.id.clone();
+
+        work.metadata["code"]["revision"] = serde_json::json!("bbb:feature:dirty");
+        store
+            .upsert(&work, &[(work.content.clone(), vec![1.0])])
+            .expect("revision update");
+        let updated = store
+            .search_code_symbols(
+                "shared_symbol",
+                Some("demo"),
+                Some("code"),
+                &CodeSymbolFilters::default(),
+                &["work".into()],
+                10,
+            )
+            .expect("updated lookup");
+        assert_ne!(old_id, updated[0].symbol.id);
+        assert_eq!(
+            updated[0].symbol.revision.as_deref(),
+            Some("bbb:feature:dirty")
+        );
+
+        let owner = store
+            .search_code_symbols(
+                "shared_symbol",
+                Some("demo"),
+                Some("code"),
+                &CodeSymbolFilters::default(),
+                &["*".into()],
+                10,
+            )
+            .expect("owner lookup");
+        assert_eq!(owner.len(), 2);
+        assert!(owner.iter().all(|result| result.ambiguous));
+
+        let filtered = store
+            .search_code_symbols(
+                "shared_symbol",
+                Some("demo"),
+                Some("code"),
+                &CodeSymbolFilters {
+                    repository_id: Some("repo-private".into()),
+                    revision: Some("aaa:main:committed".into()),
+                    language: Some(crate::code_intelligence::Language::Rust),
+                    file: Some("repo:src/private.rs".into()),
+                    qualified_name: Some("shared_symbol".into()),
+                },
+                &["*".into()],
+                10,
+            )
+            .expect("disambiguated lookup");
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(
+            filtered[0].symbol.repository_id.as_deref(),
+            Some("repo-private")
+        );
+
+        let old_source_id = work.source_id.clone();
+        work.source_id = "repo:src/renamed.rs".into();
+        store
+            .upsert(&work, &[(work.content.clone(), vec![1.0])])
+            .expect("renamed document");
+        assert_eq!(
+            store
+                .reconcile(
+                    "code",
+                    "demo",
+                    &[work.source_id.clone(), private.source_id.clone()],
+                )
+                .expect("rename reconciliation"),
+            1
+        );
+        let deleted = store
+            .search_code_symbols(
+                "shared_symbol",
+                Some("demo"),
+                Some("code"),
+                &CodeSymbolFilters {
+                    file: Some(old_source_id),
+                    ..CodeSymbolFilters::default()
+                },
+                &["*".into()],
+                10,
+            )
+            .expect("deleted projection lookup");
+        assert!(deleted.is_empty());
+    }
+
+    #[test]
+    fn code_observation_time_does_not_reindex_unchanged_searchable_payload() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut code = document("repo:src/lib.rs", "pub fn stable_symbol() {}");
+        code.source = "code".into();
+        code.metadata = serde_json::json!({"code": {
+            "repository_id": "repo",
+            "revision": "aaa:main:committed",
+            "observed_at": "2026-01-01T00:00:00Z"
+        }});
+        assert!(
+            store
+                .upsert(&code, &[(code.content.clone(), vec![1.0])])
+                .expect("initial index")
+        );
+        code.metadata["code"]["observed_at"] = serde_json::json!("2026-01-02T00:00:00Z");
+        assert!(
+            !store
+                .upsert(&code, &[(code.content.clone(), vec![2.0])])
+                .expect("unchanged index")
+        );
+    }
+
+    #[test]
+    fn stale_parser_projection_forces_derived_rebuild_without_content_change() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut code = document("repo:src/lib.rs", "pub fn stable_symbol() {}");
+        code.source = "code".into();
+        code.metadata = serde_json::json!({"code": {
+            "repository_id": "repo",
+            "revision": "aaa:main:committed"
+        }});
+        assert!(
+            store
+                .upsert(&code, &[(code.content.clone(), vec![1.0])])
+                .expect("initial index")
+        );
+        {
+            let connection = store.connection.lock().expect("store lock");
+            let output_json: String = connection
+                .query_row("SELECT output_json FROM code_indexes", [], |row| row.get(0))
+                .expect("projection");
+            let mut output: ParseOutput = serde_json::from_str(&output_json).expect("parse output");
+            output.parser_version = "stale-parser".into();
+            connection
+                .execute(
+                    "UPDATE code_indexes SET parser_version='stale-parser',output_json=?1",
+                    [serde_json::to_string(&output).expect("output JSON")],
+                )
+                .expect("stale projection");
+        }
+        assert!(store.needs_update(&code).expect("stale check"));
+        assert!(
+            store
+                .upsert(&code, &[(code.content.clone(), vec![1.0])])
+                .expect("rebuild")
+        );
+    }
+
+    #[test]
+    fn code_graph_resolves_cross_file_calls_and_bounds_impact_cycles() {
+        let directory = tempdir().expect("temporary directory");
+        let store = Store::open(&directory.path().join("store.sqlite3")).expect("open store");
+        let mut target = document(
+            "repo:src/target.rs",
+            "pub fn target_symbol() { caller_symbol(); }",
+        );
+        let mut caller = document(
+            "repo:src/caller.rs",
+            "pub fn caller_symbol() { target_symbol(); }",
+        );
+        for value in [&mut target, &mut caller] {
+            value.source = "code".into();
+            value.acl = vec!["work".into()];
+            value.metadata = serde_json::json!({"code": {
+                "repository_id": "repo",
+                "revision": "abc:main:committed"
+            }});
+            store
+                .upsert(value, &[(value.content.clone(), vec![1.0])])
+                .expect("code index");
+        }
+        let mut foreign = document("other:src/target.rs", "pub fn target_symbol() {}");
+        foreign.source = "code".into();
+        foreign.acl = vec!["work".into()];
+        foreign.metadata = serde_json::json!({"code": {
+            "repository_id": "other",
+            "revision": "abc:main:committed"
+        }});
+        store
+            .upsert(&foreign, &[(foreign.content.clone(), vec![1.0])])
+            .expect("duplicate-repository index");
+        let target_id = store
+            .search_code_symbols(
+                "target_symbol",
+                Some("demo"),
+                Some("code"),
+                &CodeSymbolFilters::default(),
+                &["work".into()],
+                10,
+            )
+            .expect("target lookup")
+            .into_iter()
+            .find(|hit| hit.symbol.repository_id.as_deref() == Some("repo"))
+            .expect("repository target")
+            .symbol
+            .id
+            .clone();
+        let callers = store
+            .code_relations(
+                &target_id,
+                Some("demo"),
+                &["work".into()],
+                RelationQuery::Callers,
+                1,
+                0,
+                10,
+            )
+            .expect("callers");
+        assert_eq!(callers.relations.len(), 1);
+        assert!(callers.relations[0].resolved);
+        assert_eq!(callers.relations[0].origin, RelationOrigin::Resolved);
+        let impact = store
+            .code_relations(
+                &target_id,
+                Some("demo"),
+                &["work".into()],
+                RelationQuery::Impact,
+                99,
+                0,
+                50,
+            )
+            .expect("impact graph");
+        assert_eq!(
+            impact.relations.len(),
+            2,
+            "cycle must not expand repeatedly"
         );
     }
 

@@ -113,13 +113,13 @@ export const demoDesktopInfo: DesktopInfo = {
 export const demoDesktopServices: DesktopServiceReport = {
   platform: 'demo',
   supported: true,
-  services: (['embedding', 'server', 'sync', 'backup'] as const).map((name) => ({
+  services: (['embedding', 'server', 'sync', 'backup', 'vault'] as const).map((name) => ({
     name,
     label: `demo.cortana.${name}`,
     installed: true,
-    loaded: name !== 'sync',
-    state: name === 'sync' ? 'scheduled' : 'running',
-    pid: name === 'sync' ? null : 4242,
+    loaded: name !== 'sync' && name !== 'vault',
+    state: name === 'sync' || name === 'vault' ? 'scheduled' : 'running',
+    pid: name === 'sync' || name === 'vault' ? null : 4242,
     last_exit_status: null,
   })),
 }

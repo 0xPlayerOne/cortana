@@ -82,6 +82,10 @@ Shared or least-privilege agents must use a scoped bearer principal through MCP 
 
 See [Agent integrations](docs/integrations.md) and [Query](docs/query.md).
 
+Optional, ACL-scoped Markdown browsing is documented in the
+[Derived Obsidian vault guide](docs/obsidian-vault.md). It remains a rebuildable projection and is
+never a source, backup, reconciliation, or memory authority.
+
 ## Planning and evidence ownership
 
 [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) are the only authority for current scope, sequencing, ownership, dates, dependencies, blockers, status, and task-level acceptance evidence.

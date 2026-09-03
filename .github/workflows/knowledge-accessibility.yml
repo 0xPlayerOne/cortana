@@ -1,0 +1,49 @@
+name: Knowledge accessibility
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/knowledge-accessibility.yml'
+      - 'apps/web/**'
+      - 'scripts/knowledge-accessibility-acceptance.mjs'
+      - 'bun.lock'
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: knowledge-accessibility-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    name: Chromium, axe, keyboard, and zoom
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Install Chromium
+        run: bunx playwright install --with-deps chromium
+      - name: Run knowledge accessibility acceptance
+        run: bun run test:knowledge-accessibility
+      - name: Upload non-secret evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: knowledge-accessibility-${{ github.sha }}
+          path: artifacts/knowledge-accessibility
+          if-no-files-found: error
+          retention-days: 30

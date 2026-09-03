@@ -48,6 +48,37 @@ fn deterministic_evaluation_cli_passes_built_in_thresholds() {
 }
 
 #[test]
+fn knowledge_evaluation_cli_gates_large_corpus_and_released_edges() {
+    let output = Command::cargo_bin("cortana")
+        .expect("cortana binary")
+        .args(["eval", "--knowledge"])
+        .output()
+        .expect("knowledge evaluation command");
+    assert!(
+        output.status.success(),
+        "knowledge evaluation failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("knowledge evaluation JSON");
+    assert_eq!(report["passed"], true);
+    assert_eq!(report["provider_free"], true);
+    assert_eq!(report["corpus"]["workspaces"], 25);
+    assert_eq!(report["corpus"]["documents"], 2_500);
+    assert_eq!(report["relationship_correctness"]["edge_precision"], 1.0);
+    assert_eq!(report["relationship_correctness"]["edge_coverage"], 1.0);
+    assert_eq!(report["safety"]["acl_leaks"], 0);
+    assert_eq!(report["safety"]["invalidation_failures"], 0);
+    assert_eq!(report["release"]["semantic_neighbors_enabled"], false);
+    assert_eq!(report["release"]["approved_corpus_gate"], "not-run");
+    assert_eq!(
+        report["visual_usability"]["status"],
+        "separate-packaged-gate"
+    );
+    assert_eq!(report["evaluation_digest"].as_str().map(str::len), Some(64));
+}
+
+#[test]
 fn memory_intelligence_evaluation_keeps_automatic_retention_gated() {
     let output = Command::cargo_bin("cortana")
         .expect("cortana binary")

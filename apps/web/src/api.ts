@@ -29,6 +29,7 @@ import type {
   DesktopSettingsExport,
   DesktopSettingsImport,
   DesktopSettingsUpdate,
+  DesktopVaultExport,
   DesktopSecretStorageMigration,
   DesktopSourceJob,
   DesktopUpdate,
@@ -81,6 +82,28 @@ export async function exportDesktopSettings(): Promise<DesktopSettingsExport | n
 export async function importDesktopSettings(): Promise<DesktopSettingsImport | null> {
   if (!isDesktopApp) throw new Error('Settings import is available in Cortana Desktop')
   return invokeDesktop<DesktopSettingsImport | null>('desktop_settings_import')
+}
+
+export async function startDesktopVaultExport(
+  workspaces: string[],
+  dryRun: boolean
+): Promise<DesktopVaultExport | null> {
+  if (!isDesktopApp) throw new Error('Vault export is available in Cortana Desktop')
+  return invokeDesktop<DesktopVaultExport | null>('desktop_vault_export_start', {
+    workspaces,
+    dryRun,
+    approved: !dryRun,
+  })
+}
+
+export async function getDesktopVaultExport(id: string): Promise<DesktopVaultExport> {
+  if (!isDesktopApp) throw new Error('Vault export is available in Cortana Desktop')
+  return invokeDesktop<DesktopVaultExport>('desktop_vault_export_status', { id })
+}
+
+export async function cancelDesktopVaultExport(id: string): Promise<DesktopVaultExport> {
+  if (!isDesktopApp) throw new Error('Vault export is available in Cortana Desktop')
+  return invokeDesktop<DesktopVaultExport>('desktop_vault_export_cancel', { id })
 }
 
 export async function scanDesktopReadiness(): Promise<DesktopReadiness> {
@@ -768,70 +791,156 @@ export async function getGraph(
   source?: string,
   query?: string,
   cursor?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: {
+    focusDocumentId?: string
+    edgeKind?: BrainGraphPage['edges'][number]['kind']
+    origin?: NonNullable<BrainGraphPage['edges'][number]['origin']>
+    minConfidence?: number
+  } = {}
 ): Promise<BrainGraphPage> {
   if (isDemoMode) {
     const page = await getDocuments(project, source, query, cursor, signal)
+    const contractVersion = 'cortana.knowledge-graph.v1' as const
+    const derivationVersion = 'cortana.graph-derivation.v1'
     const nodes: BrainGraphPage['nodes'] = []
     const edges: BrainGraphPage['edges'] = []
     const seen = new Set<string>()
     for (const document of page.documents) {
-      const workspaceId = `workspace:${JSON.stringify([document.project])}`
-      const sourceId = `source:${JSON.stringify([document.project, document.source])}`
+      const workspaceId = `workspace:${encodeURIComponent(document.project)}`
+      const sourceId = `source:${encodeURIComponent(JSON.stringify([document.project, document.source]))}`
+      const documentId = `document:${encodeURIComponent(document.id)}`
+      const invalidationKey = `document:${document.id}@updated:${document.updated_at}`
       if (!seen.has(workspaceId)) {
         seen.add(workspaceId)
         nodes.push({
+          contract_version: contractVersion,
           id: workspaceId,
           kind: 'workspace',
           label: document.project,
           project: document.project,
           source: null,
+          canonical_record_id: document.project,
           document_id: null,
+          updated_at: document.updated_at,
+          acl: [],
+          content_revision: document.updated_at,
+          lifecycle_status: 'active',
         })
       }
       if (!seen.has(sourceId)) {
         seen.add(sourceId)
         nodes.push({
+          contract_version: contractVersion,
           id: sourceId,
           kind: 'source',
           label: document.source,
           project: document.project,
           source: document.source,
+          canonical_record_id: document.source,
           document_id: null,
+          updated_at: document.updated_at,
+          acl: [],
+          content_revision: document.updated_at,
+          lifecycle_status: 'active',
         })
-        edges.push({ source: workspaceId, target: sourceId, kind: 'contains' })
+        edges.push({
+          contract_version: contractVersion,
+          source: workspaceId,
+          target: sourceId,
+          kind: 'contains',
+          origin: 'explicit',
+          derivation_version: derivationVersion,
+          confidence: null,
+          citation_authority: true,
+          updated_at: document.updated_at,
+          project: document.project,
+          acl: [],
+          support: { record_ids: [document.id], invalidation_keys: [invalidationKey] },
+        })
       }
-      const documentId = `document:${document.id}`
       nodes.push({
+        contract_version: contractVersion,
         id: documentId,
         kind: 'document',
         label: document.title,
         project: document.project,
         source: document.source,
+        canonical_record_id: document.id,
         document_id: document.id,
+        updated_at: document.updated_at,
+        acl: [],
+        content_revision: document.updated_at,
+        lifecycle_status: 'active',
       })
-      edges.push({ source: sourceId, target: documentId, kind: 'contains' })
+      edges.push({
+        contract_version: contractVersion,
+        source: sourceId,
+        target: documentId,
+        kind: 'contains',
+        origin: 'explicit',
+        derivation_version: derivationVersion,
+        confidence: null,
+        citation_authority: true,
+        updated_at: document.updated_at,
+        project: document.project,
+        acl: [],
+        support: { record_ids: [document.id], invalidation_keys: [invalidationKey] },
+      })
     }
-    return { nodes, edges, next_cursor: page.next_cursor }
+    const filteredEdges = edges.filter(
+      (edge) =>
+        (!options.edgeKind || edge.kind === options.edgeKind) &&
+        (!options.origin || edge.origin === options.origin) &&
+        (options.minConfidence == null ||
+          (edge.confidence != null && edge.confidence >= options.minConfidence))
+    )
+    const filteredNodes =
+      filteredEdges.length === edges.length
+        ? nodes
+        : nodes.filter((node) =>
+            filteredEdges.some((edge) => edge.source === node.id || edge.target === node.id)
+          )
+    return {
+      contract_version: contractVersion,
+      nodes: filteredNodes,
+      edges: filteredEdges,
+      next_cursor: page.next_cursor,
+    }
   }
   const request = {
     project: project || null,
     source: source || null,
     query: query || null,
     cursor: cursor || null,
+    focus_document_id: options.focusDocumentId || null,
+    edge_kind: options.edgeKind || null,
+    origin: options.origin || null,
+    min_confidence: options.minConfidence ?? null,
     limit: 100,
   }
   if (isTauri()) {
-    return invokeDesktop<BrainGraphPage>('brain_graph', { request }, signal)
+    return parseGraphResponse(await invokeDesktop<unknown>('brain_graph', { request }, signal))
   }
   const params = new URLSearchParams({ limit: '100' })
   if (project) params.set('project', project)
   if (source) params.set('source', source)
   if (query) params.set('query', query)
   if (cursor) params.set('cursor', cursor)
+  if (options.focusDocumentId) params.set('focus_document_id', options.focusDocumentId)
+  if (options.edgeKind) params.set('edge_kind', options.edgeKind)
+  if (options.origin) params.set('origin', options.origin)
+  if (options.minConfidence != null) {
+    params.set('min_confidence', String(options.minConfidence))
+  }
   const response = await authorizedFetch(`/v1/graph?${params}`, { signal })
   if (!response.ok) throw new Error(`Graph data failed (${response.status})`)
-  return (await response.json()) as BrainGraphPage
+  return parseGraphResponse(await response.json())
+}
+
+async function parseGraphResponse(value: unknown): Promise<BrainGraphPage> {
+  const { parseBrainGraphPage } = await import('./graphResponse')
+  return parseBrainGraphPage(value)
 }
 
 export async function getAnswer(

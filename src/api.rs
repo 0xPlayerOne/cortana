@@ -9,33 +9,44 @@ use std::time::{Duration, Instant};
 use anyhow::{Result, anyhow};
 use axum::{
     Json, Router,
+    body::Bytes,
     extract::{DefaultBodyLimit, Extension, Path as AxumPath, Query as AxumQuery, State},
-    http::{HeaderValue, Request, StatusCode, header},
+    http::{HeaderValue, Request, StatusCode, Uri, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnResponse, TraceLayer};
 use tracing::Level;
+use uuid::Uuid;
 
 use crate::{
     answer::{AnswerEngine, AnswerRequest, AnswerResponse, QueryRuntimeStatus},
     auth::{
         ADMIN_SCOPE, AuthPolicy, MEMORY_SCOPE, Principal, QUERY_SCOPE, STATUS_SCOPE, acl_allows,
     },
+    code_intelligence::{
+        CodeSymbolFilters, Language, RelationQuery, decode_relation_cursor, encode_relation_cursor,
+    },
     config::{Config, WorkspaceConfig},
     context::{self as context_bundle, ContextBundle},
+    contracts::API_CONTRACT_VERSION,
     derived::{DerivedMemoryResponse, derive_authorized_memory},
     embed::Embedder,
+    knowledge_graph::{
+        EdgeKind, EdgeOrigin, GraphContract, GraphEdge, GraphNodeId, NodeKind, RelationshipSupport,
+        require_acl_intersection,
+    },
     memory::MemoryInput,
     observation::ObservationCandidateInput,
     retrieval,
     source_status::{self, ConfiguredSourceStatus},
-    store::{AuditEvent, DocumentCursor, DocumentSummary, Store, StoreStats},
+    store::{AuditEvent, DocumentCursor, DocumentPage, DocumentSummary, Store, StoreStats},
 };
 
 #[cfg(test)]
@@ -45,6 +56,9 @@ const MAX_DOCUMENT_CONTENT_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DOCUMENT_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_QUERY_LENGTH: usize = 256;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
+const MAX_VISIBLE_WORKSPACES: usize = 128;
+const MAX_GRAPH_LABEL_BYTES: usize = 512;
+const MAX_GRAPH_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const READY_EMBEDDING_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const READY_STORE_STATS_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -56,6 +70,7 @@ pub struct AppState {
     auth: Arc<RwLock<AuthRuntime>>,
     ingestion: Arc<IngestionStatus>,
     workspaces: Arc<Vec<WorkspaceConfig>>,
+    graph_edge_kinds: Arc<BTreeSet<EdgeKind>>,
     answer: AnswerEngine,
     retrieval_tuning: retrieval::RetrievalTuning,
     memory_defaults: crate::memory::MemoryDefaults,
@@ -102,6 +117,12 @@ impl AppState {
             auth: Arc::new(RwLock::new(AuthRuntime::new(AuthPolicy::default(), false))),
             ingestion: Arc::new(IngestionStatus::default()),
             workspaces: Arc::new(Vec::new()),
+            graph_edge_kinds: Arc::new(
+                crate::config::KnowledgeGraphConfig::default()
+                    .enabled_edge_kinds
+                    .into_iter()
+                    .collect(),
+            ),
             answer,
             retrieval_tuning: retrieval::RetrievalTuning::default(),
             memory_defaults: crate::memory::MemoryDefaults::default(),
@@ -114,6 +135,14 @@ impl AppState {
     pub fn with_config(mut self, config: &Config, scheduled: bool) -> Self {
         self.ingestion = Arc::new(IngestionStatus::from_config(config, scheduled));
         self.workspaces = Arc::new(config.workspaces.clone());
+        self.graph_edge_kinds = Arc::new(
+            config
+                .knowledge_graph
+                .enabled_edge_kinds
+                .iter()
+                .copied()
+                .collect(),
+        );
         self.memory_defaults = crate::memory::MemoryDefaults {
             confidence: config.memory.default_confidence,
             importance: config.memory.default_importance,
@@ -331,6 +360,57 @@ struct SearchRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct CodeSymbolRequest {
+    query: String,
+    project: Option<String>,
+    source: Option<String>,
+    repository_id: Option<String>,
+    revision: Option<String>,
+    language: Option<String>,
+    file: Option<String>,
+    qualified_name: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CodeRelationQuery {
+    symbol_id: String,
+    project: Option<String>,
+    #[serde(default)]
+    query: RelationQuery,
+    #[serde(default = "default_relation_depth")]
+    depth: usize,
+    cursor: Option<String>,
+    #[serde(default = "default_limit")]
+    limit: usize,
+}
+
+#[derive(Serialize)]
+struct CodeSymbolResponse {
+    contract_version: &'static str,
+    corpus_revision: u64,
+    embedding_fingerprint: String,
+    correlation_id: String,
+    results: Vec<crate::code_intelligence::SymbolSearchHit>,
+}
+
+#[derive(Serialize)]
+struct CodeRelationResponse {
+    contract_version: &'static str,
+    corpus_revision: u64,
+    embedding_fingerprint: String,
+    correlation_id: String,
+    page: crate::code_intelligence::RelationPage,
+}
+
+const fn default_relation_depth() -> usize {
+    1
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ContextRequest {
     query: String,
     project: Option<String>,
@@ -505,6 +585,21 @@ struct DocumentListParams {
     cursor: Option<String>,
     #[serde(default = "default_document_limit")]
     limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GraphParams {
+    project: Option<String>,
+    source: Option<String>,
+    query: Option<String>,
+    cursor: Option<String>,
+    focus_document_id: Option<String>,
+    edge_kind: Option<EdgeKind>,
+    origin: Option<EdgeOrigin>,
+    min_confidence: Option<f32>,
+    #[serde(default = "default_document_limit")]
+    limit: usize,
     #[serde(default)]
     include_derived: bool,
 }
@@ -512,6 +607,16 @@ struct DocumentListParams {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct EncodedDocumentCursor {
+    updated_at: String,
+    id: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct EncodedGraphCursor {
+    contract_version: String,
+    corpus_revision: u64,
+    scope_hash: String,
     updated_at: String,
     id: String,
 }
@@ -524,19 +629,26 @@ struct DocumentListResponse {
 
 #[derive(Debug, Serialize)]
 struct GraphNode {
-    id: String,
-    kind: &'static str,
+    contract_version: &'static str,
+    id: GraphNodeId,
+    kind: NodeKind,
     label: String,
     project: String,
     source: Option<String>,
+    canonical_record_id: Option<String>,
+    /// Compatibility alias for pre-M10 Desktop clients.
     document_id: Option<String>,
+    updated_at: String,
+    acl: Vec<String>,
+    content_revision: String,
+    lifecycle_status: &'static str,
     #[serde(flatten)]
     derived: Option<GraphDerivedMetadata>,
 }
 
 #[derive(Debug, Serialize)]
 struct GraphDerivedMetadata {
-    contract_version: String,
+    representation_contract_version: String,
     derivation_version: String,
     memory_revision: u64,
     supporting_memory_ids: Vec<String>,
@@ -545,17 +657,35 @@ struct GraphDerivedMetadata {
 }
 
 #[derive(Debug, Serialize)]
-struct GraphEdge {
-    source: String,
-    target: String,
-    kind: &'static str,
-}
-
-#[derive(Debug, Serialize)]
 struct GraphResponse {
+    contract_version: &'static str,
+    corpus_revision: u64,
+    response_bytes: usize,
     nodes: Vec<GraphNode>,
     edges: Vec<GraphEdge>,
     next_cursor: Option<String>,
+    truncated: bool,
+    limits: GraphResponseLimits,
+    derivation: GraphDerivationStatus,
+}
+
+#[derive(Debug, Serialize)]
+struct GraphResponseLimits {
+    page_size: usize,
+    max_nodes: usize,
+    max_edges: usize,
+    max_response_bytes: usize,
+}
+
+#[derive(Debug, Serialize)]
+struct GraphDerivationStatus {
+    version: &'static str,
+    mode: &'static str,
+    semantic_neighbors_enabled: bool,
+    enabled_edge_kinds: Vec<EdgeKind>,
+    disabled_edge_kinds: Vec<EdgeKind>,
+    rebuild_required: bool,
+    failures: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -662,6 +792,8 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/documents/{id}", get(document))
         .route("/v1/graph", get(graph))
         .route("/v1/search", post(search))
+        .route("/v1/code/symbols", post(code_symbols))
+        .route("/v1/code/relations", get(code_relations))
         .route("/v1/context", post(context))
         .route("/v1/memory", post(remember_memory))
         .route("/v1/memory/recall", post(recall_memories))
@@ -760,6 +892,19 @@ async fn authorize(
         Some(Principal::local("local-http"))
     };
     let Some(principal) = principal else {
+        if let Some(action) = code_audit_action(path) {
+            record_audit(
+                &state,
+                &Principal::local("http-unauthenticated"),
+                action,
+                None,
+                None,
+                "unauthorized",
+                None,
+                started,
+            );
+            return code_http_error(StatusCode::UNAUTHORIZED);
+        }
         return (
             StatusCode::UNAUTHORIZED,
             [(header::WWW_AUTHENTICATE, "Bearer realm=\"cortana\"")],
@@ -784,6 +929,19 @@ async fn authorize(
         _ => QUERY_SCOPE,
     };
     if !principal.has_scope(required_scope) {
+        if let Some(action) = code_audit_action(path) {
+            record_audit(
+                &state,
+                &principal,
+                action,
+                None,
+                None,
+                "forbidden",
+                None,
+                started,
+            );
+            return code_http_error(StatusCode::FORBIDDEN);
+        }
         if path.ends_with("/consolidate") && path.starts_with("/v1/memory/candidates/") {
             record_audit(
                 &state,
@@ -798,8 +956,65 @@ async fn authorize(
         }
         return StatusCode::FORBIDDEN.into_response();
     }
+    let audit_principal = principal.clone();
+    let code_action = code_audit_action(path);
     request.extensions_mut().insert(principal);
-    next.run(request).await
+    let response = next.run(request).await;
+    if let Some(action) = code_action
+        && (response.status().is_client_error() || response.status().is_server_error())
+    {
+        record_audit(
+            &state,
+            &audit_principal,
+            action,
+            None,
+            None,
+            if response.status().is_client_error() {
+                "transport_invalid"
+            } else {
+                "transport_failed"
+            },
+            None,
+            started,
+        );
+        return code_http_error(response.status());
+    }
+    response
+}
+
+fn code_audit_action(path: &str) -> Option<&'static str> {
+    match path {
+        "/v1/code/symbols" => Some("code.symbols"),
+        "/v1/code/relations" => Some("code.relations"),
+        _ => None,
+    }
+}
+
+fn code_http_error(status: StatusCode) -> Response {
+    let correlation_id = Uuid::new_v4().to_string();
+    let (code, message, retryable) = if status == StatusCode::UNAUTHORIZED {
+        ("unauthorized", "authorization required", false)
+    } else if status == StatusCode::FORBIDDEN {
+        ("forbidden", "query scope required", false)
+    } else if status.is_client_error() {
+        ("invalid_request", "code query request is invalid", false)
+    } else {
+        ("index_unavailable", "code query is unavailable", true)
+    };
+    let mut response = Json(serde_json::json!({
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+        "contract_version": API_CONTRACT_VERSION,
+        "correlation_id": correlation_id,
+    }))
+    .into_response();
+    *response.status_mut() = status;
+    response.headers_mut().insert(
+        "x-cortana-correlation-id",
+        HeaderValue::from_str(&correlation_id).expect("UUID is a valid header value"),
+    );
+    response
 }
 
 async fn provider_capabilities() -> Json<crate::provider::CapabilityDescriptor> {
@@ -957,19 +1172,15 @@ async fn document(
     Extension(principal): Extension<Principal>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<crate::store::DocumentDetail>, (StatusCode, String)> {
-    if id.is_empty()
-        || id.len() > MAX_DOCUMENT_ID_LENGTH
-        || !id.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        return Err((StatusCode::BAD_REQUEST, "invalid document id".into()));
-    }
+    validate_document_id(&id)?;
     let started = Instant::now();
     let acl = principal.visible_acl();
     match state
         .store
         .document_scoped(&id, &acl, MAX_DOCUMENT_CONTENT_BYTES)
     {
-        Ok(Some(document)) => {
+        Ok(Some(mut document)) => {
+            document.metadata = retrieval::sanitize_evidence_metadata(&document.metadata);
             record_audit(
                 &state,
                 &principal,
@@ -1015,7 +1226,7 @@ async fn document(
 async fn graph(
     State(state): State<AppState>,
     Extension(principal): Extension<Principal>,
-    AxumQuery(params): AxumQuery<DocumentListParams>,
+    AxumQuery(params): AxumQuery<GraphParams>,
 ) -> Result<Json<GraphResponse>, (StatusCode, String)> {
     if params.include_derived && !principal.has_scope(MEMORY_SCOPE) {
         return Err((
@@ -1026,27 +1237,73 @@ async fn graph(
     validate_document_scope("project", params.project.as_deref())?;
     validate_document_scope("source", params.source.as_deref())?;
     validate_document_query(params.query.as_deref())?;
+    if let Some(id) = params.focus_document_id.as_deref() {
+        validate_document_id(id)?;
+        if params.cursor.is_some() || params.query.is_some() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "graph focus cannot be combined with cursor or query".into(),
+            ));
+        }
+    }
+    if params
+        .min_confidence
+        .is_some_and(|confidence| !confidence.is_finite() || !(0.0..=1.0).contains(&confidence))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "minimum confidence must be between zero and one".into(),
+        ));
+    }
+    let started = Instant::now();
+    let acl = principal.visible_acl();
+    let corpus_revision = state.store.corpus_revision().map_err(internal_error)?;
+    let cursor_scope = graph_cursor_scope(&params, &acl);
     let cursor = params
         .cursor
         .as_deref()
-        .map(decode_document_cursor)
+        .map(|value| decode_graph_cursor(value, corpus_revision, &cursor_scope))
         .transpose()?;
-    let started = Instant::now();
-    let acl = principal.visible_acl();
-    let result = state.store.list_documents_scoped(
-        params.project.as_deref(),
-        params.source.as_deref(),
-        params.query.as_deref(),
-        cursor.as_ref(),
-        params.limit.clamp(1, 100),
-        &acl,
-    );
+    let page_size = params.limit.clamp(1, GraphContract::MAX_PAGE_SIZE);
+    let result = if let Some(id) = params.focus_document_id.as_deref() {
+        state
+            .store
+            .document_summary_scoped(id, &acl)
+            .map(|document| {
+                let documents = document
+                    .filter(|document| {
+                        params
+                            .project
+                            .as_deref()
+                            .is_none_or(|project| document.project == project)
+                            && params
+                                .source
+                                .as_deref()
+                                .is_none_or(|source| document.source == source)
+                    })
+                    .into_iter()
+                    .collect();
+                DocumentPage {
+                    documents,
+                    has_more: false,
+                }
+            })
+    } else {
+        state.store.list_documents_scoped(
+            params.project.as_deref(),
+            params.source.as_deref(),
+            params.query.as_deref(),
+            cursor.as_ref(),
+            page_size,
+            &acl,
+        )
+    };
     match result {
         Ok(page) => {
             let next_cursor = if page.has_more {
                 page.documents
                     .last()
-                    .map(encode_document_cursor)
+                    .map(|document| encode_graph_cursor(document, corpus_revision, &cursor_scope))
                     .transpose()?
             } else {
                 None
@@ -1055,53 +1312,382 @@ async fn graph(
             let mut edges = Vec::new();
             let mut workspaces = BTreeSet::new();
             let mut sources = BTreeSet::new();
+            let mut document_nodes = BTreeSet::new();
             for document in &page.documents {
-                let workspace_id = format!("workspace:{}", serde_json::json!([document.project]));
-                let source_id = format!(
-                    "source:{}",
-                    serde_json::json!([document.project, document.source])
+                let workspace_id = GraphNodeId::new(NodeKind::Workspace, &document.project)
+                    .map_err(internal_error)?;
+                let source_id = GraphNodeId::new(
+                    NodeKind::Source,
+                    serde_json::json!([document.project, document.source]).to_string(),
+                )
+                .map_err(internal_error)?;
+                let document_id =
+                    GraphNodeId::new(NodeKind::Document, &document.id).map_err(internal_error)?;
+                let invalidation_key = format!(
+                    "document:{}@sha256:{}",
+                    document.id, document.content_revision
                 );
                 if workspaces.insert(workspace_id.clone()) {
                     nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
                         id: workspace_id.clone(),
-                        kind: "workspace",
+                        kind: NodeKind::Workspace,
                         label: document.project.clone(),
                         project: document.project.clone(),
                         source: None,
+                        canonical_record_id: Some(document.project.clone()),
                         document_id: None,
+                        updated_at: document.updated_at.clone(),
+                        acl: Vec::new(),
+                        content_revision: document.content_revision.clone(),
+                        lifecycle_status: "active",
                         derived: None,
                     });
                 }
                 if sources.insert(source_id.clone()) {
                     nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
                         id: source_id.clone(),
-                        kind: "source",
+                        kind: NodeKind::Source,
                         label: document.source.clone(),
                         project: document.project.clone(),
                         source: Some(document.source.clone()),
+                        canonical_record_id: Some(document.source.clone()),
                         document_id: None,
+                        updated_at: document.updated_at.clone(),
+                        acl: Vec::new(),
+                        content_revision: document.content_revision.clone(),
+                        lifecycle_status: "active",
                         derived: None,
                     });
-                    edges.push(GraphEdge {
-                        source: workspace_id,
-                        target: source_id.clone(),
-                        kind: "contains",
-                    });
+                    edges.push(
+                        GraphEdge::new(
+                            workspace_id,
+                            source_id.clone(),
+                            EdgeKind::Contains,
+                            EdgeOrigin::Explicit,
+                            &document.updated_at,
+                            &document.project,
+                            document.acl.clone(),
+                            RelationshipSupport {
+                                record_ids: vec![document.id.clone()],
+                                invalidation_keys: vec![invalidation_key.clone()],
+                            },
+                        )
+                        .map_err(internal_error)?,
+                    );
                 }
+                document_nodes.insert(document_id.clone());
                 nodes.push(GraphNode {
-                    id: format!("document:{}", document.id),
-                    kind: "document",
-                    label: document.title.clone(),
+                    contract_version: GraphContract::VERSION,
+                    id: document_id.clone(),
+                    kind: NodeKind::Document,
+                    label: bounded_graph_label(&document.title),
                     project: document.project.clone(),
                     source: Some(document.source.clone()),
+                    canonical_record_id: Some(document.id.clone()),
                     document_id: Some(document.id.clone()),
+                    updated_at: document.updated_at.clone(),
+                    acl: document.acl.clone(),
+                    content_revision: document.content_revision.clone(),
+                    lifecycle_status: "active",
                     derived: None,
                 });
-                edges.push(GraphEdge {
-                    source: source_id,
-                    target: format!("document:{}", document.id),
-                    kind: "contains",
+                edges.push(
+                    GraphEdge::new(
+                        source_id,
+                        document_id,
+                        EdgeKind::Contains,
+                        EdgeOrigin::Explicit,
+                        &document.updated_at,
+                        &document.project,
+                        document.acl.clone(),
+                        RelationshipSupport {
+                            record_ids: vec![document.id.clone()],
+                            invalidation_keys: vec![invalidation_key],
+                        },
+                    )
+                    .map_err(internal_error)?,
+                );
+            }
+            let page_document_ids = page
+                .documents
+                .iter()
+                .map(|document| document.id.clone())
+                .collect::<Vec<_>>();
+            let document_links = state
+                .store
+                .graph_document_links_scoped(&page_document_ids, &acl, 200)
+                .map_err(internal_error)?;
+            let mut graph_documents = page
+                .documents
+                .iter()
+                .cloned()
+                .map(|document| (document.id.clone(), document))
+                .collect::<BTreeMap<_, _>>();
+            for link in document_links {
+                graph_documents
+                    .entry(link.source.id.clone())
+                    .or_insert_with(|| link.source.clone());
+                graph_documents
+                    .entry(link.target.id.clone())
+                    .or_insert_with(|| link.target.clone());
+                let source_id = GraphNodeId::new(NodeKind::Document, &link.source.id)
+                    .map_err(internal_error)?;
+                let target_id = GraphNodeId::new(NodeKind::Document, &link.target.id)
+                    .map_err(internal_error)?;
+                if document_nodes.insert(source_id.clone()) {
+                    nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
+                        id: source_id.clone(),
+                        kind: NodeKind::Document,
+                        label: bounded_graph_label(&link.source.title),
+                        project: link.source.project.clone(),
+                        source: Some(link.source.source.clone()),
+                        canonical_record_id: Some(link.source.id.clone()),
+                        document_id: Some(link.source.id.clone()),
+                        updated_at: link.source.updated_at.clone(),
+                        acl: link.source.acl.clone(),
+                        content_revision: link.source.content_revision.clone(),
+                        lifecycle_status: "active",
+                        derived: None,
+                    });
+                }
+                if document_nodes.insert(target_id.clone()) {
+                    nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
+                        id: target_id.clone(),
+                        kind: NodeKind::Document,
+                        label: bounded_graph_label(&link.target.title),
+                        project: link.target.project.clone(),
+                        source: Some(link.target.source.clone()),
+                        canonical_record_id: Some(link.target.id.clone()),
+                        document_id: Some(link.target.id.clone()),
+                        updated_at: link.target.updated_at.clone(),
+                        acl: link.target.acl.clone(),
+                        content_revision: link.target.content_revision.clone(),
+                        lifecycle_status: "active",
+                        derived: None,
+                    });
+                }
+                let Ok(relationship_acl) =
+                    require_acl_intersection(&link.source.acl, &link.target.acl)
+                else {
+                    continue;
+                };
+                let support = RelationshipSupport {
+                    record_ids: vec![link.source.id.clone(), link.target.id.clone()],
+                    invalidation_keys: vec![
+                        format!(
+                            "document:{}@sha256:{}",
+                            link.source.id, link.source.content_revision
+                        ),
+                        format!(
+                            "document:{}@sha256:{}",
+                            link.target.id, link.target.content_revision
+                        ),
+                    ],
+                };
+                edges.push(
+                    GraphEdge::new(
+                        source_id.clone(),
+                        target_id.clone(),
+                        EdgeKind::References,
+                        EdgeOrigin::Explicit,
+                        &link.source.updated_at,
+                        &link.source.project,
+                        relationship_acl.clone(),
+                        support.clone(),
+                    )
+                    .map_err(internal_error)?,
+                );
+                edges.push(
+                    GraphEdge::new(
+                        target_id,
+                        source_id,
+                        EdgeKind::Backlink,
+                        EdgeOrigin::Explicit,
+                        &link.source.updated_at,
+                        &link.source.project,
+                        relationship_acl,
+                        support,
+                    )
+                    .map_err(internal_error)?,
+                );
+            }
+            let metadata_document_ids = graph_documents
+                .keys()
+                .take(GraphContract::MAX_NODES_PER_EXPANSION)
+                .cloned()
+                .collect::<Vec<_>>();
+            let graph_metadata = state
+                .store
+                .graph_document_metadata_scoped(&metadata_document_ids, &acl)
+                .map_err(internal_error)?;
+            let mut entity_nodes = BTreeSet::new();
+            let mut threads = BTreeMap::<String, Vec<String>>::new();
+            for metadata in graph_metadata {
+                let Some(document) = graph_documents.get(&metadata.document_id) else {
+                    continue;
+                };
+                let document_id =
+                    GraphNodeId::new(NodeKind::Document, &document.id).map_err(internal_error)?;
+                let invalidation_key = format!(
+                    "document:{}@sha256:{}",
+                    document.id, document.content_revision
+                );
+                if let Some(thread_key) = metadata.thread_key {
+                    threads
+                        .entry(thread_key)
+                        .or_default()
+                        .push(document.id.clone());
+                }
+                for (kind, values) in [
+                    (EdgeKind::AuthoredBy, metadata.authors),
+                    (EdgeKind::Mentions, metadata.entities),
+                ] {
+                    for value in values {
+                        let entity_id = GraphNodeId::new(
+                            NodeKind::Entity,
+                            serde_json::json!([kind, value.clone()]).to_string(),
+                        )
+                        .map_err(internal_error)?;
+                        if entity_nodes.insert(entity_id.clone()) {
+                            nodes.push(GraphNode {
+                                contract_version: GraphContract::VERSION,
+                                id: entity_id.clone(),
+                                kind: NodeKind::Entity,
+                                label: value.clone(),
+                                project: document.project.clone(),
+                                source: Some(document.source.clone()),
+                                canonical_record_id: None,
+                                document_id: None,
+                                updated_at: document.updated_at.clone(),
+                                acl: document.acl.clone(),
+                                content_revision: document.content_revision.clone(),
+                                lifecycle_status: "active",
+                                derived: None,
+                            });
+                        }
+                        edges.push(
+                            GraphEdge::new(
+                                document_id.clone(),
+                                entity_id,
+                                kind,
+                                EdgeOrigin::Explicit,
+                                &document.updated_at,
+                                &document.project,
+                                document.acl.clone(),
+                                RelationshipSupport {
+                                    record_ids: vec![document.id.clone()],
+                                    invalidation_keys: vec![invalidation_key.clone()],
+                                },
+                            )
+                            .map_err(internal_error)?,
+                        );
+                    }
+                }
+            }
+            for document_ids in threads.values_mut() {
+                document_ids.sort_by(|left, right| {
+                    let left = graph_documents.get(left).expect("known thread document");
+                    let right = graph_documents.get(right).expect("known thread document");
+                    left.updated_at
+                        .cmp(&right.updated_at)
+                        .then_with(|| left.id.cmp(&right.id))
                 });
+                document_ids.dedup();
+                for pair in document_ids.windows(2) {
+                    let left = graph_documents
+                        .get(&pair[0])
+                        .expect("known thread document");
+                    let right = graph_documents
+                        .get(&pair[1])
+                        .expect("known thread document");
+                    let Ok(relationship_acl) = require_acl_intersection(&left.acl, &right.acl)
+                    else {
+                        continue;
+                    };
+                    edges.push(
+                        GraphEdge::new(
+                            GraphNodeId::new(NodeKind::Document, &left.id)
+                                .map_err(internal_error)?,
+                            GraphNodeId::new(NodeKind::Document, &right.id)
+                                .map_err(internal_error)?,
+                            EdgeKind::SameThread,
+                            EdgeOrigin::Explicit,
+                            &right.updated_at,
+                            &right.project,
+                            relationship_acl,
+                            RelationshipSupport {
+                                record_ids: vec![left.id.clone(), right.id.clone()],
+                                invalidation_keys: vec![
+                                    format!(
+                                        "document:{}@sha256:{}",
+                                        left.id, left.content_revision
+                                    ),
+                                    format!(
+                                        "document:{}@sha256:{}",
+                                        right.id, right.content_revision
+                                    ),
+                                ],
+                            },
+                        )
+                        .map_err(internal_error)?,
+                    );
+                }
+            }
+            let mut source_documents = BTreeMap::<(String, String), Vec<&DocumentSummary>>::new();
+            for document in graph_documents.values() {
+                source_documents
+                    .entry((document.project.clone(), document.source.clone()))
+                    .or_default()
+                    .push(document);
+            }
+            for documents in source_documents.values_mut() {
+                documents.sort_by(|left, right| {
+                    left.updated_at
+                        .cmp(&right.updated_at)
+                        .then_with(|| left.id.cmp(&right.id))
+                });
+                for pair in documents.windows(2) {
+                    let older = pair[0];
+                    let newer = pair[1];
+                    let Ok(relationship_acl) = require_acl_intersection(&older.acl, &newer.acl)
+                    else {
+                        continue;
+                    };
+                    let support = RelationshipSupport {
+                        record_ids: vec![older.id.clone(), newer.id.clone()],
+                        invalidation_keys: vec![
+                            format!("document:{}@sha256:{}", older.id, older.content_revision),
+                            format!("document:{}@sha256:{}", newer.id, newer.content_revision),
+                        ],
+                    };
+                    let older_id =
+                        GraphNodeId::new(NodeKind::Document, &older.id).map_err(internal_error)?;
+                    let newer_id =
+                        GraphNodeId::new(NodeKind::Document, &newer.id).map_err(internal_error)?;
+                    for (source_id, target_id, kind) in [
+                        (older_id.clone(), newer_id.clone(), EdgeKind::Temporal),
+                        (older_id.clone(), newer_id.clone(), EdgeKind::Nearby),
+                        (newer_id, older_id, EdgeKind::Nearby),
+                    ] {
+                        edges.push(
+                            GraphEdge::new(
+                                source_id,
+                                target_id,
+                                kind,
+                                EdgeOrigin::Derived,
+                                &newer.updated_at,
+                                &newer.project,
+                                relationship_acl.clone(),
+                                support.clone(),
+                            )
+                            .map_err(internal_error)?,
+                        );
+                    }
+                }
             }
             if params.include_derived {
                 let derived = derive_authorized_memories(
@@ -1113,23 +1699,31 @@ async fn graph(
                 .map_err(internal_error)?;
                 let mut memory_nodes = BTreeSet::new();
                 for representation in derived.representations {
-                    let derived_id = representation.id.clone();
+                    let node_kind = match representation.kind {
+                        crate::derived::DerivedKind::Experience => NodeKind::Memory,
+                        crate::derived::DerivedKind::Observation => NodeKind::Observation,
+                        crate::derived::DerivedKind::MentalModel => NodeKind::MentalModel,
+                        crate::derived::DerivedKind::Belief => NodeKind::MentalModel,
+                    };
+                    let derived_id =
+                        GraphNodeId::new(node_kind, &representation.id).map_err(internal_error)?;
                     let supporting_memory_ids = representation.supporting_memory_ids.clone();
                     let contradicting_memory_ids = representation.contradicting_memory_ids.clone();
                     nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
                         id: derived_id.clone(),
-                        kind: match representation.kind {
-                            crate::derived::DerivedKind::Experience => "memory-experience",
-                            crate::derived::DerivedKind::Observation => "memory-observation",
-                            crate::derived::DerivedKind::MentalModel => "memory-mental-model",
-                            crate::derived::DerivedKind::Belief => "memory-belief",
-                        },
-                        label: representation.statement,
+                        kind: node_kind,
+                        label: bounded_graph_label(&representation.statement),
                         project: representation.project.clone(),
                         source: None,
+                        canonical_record_id: None,
                         document_id: None,
+                        updated_at: representation.freshness.clone(),
+                        acl: representation.acl.clone(),
+                        content_revision: representation.provenance.support_digest.clone(),
+                        lifecycle_status: "active",
                         derived: Some(GraphDerivedMetadata {
-                            contract_version: representation.contract_version,
+                            representation_contract_version: representation.contract_version,
                             derivation_version: representation.provenance.engine_version,
                             memory_revision: representation.memory_revision,
                             supporting_memory_ids,
@@ -1138,56 +1732,110 @@ async fn graph(
                         }),
                     });
                     for memory_id in representation.supporting_memory_ids {
-                        let node_id = format!("memory:{memory_id}");
+                        let node_id = GraphNodeId::new(NodeKind::Memory, &memory_id)
+                            .map_err(internal_error)?;
                         if memory_nodes.insert(node_id.clone()) {
                             nodes.push(GraphNode {
+                                contract_version: GraphContract::VERSION,
                                 id: node_id.clone(),
-                                kind: "canonical-memory",
-                                label: memory_id,
+                                kind: NodeKind::Memory,
+                                label: memory_id.clone(),
                                 project: representation.project.clone(),
                                 source: None,
+                                canonical_record_id: Some(memory_id.clone()),
                                 document_id: None,
+                                updated_at: representation.freshness.clone(),
+                                acl: representation.acl.clone(),
+                                content_revision: representation.memory_revision.to_string(),
+                                lifecycle_status: "active",
                                 derived: None,
                             });
                         }
-                        edges.push(GraphEdge {
-                            source: node_id,
-                            target: derived_id.clone(),
-                            kind: "supports",
-                        });
+                        edges.push(
+                            GraphEdge::new(
+                                node_id,
+                                derived_id.clone(),
+                                EdgeKind::Supports,
+                                EdgeOrigin::Derived,
+                                &representation.freshness,
+                                &representation.project,
+                                representation.acl.clone(),
+                                RelationshipSupport {
+                                    record_ids: vec![memory_id.clone()],
+                                    invalidation_keys: vec![format!(
+                                        "memory:{memory_id}@revision:{}",
+                                        representation.memory_revision
+                                    )],
+                                },
+                            )
+                            .and_then(|edge| edge.with_confidence(representation.confidence))
+                            .map_err(internal_error)?,
+                        );
                     }
                     for memory_id in representation.contradicting_memory_ids {
-                        let node_id = format!("memory:{memory_id}");
+                        let node_id = GraphNodeId::new(NodeKind::Memory, &memory_id)
+                            .map_err(internal_error)?;
                         if memory_nodes.insert(node_id.clone()) {
                             nodes.push(GraphNode {
+                                contract_version: GraphContract::VERSION,
                                 id: node_id.clone(),
-                                kind: "canonical-memory",
-                                label: memory_id,
+                                kind: NodeKind::Memory,
+                                label: memory_id.clone(),
                                 project: representation.project.clone(),
                                 source: None,
+                                canonical_record_id: Some(memory_id.clone()),
                                 document_id: None,
+                                updated_at: representation.freshness.clone(),
+                                acl: representation.acl.clone(),
+                                content_revision: representation.memory_revision.to_string(),
+                                lifecycle_status: "active",
                                 derived: None,
                             });
                         }
-                        edges.push(GraphEdge {
-                            source: node_id,
-                            target: derived_id.clone(),
-                            kind: "contradicts",
-                        });
+                        edges.push(
+                            GraphEdge::new(
+                                node_id,
+                                derived_id.clone(),
+                                EdgeKind::Contradicts,
+                                EdgeOrigin::Derived,
+                                &representation.freshness,
+                                &representation.project,
+                                representation.acl.clone(),
+                                RelationshipSupport {
+                                    record_ids: vec![memory_id.clone()],
+                                    invalidation_keys: vec![format!(
+                                        "memory:{memory_id}@revision:{}",
+                                        representation.memory_revision
+                                    )],
+                                },
+                            )
+                            .and_then(|edge| edge.with_confidence(representation.confidence))
+                            .map_err(internal_error)?,
+                        );
                     }
                 }
                 for relation in derived.relations {
-                    let relation_id = relation.id.clone();
+                    let relation_id = GraphNodeId::new(NodeKind::MentalModel, &relation.id)
+                        .map_err(internal_error)?;
                     let supporting_memory_ids = relation.supporting_memory_ids.clone();
                     nodes.push(GraphNode {
+                        contract_version: GraphContract::VERSION,
                         id: relation_id.clone(),
-                        kind: "memory-relation",
-                        label: format!("{}: {}", relation.predicate, relation.object),
+                        kind: NodeKind::MentalModel,
+                        label: bounded_graph_label(&format!(
+                            "{}: {}",
+                            relation.predicate, relation.object
+                        )),
                         project: relation.project.clone(),
                         source: None,
+                        canonical_record_id: None,
                         document_id: None,
+                        updated_at: relation.freshness.clone(),
+                        acl: relation.acl.clone(),
+                        content_revision: relation.provenance.support_digest.clone(),
+                        lifecycle_status: "active",
                         derived: Some(GraphDerivedMetadata {
-                            contract_version: relation.contract_version,
+                            representation_contract_version: relation.contract_version,
                             derivation_version: relation.provenance.engine_version,
                             memory_revision: relation.memory_revision,
                             supporting_memory_ids,
@@ -1196,25 +1844,92 @@ async fn graph(
                         }),
                     });
                     for memory_id in relation.supporting_memory_ids {
-                        let node_id = format!("memory:{memory_id}");
+                        let node_id = GraphNodeId::new(NodeKind::Memory, &memory_id)
+                            .map_err(internal_error)?;
                         if memory_nodes.insert(node_id.clone()) {
                             nodes.push(GraphNode {
+                                contract_version: GraphContract::VERSION,
                                 id: node_id.clone(),
-                                kind: "canonical-memory",
-                                label: memory_id,
+                                kind: NodeKind::Memory,
+                                label: memory_id.clone(),
                                 project: relation.project.clone(),
                                 source: None,
+                                canonical_record_id: Some(memory_id.clone()),
                                 document_id: None,
+                                updated_at: relation.freshness.clone(),
+                                acl: relation.acl.clone(),
+                                content_revision: relation.memory_revision.to_string(),
+                                lifecycle_status: "active",
                                 derived: None,
                             });
                         }
-                        edges.push(GraphEdge {
-                            source: node_id,
-                            target: relation_id.clone(),
-                            kind: "derives",
-                        });
+                        edges.push(
+                            GraphEdge::new(
+                                node_id,
+                                relation_id.clone(),
+                                EdgeKind::Derives,
+                                EdgeOrigin::Derived,
+                                &relation.freshness,
+                                &relation.project,
+                                relation.acl.clone(),
+                                RelationshipSupport {
+                                    record_ids: vec![memory_id.clone()],
+                                    invalidation_keys: vec![format!(
+                                        "memory:{memory_id}@revision:{}",
+                                        relation.memory_revision
+                                    )],
+                                },
+                            )
+                            .and_then(|edge| edge.with_confidence(relation.confidence))
+                            .map_err(internal_error)?,
+                        );
                     }
                 }
+            }
+            edges.retain(|edge| state.graph_edge_kinds.contains(&edge.kind));
+            if let Some(kind) = params.edge_kind {
+                edges.retain(|edge| edge.kind == kind);
+            }
+            if let Some(origin) = params.origin {
+                edges.retain(|edge| edge.origin == origin);
+            }
+            if let Some(minimum) = params.min_confidence {
+                edges.retain(|edge| edge.confidence.is_some_and(|value| value >= minimum));
+            }
+            if params.edge_kind.is_some()
+                || params.origin.is_some()
+                || params.min_confidence.is_some()
+            {
+                let connected = edges
+                    .iter()
+                    .flat_map(|edge| [edge.source.clone(), edge.target.clone()])
+                    .collect::<BTreeSet<_>>();
+                nodes.retain(|node| connected.contains(&node.id));
+            }
+            let mut edge_keys = BTreeSet::new();
+            edges.retain(|edge| {
+                edge_keys.insert((
+                    edge.source.clone(),
+                    edge.target.clone(),
+                    edge.kind,
+                    edge.origin,
+                ))
+            });
+            let mut truncated = next_cursor.is_some();
+            if edges.len() > GraphContract::MAX_EDGES_PER_EXPANSION {
+                edges.truncate(GraphContract::MAX_EDGES_PER_EXPANSION);
+                truncated = true;
+            }
+            if nodes.len() > GraphContract::MAX_NODES_PER_EXPANSION {
+                nodes.truncate(GraphContract::MAX_NODES_PER_EXPANSION);
+                truncated = true;
+                let visible = nodes
+                    .iter()
+                    .map(|node| node.id.clone())
+                    .collect::<BTreeSet<_>>();
+                edges.retain(|edge| {
+                    visible.contains(&edge.source) && visible.contains(&edge.target)
+                });
             }
             record_audit(
                 &state,
@@ -1226,11 +1941,50 @@ async fn graph(
                 Some(page.documents.len()),
                 started,
             );
-            Ok(Json(GraphResponse {
+            let mut response = GraphResponse {
+                contract_version: GraphContract::VERSION,
+                corpus_revision,
+                response_bytes: 0,
                 nodes,
                 edges,
                 next_cursor,
-            }))
+                truncated,
+                limits: GraphResponseLimits {
+                    page_size,
+                    max_nodes: GraphContract::MAX_NODES_PER_EXPANSION,
+                    max_edges: GraphContract::MAX_EDGES_PER_EXPANSION,
+                    max_response_bytes: MAX_GRAPH_RESPONSE_BYTES,
+                },
+                derivation: GraphDerivationStatus {
+                    version: GraphContract::DEFAULT_DERIVATION_VERSION,
+                    mode: "request-derived",
+                    semantic_neighbors_enabled: false,
+                    enabled_edge_kinds: state.graph_edge_kinds.iter().copied().collect(),
+                    disabled_edge_kinds: EdgeKind::ALL
+                        .into_iter()
+                        .filter(|kind| !state.graph_edge_kinds.contains(kind))
+                        .collect(),
+                    rebuild_required: false,
+                    failures: Vec::new(),
+                },
+            };
+            loop {
+                let response_bytes = graph_response_bytes(&mut response).map_err(internal_error)?;
+                if response_bytes <= MAX_GRAPH_RESPONSE_BYTES {
+                    break;
+                }
+                response.truncated = true;
+                if response.edges.pop().is_some() {
+                    continue;
+                }
+                if response.nodes.pop().is_none() {
+                    return Err((
+                        StatusCode::INSUFFICIENT_STORAGE,
+                        "graph response cannot fit the configured byte budget".into(),
+                    ));
+                }
+            }
+            Ok(Json(response))
         }
         Err(error) => {
             record_audit(
@@ -1277,6 +2031,38 @@ fn validate_document_query(value: Option<&str>) -> Result<(), (StatusCode, Strin
     Ok(())
 }
 
+fn validate_document_id(id: &str) -> Result<(), (StatusCode, String)> {
+    if id.is_empty()
+        || id.len() > MAX_DOCUMENT_ID_LENGTH
+        || !id.bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid document id".into()));
+    }
+    Ok(())
+}
+
+fn bounded_graph_label(value: &str) -> String {
+    if value.len() <= MAX_GRAPH_LABEL_BYTES {
+        return value.to_string();
+    }
+    let mut end = MAX_GRAPH_LABEL_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_string()
+}
+
+fn graph_response_bytes(response: &mut GraphResponse) -> Result<usize> {
+    for _ in 0..4 {
+        let bytes = serde_json::to_vec(response)?.len();
+        if response.response_bytes == bytes {
+            return Ok(bytes);
+        }
+        response.response_bytes = bytes;
+    }
+    Ok(serde_json::to_vec(response)?.len())
+}
+
 fn decode_document_cursor(value: &str) -> Result<DocumentCursor, (StatusCode, String)> {
     let bytes = URL_SAFE_NO_PAD
         .decode(value)
@@ -1302,6 +2088,72 @@ fn decode_document_cursor(value: &str) -> Result<DocumentCursor, (StatusCode, St
 
 fn encode_document_cursor(document: &DocumentSummary) -> Result<String, (StatusCode, String)> {
     serde_json::to_vec(&EncodedDocumentCursor {
+        updated_at: document.updated_at.clone(),
+        id: document.id.clone(),
+    })
+    .map(|value| URL_SAFE_NO_PAD.encode(value))
+    .map_err(|error| internal_error(error.into()))
+}
+
+fn graph_cursor_scope(params: &GraphParams, acl: &[String]) -> String {
+    let mut acl = acl.to_vec();
+    acl.sort();
+    acl.dedup();
+    let payload = serde_json::json!({
+        "project": params.project,
+        "source": params.source,
+        "query": params.query,
+        "edge_kind": params.edge_kind,
+        "origin": params.origin,
+        "min_confidence": params.min_confidence,
+        "include_derived": params.include_derived,
+        "acl": acl,
+    });
+    let digest = Sha256::digest(payload.to_string().as_bytes());
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn decode_graph_cursor(
+    value: &str,
+    corpus_revision: u64,
+    scope_hash: &str,
+) -> Result<DocumentCursor, (StatusCode, String)> {
+    let bytes = URL_SAFE_NO_PAD
+        .decode(value)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid graph cursor".into()))?;
+    if bytes.len() > 1024 {
+        return Err((StatusCode::BAD_REQUEST, "invalid graph cursor".into()));
+    }
+    let cursor: EncodedGraphCursor = serde_json::from_slice(&bytes)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid graph cursor".into()))?;
+    if cursor.contract_version != GraphContract::VERSION
+        || cursor.scope_hash != scope_hash
+        || cursor.corpus_revision != corpus_revision
+    {
+        return Err((StatusCode::CONFLICT, "stale graph cursor".into()));
+    }
+    validate_document_id(&cursor.id)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "invalid graph cursor".into()))?;
+    if cursor.updated_at.len() > 64
+        || chrono::DateTime::parse_from_rfc3339(&cursor.updated_at).is_err()
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid graph cursor".into()));
+    }
+    Ok(DocumentCursor {
+        updated_at: cursor.updated_at,
+        id: cursor.id,
+    })
+}
+
+fn encode_graph_cursor(
+    document: &DocumentSummary,
+    corpus_revision: u64,
+    scope_hash: &str,
+) -> Result<String, (StatusCode, String)> {
+    serde_json::to_vec(&EncodedGraphCursor {
+        contract_version: GraphContract::VERSION.into(),
+        corpus_revision,
+        scope_hash: scope_hash.into(),
         updated_at: document.updated_at.clone(),
         id: document.id.clone(),
     })
@@ -1508,8 +2360,7 @@ fn fallback_workspaces(
 ) -> Vec<WorkspaceConfig> {
     if !configured.is_empty() {
         // Explicit configuration is authoritative. Never silently hide a
-        // workspace (and its source assignment) from the operator UI; only
-        // synthesized fallback workspaces are bounded below.
+        // workspace (and its source assignment) from the operator UI.
         return configured.to_vec();
     }
     let mut project_ids: BTreeSet<String> = source_projects
@@ -1529,7 +2380,7 @@ fn fallback_workspaces(
         }
     }
     for project in project_ids {
-        if workspaces.len() >= 3 {
+        if workspaces.len() >= MAX_VISIBLE_WORKSPACES {
             break;
         }
         workspaces.push(WorkspaceConfig {
@@ -1541,7 +2392,6 @@ fn fallback_workspaces(
     }
 
     if !workspaces.is_empty() {
-        workspaces.truncate(3);
         return workspaces;
     }
 
@@ -1723,6 +2573,404 @@ async fn search(
             Err(internal_error(error))
         }
     }
+}
+
+async fn code_symbols(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    body: Bytes,
+) -> Result<Response, (StatusCode, String)> {
+    let started = Instant::now();
+    let request: CodeSymbolRequest = match serde_json::from_slice(&body) {
+        Ok(request) => request,
+        Err(_) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.symbols",
+                None,
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "invalid code symbol request JSON".into(),
+            ));
+        }
+    };
+    if let Err(error) =
+        validate_retrieval_scope(request.project.as_deref(), request.source.as_deref())
+    {
+        record_audit(
+            &state,
+            &principal,
+            "code.symbols",
+            request.project.as_deref(),
+            request.source.as_deref(),
+            "invalid",
+            None,
+            started,
+        );
+        return Err(error);
+    }
+    if let Err(error) = validate_query(&request.query) {
+        record_audit(
+            &state,
+            &principal,
+            "code.symbols",
+            request.project.as_deref(),
+            request.source.as_deref(),
+            "invalid",
+            None,
+            started,
+        );
+        return Err(error);
+    }
+    for (name, value, max) in [
+        ("repository_id", request.repository_id.as_deref(), 128),
+        ("revision", request.revision.as_deref(), 256),
+        ("file", request.file.as_deref(), 1_024),
+        ("qualified_name", request.qualified_name.as_deref(), 1_024),
+    ] {
+        if let Err(error) = validate_code_filter(name, value, max) {
+            record_audit(
+                &state,
+                &principal,
+                "code.symbols",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "invalid",
+                None,
+                started,
+            );
+            return Err(error);
+        }
+    }
+    let language = request.language.as_deref().and_then(Language::from_filter);
+    if request.language.is_some() && language.is_none() {
+        record_audit(
+            &state,
+            &principal,
+            "code.symbols",
+            request.project.as_deref(),
+            request.source.as_deref(),
+            "invalid",
+            None,
+            started,
+        );
+        return Err((StatusCode::BAD_REQUEST, "language is unsupported".into()));
+    }
+    let filters = CodeSymbolFilters {
+        repository_id: request.repository_id.clone(),
+        revision: request.revision.clone(),
+        language,
+        file: request.file.clone(),
+        qualified_name: request.qualified_name.clone(),
+    };
+    let acl = principal.visible_acl();
+    match state.store.search_code_symbols(
+        &request.query,
+        request.project.as_deref(),
+        request.source.as_deref(),
+        &filters,
+        &acl,
+        request.limit.min(retrieval::MAX_RESULT_LIMIT),
+    ) {
+        Ok(results) => {
+            let corpus_revision = match state.store.corpus_revision() {
+                Ok(revision) => revision,
+                Err(error) => {
+                    record_audit(
+                        &state,
+                        &principal,
+                        "code.symbols",
+                        request.project.as_deref(),
+                        request.source.as_deref(),
+                        "failed",
+                        None,
+                        started,
+                    );
+                    return Err(internal_error(error));
+                }
+            };
+            let response = CodeSymbolResponse {
+                contract_version: API_CONTRACT_VERSION,
+                corpus_revision,
+                embedding_fingerprint: state.embedder.fingerprint(),
+                correlation_id: Uuid::new_v4().to_string(),
+                results,
+            };
+            if let Err(error) = ensure_code_response_size(&response) {
+                record_audit(
+                    &state,
+                    &principal,
+                    "code.symbols",
+                    request.project.as_deref(),
+                    request.source.as_deref(),
+                    "failed",
+                    None,
+                    started,
+                );
+                return Err(error);
+            }
+            record_audit(
+                &state,
+                &principal,
+                "code.symbols",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "succeeded",
+                Some(response.results.len()),
+                started,
+            );
+            let correlation_id = response.correlation_id.clone();
+            let mut response = Json(response).into_response();
+            if let Ok(value) = HeaderValue::try_from(correlation_id) {
+                response
+                    .headers_mut()
+                    .insert("x-cortana-correlation-id", value);
+            }
+            Ok(response)
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.symbols",
+                request.project.as_deref(),
+                request.source.as_deref(),
+                "failed",
+                None,
+                started,
+            );
+            Err(internal_error(error))
+        }
+    }
+}
+
+async fn code_relations(
+    State(state): State<AppState>,
+    Extension(principal): Extension<Principal>,
+    uri: Uri,
+) -> Result<Response, (StatusCode, String)> {
+    let started = Instant::now();
+    let request = match AxumQuery::<CodeRelationQuery>::try_from_uri(&uri) {
+        Ok(AxumQuery(request)) => request,
+        Err(_) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.relations",
+                None,
+                None,
+                "invalid",
+                None,
+                started,
+            );
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "invalid code relation query".into(),
+            ));
+        }
+    };
+    if let Err(error) = validate_retrieval_scope(request.project.as_deref(), None) {
+        record_audit(
+            &state,
+            &principal,
+            "code.relations",
+            request.project.as_deref(),
+            None,
+            "invalid",
+            None,
+            started,
+        );
+        return Err(error);
+    }
+    if request.symbol_id.trim().is_empty() || request.symbol_id.len() > 256 {
+        record_audit(
+            &state,
+            &principal,
+            "code.relations",
+            request.project.as_deref(),
+            None,
+            "invalid",
+            None,
+            started,
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "symbol_id must contain 1 to 256 bytes".into(),
+        ));
+    }
+    let corpus_revision = match state.store.corpus_revision() {
+        Ok(revision) => revision,
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.relations",
+                request.project.as_deref(),
+                None,
+                "failed",
+                None,
+                started,
+            );
+            return Err(internal_error(error));
+        }
+    };
+    let acl = principal.visible_acl();
+    let cursor = match request.cursor.as_deref() {
+        Some(cursor) => match decode_relation_cursor(
+            cursor,
+            corpus_revision,
+            &request.symbol_id,
+            request.project.as_deref(),
+            &acl,
+            request.query,
+            request.depth,
+        ) {
+            Ok(cursor) => cursor,
+            Err(error) => {
+                record_audit(
+                    &state,
+                    &principal,
+                    "code.relations",
+                    request.project.as_deref(),
+                    None,
+                    "invalid",
+                    None,
+                    started,
+                );
+                return Err((StatusCode::BAD_REQUEST, error.to_string()));
+            }
+        },
+        None => 0,
+    };
+    match state.store.code_relations(
+        &request.symbol_id,
+        request.project.as_deref(),
+        &acl,
+        request.query,
+        request.depth,
+        cursor,
+        request.limit.min(retrieval::MAX_RESULT_LIMIT),
+    ) {
+        Ok(mut page) => {
+            if let Some(offset) = page
+                .next_cursor
+                .take()
+                .and_then(|cursor| cursor.parse::<usize>().ok())
+            {
+                page.next_cursor = match encode_relation_cursor(
+                    offset,
+                    corpus_revision,
+                    &request.symbol_id,
+                    request.project.as_deref(),
+                    &acl,
+                    request.query,
+                    request.depth,
+                ) {
+                    Ok(cursor) => Some(cursor),
+                    Err(error) => {
+                        record_audit(
+                            &state,
+                            &principal,
+                            "code.relations",
+                            request.project.as_deref(),
+                            None,
+                            "failed",
+                            None,
+                            started,
+                        );
+                        return Err(internal_error(error));
+                    }
+                };
+            }
+            let result_count = page.relations.len();
+            let response = CodeRelationResponse {
+                contract_version: API_CONTRACT_VERSION,
+                corpus_revision,
+                embedding_fingerprint: state.embedder.fingerprint(),
+                correlation_id: Uuid::new_v4().to_string(),
+                page,
+            };
+            if let Err(error) = ensure_code_response_size(&response) {
+                record_audit(
+                    &state,
+                    &principal,
+                    "code.relations",
+                    request.project.as_deref(),
+                    None,
+                    "failed",
+                    None,
+                    started,
+                );
+                return Err(error);
+            }
+            record_audit(
+                &state,
+                &principal,
+                "code.relations",
+                request.project.as_deref(),
+                None,
+                "succeeded",
+                Some(result_count),
+                started,
+            );
+            let correlation_id = response.correlation_id.clone();
+            let mut response = Json(response).into_response();
+            if let Ok(value) = HeaderValue::try_from(correlation_id) {
+                response
+                    .headers_mut()
+                    .insert("x-cortana-correlation-id", value);
+            }
+            Ok(response)
+        }
+        Err(error) => {
+            record_audit(
+                &state,
+                &principal,
+                "code.relations",
+                request.project.as_deref(),
+                None,
+                "failed",
+                None,
+                started,
+            );
+            Err(internal_error(error))
+        }
+    }
+}
+
+fn validate_code_filter(
+    name: &str,
+    value: Option<&str>,
+    max: usize,
+) -> Result<(), (StatusCode, String)> {
+    if value.is_some_and(|value| {
+        value.is_empty() || value.len() > max || value.chars().any(char::is_control)
+    }) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("{name} must contain 1 to {max} bytes"),
+        ));
+    }
+    Ok(())
+}
+
+const MAX_CODE_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
+
+fn ensure_code_response_size(value: &impl Serialize) -> Result<(), (StatusCode, String)> {
+    let encoded = serde_json::to_vec(value).map_err(|error| internal_error(error.into()))?;
+    if encoded.len() > MAX_CODE_RESPONSE_BYTES {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Cortana could not complete the request".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn context(
@@ -3255,6 +4503,257 @@ mod tests {
         (directory, AppState::new(store, embedder))
     }
 
+    #[tokio::test]
+    async fn code_symbol_api_returns_revision_aware_exact_definitions() {
+        let (_directory, state) = test_state();
+        let store = state.store.clone();
+        let document = crate::model::Document {
+            source: "code".into(),
+            source_id: "repo:src/lib.rs".into(),
+            title: "src/lib.rs".into(),
+            content: "use dependency;\npub fn target_symbol() { helper(); }\nfn helper() {}".into(),
+            uri: Some("code://repository/repo/src/lib.rs".into()),
+            updated_at: chrono::Utc::now(),
+            project: "work".into(),
+            acl: vec!["work".into()],
+            metadata: serde_json::json!({"code": {"repository_id": "repo", "revision": "abc:main:committed"}}),
+        };
+        state
+            .store
+            .upsert(&document, &[(document.content.clone(), vec![1.0; 16])])
+            .expect("index code document");
+        let mut hidden = document.clone();
+        hidden.source_id = "repo-private:src/lib.rs".into();
+        hidden.acl = vec!["personal".into()];
+        hidden.metadata["code"]["repository_id"] = serde_json::json!("repo-private");
+        state
+            .store
+            .upsert(&hidden, &[(hidden.content.clone(), vec![1.0; 16])])
+            .expect("index hidden code document");
+        let mut many = document.clone();
+        many.source_id = "repo-many:src/lib.rs".into();
+        many.content = (0..60)
+            .map(|index| format!("pub fn api_symbol_{index}() {{}}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        many.metadata["code"]["repository_id"] = serde_json::json!("repo-many");
+        state
+            .store
+            .upsert(&many, &[(many.content.clone(), vec![1.0; 16])])
+            .expect("index row-cap fixture");
+        let mut config = Config::default();
+        config
+            .environment
+            .insert("WORK_TOKEN".into(), "work-secret".into());
+        config.auth.tokens = vec![AuthTokenConfig {
+            principal: "work-agent".into(),
+            token_env: "WORK_TOKEN".into(),
+            scopes: vec![QUERY_SCOPE.into()],
+            acl: vec!["work".into()],
+        }];
+        let app =
+            router(state.with_auth_policy(AuthPolicy::from_config(&config).expect("auth policy")));
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"target_symbol","project":"work","source":"code","repository_id":"repo","revision":"abc:main:committed","language":"rust","file":"repo:src/lib.rs","qualified_name":"target_symbol","limit":100}"#,
+                    ))
+                    .expect("request"),
+            )
+            .await
+            .expect("symbol response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("symbol body");
+        let value: serde_json::Value = serde_json::from_slice(&body).expect("symbol JSON");
+        assert_eq!(value["contract_version"], API_CONTRACT_VERSION);
+        assert_eq!(value["results"][0]["exact"], true);
+        assert_eq!(
+            value["results"][0]["symbol"]["revision"],
+            "abc:main:committed"
+        );
+        assert_eq!(value["results"][0]["symbol"]["span"]["start_byte"], 16);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"target_symbol","project":"work","source":"code","repository_id":"repo-private","limit":10}"#,
+                    ))
+                    .expect("hidden repository request"),
+            )
+            .await
+            .expect("hidden repository response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("hidden repository body");
+        let hidden_results: serde_json::Value =
+            serde_json::from_slice(&body).expect("hidden repository JSON");
+        assert!(
+            hidden_results["results"]
+                .as_array()
+                .expect("hidden results")
+                .is_empty()
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"target_symbol","project":"work","language":"brainfuck"}"#,
+                    ))
+                    .expect("invalid symbol request"),
+            )
+            .await
+            .expect("invalid symbol response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("{"))
+                    .expect("malformed symbol request"),
+            )
+            .await
+            .expect("malformed symbol response");
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from("x".repeat(2 * 1024 * 1024 + 1)))
+                    .expect("oversized symbol request"),
+            )
+            .await
+            .expect("oversized symbol response");
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert!(response.headers().contains_key("x-cortana-correlation-id"));
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("oversized symbol body");
+        let error: serde_json::Value =
+            serde_json::from_slice(&body).expect("oversized symbol error JSON");
+        assert_eq!(error["code"], "invalid_request");
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"query":"target_symbol"}"#))
+                    .expect("unauthorized symbol request"),
+            )
+            .await
+            .expect("unauthorized symbol response");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let symbol_id = value["results"][0]["symbol"]["id"]
+            .as_str()
+            .expect("symbol id");
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/code/relations?symbol_id={symbol_id}&project=work&limit=100"
+                    ))
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .body(Body::empty())
+                    .expect("relation request"),
+            )
+            .await
+            .expect("relation response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("relation body");
+        let relations: serde_json::Value = serde_json::from_slice(&body).expect("relation JSON");
+        assert!(
+            relations["page"]["relations"]
+                .as_array()
+                .is_some_and(|items| !items.is_empty())
+        );
+        assert!(
+            relations["page"]["relations"]
+                .as_array()
+                .expect("relations")
+                .len()
+                <= 50
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/code/symbols")
+                    .header(header::AUTHORIZATION, "Bearer work-secret")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(
+                        r#"{"query":"fn","project":"work","source":"code","limit":100}"#,
+                    ))
+                    .expect("capped symbol request"),
+            )
+            .await
+            .expect("capped symbol response");
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .expect("capped symbol body");
+        let capped: serde_json::Value = serde_json::from_slice(&body).expect("capped symbol JSON");
+        assert_eq!(
+            capped["results"].as_array().expect("capped symbols").len(),
+            50
+        );
+
+        let audit = store.audit_events(10).expect("code read audit");
+        assert!(audit.iter().any(|event| event.action == "code.symbols"));
+        assert!(
+            audit
+                .iter()
+                .any(|event| event.action == "code.symbols" && event.outcome == "invalid")
+        );
+        assert!(
+            audit
+                .iter()
+                .any(|event| event.action == "code.symbols" && event.outcome == "unauthorized")
+        );
+        assert!(audit.iter().any(|event| {
+            event.action == "code.symbols" && event.outcome == "transport_invalid"
+        }));
+        assert!(audit.iter().any(|event| event.action == "code.relations"));
+    }
+
     #[test]
     fn status_snapshot_cache_is_bounded_and_returns_cloned_stats() {
         let (_directory, state) = test_state();
@@ -3589,7 +5088,7 @@ mod tests {
     }
 
     #[test]
-    fn fallback_workspaces_prefer_core_scopes_and_bound_other_projects() {
+    fn fallback_workspaces_prefer_core_scopes_without_hiding_other_projects() {
         let workspaces = fallback_workspaces(
             &[],
             ["community", "special", "agents", "work", "personal"]
@@ -3600,7 +5099,10 @@ mod tests {
             .iter()
             .map(|workspace| workspace.id.as_str())
             .collect();
-        assert_eq!(ids, vec!["work", "personal", "special"]);
+        assert_eq!(
+            ids,
+            vec!["work", "personal", "special", "agents", "community"]
+        );
         assert_eq!(workspaces[0].name, "Work");
 
         let explicit = vec![WorkspaceConfig {
@@ -3974,14 +5476,14 @@ mod tests {
             serde_json::from_slice(&graph_body).expect("graph JSON");
         let observation = graph_json["nodes"]
             .as_array()
-            .and_then(|nodes| {
-                nodes
-                    .iter()
-                    .find(|node| node["kind"] == "memory-observation")
-            })
+            .and_then(|nodes| nodes.iter().find(|node| node["kind"] == "observation"))
             .expect("derived observation node");
         assert_eq!(
             observation["contract_version"],
+            crate::knowledge_graph::GraphContract::VERSION
+        );
+        assert_eq!(
+            observation["representation_contract_version"],
             crate::derived::DERIVED_MEMORY_CONTRACT_VERSION
         );
         assert_eq!(
@@ -5313,13 +6815,27 @@ mod tests {
                             - chrono::Duration::seconds(i64::try_from(index).unwrap_or_default()),
                         project: "demo".into(),
                         acl: Vec::new(),
-                        metadata: serde_json::json!({"kind": "note"}),
+                        metadata: if index == 0 {
+                            serde_json::json!({
+                                "kind": "note",
+                                "references": ["note-1"],
+                                "thread_id": "release-thread",
+                                "author": "Ada Lovelace",
+                                "entities": ["Project Atlas"],
+                                "access_token": "must-not-become-a-graph-node"
+                            })
+                        } else {
+                            serde_json::json!({
+                                "kind": "note",
+                                "thread_id": "release-thread"
+                            })
+                        },
                     },
                     &[(content.into(), vec![1.0; 16])],
                 )
                 .expect("document");
         }
-        let app = router(state);
+        let app = router(state.clone());
         let first = app
             .clone()
             .oneshot(
@@ -5374,6 +6890,7 @@ mod tests {
             serde_json::from_slice(&detail_body).expect("detail JSON");
         assert_eq!(detail_value["content"], "first body");
         assert_eq!(detail_value["metadata"]["kind"], "note");
+        assert!(detail_value["metadata"].get("access_token").is_none());
         assert_eq!(detail_value["source_id"], "note-0");
         assert_eq!(detail_value["acl"], serde_json::json!([]));
         assert_eq!(
@@ -5457,8 +6974,157 @@ mod tests {
             .expect("graph body");
         let graph_value: serde_json::Value =
             serde_json::from_slice(&graph_body).expect("graph JSON");
-        assert_eq!(graph_value["nodes"].as_array().map(Vec::len), Some(4));
-        assert_eq!(graph_value["edges"].as_array().map(Vec::len), Some(3));
+        assert_eq!(graph_value["nodes"].as_array().map(Vec::len), Some(6));
+        assert_eq!(graph_value["edges"].as_array().map(Vec::len), Some(11));
+        assert_eq!(
+            graph_value["response_bytes"].as_u64(),
+            u64::try_from(graph_body.len()).ok()
+        );
+        assert!(graph_body.len() <= MAX_GRAPH_RESPONSE_BYTES);
+        assert_eq!(
+            graph_value["derivation"]["mode"],
+            serde_json::json!("request-derived")
+        );
+        assert_eq!(
+            graph_value["derivation"]["semantic_neighbors_enabled"],
+            false
+        );
+        assert!(
+            graph_value["derivation"]["enabled_edge_kinds"]
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind == "references"))
+        );
+        assert!(
+            graph_value["derivation"]["disabled_edge_kinds"]
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind == "semantically-related"))
+        );
+        assert!(!String::from_utf8_lossy(&graph_body).contains("must-not-become-a-graph-node"));
+        assert_eq!(
+            graph_value["contract_version"],
+            crate::knowledge_graph::GraphContract::VERSION
+        );
+        let document_node = graph_value["nodes"]
+            .as_array()
+            .and_then(|nodes| nodes.iter().find(|node| node["kind"] == "document"))
+            .expect("document graph node");
+        assert_eq!(document_node["canonical_record_id"], id);
+        assert_eq!(
+            document_node["contract_version"],
+            graph_value["contract_version"]
+        );
+        let contains = graph_value["edges"]
+            .as_array()
+            .and_then(|edges| edges.iter().find(|edge| edge["kind"] == "contains"))
+            .expect("contains graph edge");
+        assert_eq!(contains["origin"], "explicit");
+        assert_eq!(contains["citation_authority"], true);
+        assert!(contains["support"]["record_ids"].as_array().is_some());
+        assert!(
+            contains["support"]["invalidation_keys"]
+                .as_array()
+                .is_some()
+        );
+        let relationship_kinds = graph_value["edges"]
+            .as_array()
+            .expect("graph edges")
+            .iter()
+            .filter_map(|edge| edge["kind"].as_str())
+            .collect::<Vec<_>>();
+        assert!(relationship_kinds.contains(&"references"));
+        assert!(relationship_kinds.contains(&"backlink"));
+        assert!(relationship_kinds.contains(&"nearby"));
+        assert!(relationship_kinds.contains(&"temporal"));
+        assert!(relationship_kinds.contains(&"same-thread"));
+        assert!(relationship_kinds.contains(&"authored-by"));
+        assert!(relationship_kinds.contains(&"mentions"));
+
+        let focused_graph = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/graph?focus_document_id={id}&edge_kind=references&limit=10"
+                    ))
+                    .body(Body::empty())
+                    .expect("focused graph request"),
+            )
+            .await
+            .expect("focused graph response");
+        assert_eq!(focused_graph.status(), StatusCode::OK);
+        let focused_body = to_bytes(focused_graph.into_body(), 1024 * 1024)
+            .await
+            .expect("focused graph body");
+        let focused_value: serde_json::Value =
+            serde_json::from_slice(&focused_body).expect("focused graph JSON");
+        assert_eq!(focused_value["nodes"].as_array().map(Vec::len), Some(2));
+        assert_eq!(focused_value["edges"].as_array().map(Vec::len), Some(1));
+        assert_eq!(focused_value["edges"][0]["kind"], "references");
+        assert_eq!(focused_value["next_cursor"], serde_json::Value::Null);
+        assert_eq!(focused_value["truncated"], false);
+
+        let invalid_focus = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?focus_document_id=not-a-document")
+                    .body(Body::empty())
+                    .expect("invalid graph focus request"),
+            )
+            .await
+            .expect("invalid graph focus response");
+        assert_eq!(invalid_focus.status(), StatusCode::BAD_REQUEST);
+
+        let graph_page = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/graph?project=demo&limit=1")
+                    .body(Body::empty())
+                    .expect("paged graph request"),
+            )
+            .await
+            .expect("paged graph response");
+        assert_eq!(graph_page.status(), StatusCode::OK);
+        let graph_page_body = to_bytes(graph_page.into_body(), 1024 * 1024)
+            .await
+            .expect("paged graph body");
+        let graph_page_value: serde_json::Value =
+            serde_json::from_slice(&graph_page_body).expect("paged graph JSON");
+        let graph_cursor = graph_page_value["next_cursor"]
+            .as_str()
+            .expect("graph cursor")
+            .to_string();
+        state
+            .store
+            .upsert(
+                &Document {
+                    source: "notes".into(),
+                    source_id: "note-2".into(),
+                    title: "Note 2".into(),
+                    content: "third body".into(),
+                    uri: None,
+                    updated_at: chrono::Utc::now(),
+                    project: "demo".into(),
+                    acl: Vec::new(),
+                    metadata: serde_json::json!({"kind": "note"}),
+                },
+                &[("third body".into(), vec![1.0; 16])],
+            )
+            .expect("mutate graph corpus");
+        let stale_graph_page = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/v1/graph?project=demo&limit=1&cursor={graph_cursor}"
+                    ))
+                    .body(Body::empty())
+                    .expect("stale graph request"),
+            )
+            .await
+            .expect("stale graph response");
+        assert_eq!(stale_graph_page.status(), StatusCode::CONFLICT);
 
         let invalid = app
             .oneshot(
@@ -5526,6 +7192,10 @@ mod tests {
         let decoded = decode_document_cursor(&valid).expect("decode valid cursor");
         assert_eq!(decoded.id, "feedface");
         assert_eq!(decoded.updated_at, now);
+        assert_eq!(bounded_graph_label(&"x".repeat(1024)).len(), 512);
+        let unicode = bounded_graph_label(&"é".repeat(512));
+        assert_eq!(unicode.len(), 512);
+        assert_eq!(unicode.chars().count(), 256);
     }
 
     #[tokio::test]
@@ -5929,6 +7599,7 @@ mod tests {
             )
             .await
             .expect("admin graph response");
+        assert_eq!(admin_graph.status(), StatusCode::OK);
         let admin_graph_value = serde_json::from_slice::<serde_json::Value>(
             &to_bytes(admin_graph.into_body(), 1024 * 1024)
                 .await

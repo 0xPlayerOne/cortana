@@ -78,6 +78,11 @@ pub async fn pick(app: AppHandle, kind: &str) -> Result<Option<String>, String> 
             .pick_file(move |path| {
                 let _ = sender.send(path);
             }),
+        "vault-export" => dialog
+            .set_title("Choose an Obsidian vault directory")
+            .pick_folder(move |path| {
+                let _ = sender.send(path);
+            }),
         _ => return Err("unsupported native path picker".into()),
     }
     let selected = receiver
