@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.2](https://github.com/0xPlayerOne/cortana/compare/v0.56.1...v0.56.2) (2026-09-03)
+
+
+### Maintenance
+
+* **deps:** bump actions/upload-artifact in the github-actions group ([#2228](https://github.com/0xPlayerOne/cortana/issues/2228)) ([45aa422](https://github.com/0xPlayerOne/cortana/commit/45aa422b8af7a210e968f4afaae3406922f27154))
+
 ## [0.56.1](https://github.com/0xPlayerOne/cortana/compare/v0.56.0...v0.56.1) (2026-09-03)
 
 
