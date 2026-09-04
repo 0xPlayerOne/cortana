@@ -4,10 +4,10 @@ GitHub is Cortana's authoritative planning and delivery system.
 
 ## Canonical planning sources
 
-- [Milestones](https://github.com/0xPlayerOne/cortana/milestones) define outcome-oriented delivery groups.
-- [Issues](https://github.com/0xPlayerOne/cortana/issues) define issue-sized work, ownership, dependencies, blockers, acceptance criteria, and evidence.
-- [Pull requests](https://github.com/0xPlayerOne/cortana/pulls) contain reviewed implementation changes and CI results.
-- [Releases](https://github.com/0xPlayerOne/cortana/releases) identify published version boundaries.
+- [Milestones](https://github.com/adea-ai/cortana/milestones) define outcome-oriented delivery groups.
+- [Issues](https://github.com/adea-ai/cortana/issues) define issue-sized work, ownership, dependencies, blockers, acceptance criteria, and evidence.
+- [Pull requests](https://github.com/adea-ai/cortana/pulls) contain reviewed implementation changes and CI results.
+- [Releases](https://github.com/adea-ai/cortana/releases) identify published version boundaries.
 - [Release history](releases.md) preserves immutable version-specific verification and incident evidence.
 
 No PRD, TDD, guide, audit, or operations document should duplicate the live milestone sequence or maintain a second backlog.

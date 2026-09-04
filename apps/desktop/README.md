@@ -18,7 +18,7 @@ database or select a backend URL.
 ## Download and first launch
 
 Normal users should download the matching package from the
-[latest Cortana release](https://github.com/0xPlayerOne/cortana/releases/latest). Install it, launch
+[latest Cortana release](https://github.com/adea-ai/cortana/releases/latest). Install it, launch
 the app, and follow the guided **Readiness** panel. The panel is read-only until you approve a
 tool installation or a source action: Cortana does not authorize accounts, index content, or start
 recurring ingestion on its own. Create a workspace, configure one source, run **Validate**, and

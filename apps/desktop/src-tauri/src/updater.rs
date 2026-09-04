@@ -6,7 +6,7 @@ use tokio::sync::Mutex as AsyncMutex;
 
 use crate::settings;
 
-const GITHUB_URL: &str = "https://github.com/0xPlayerOne/cortana";
+const GITHUB_URL: &str = "https://github.com/adea-ai/cortana";
 const MAX_RELEASE_NOTES_CHARS: usize = 32_000;
 const UPDATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 const CHANGELOG: &str = include_str!("../../../../CHANGELOG.md");

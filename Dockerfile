@@ -33,7 +33,7 @@ FROM python:3.11-slim-bookworm AS runtime
 ARG CORTANA_VERSION=dev
 LABEL org.opencontainers.image.title="Cortana" \
       org.opencontainers.image.description="Local-first single-node ContextProvider" \
-      org.opencontainers.image.source="https://github.com/0xPlayerOne/cortana" \
+      org.opencontainers.image.source="https://github.com/adea-ai/cortana" \
       org.opencontainers.image.version="${CORTANA_VERSION}" \
       org.opencontainers.image.licenses="Apache-2.0"
 

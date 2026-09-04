@@ -68,7 +68,7 @@ The exact live status of those criteria belongs in GitHub, not this document.
 
 ## Planning and evidence ownership
 
-[GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) are canonical for current scope, sequence, ownership, dates, dependencies, blockers, status, and task-level acceptance evidence.
+[GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues) are canonical for current scope, sequence, ownership, dates, dependencies, blockers, status, and task-level acceptance evidence.
 
 [Release history](releases.md) owns tagged release evidence. [Evaluation](evaluation.md), [Operations](operations.md), [Source rollout](source-rollout.md), and [Desktop UX audit](desktop-ux-audit.md) define methods and evidence-retention rules.
 

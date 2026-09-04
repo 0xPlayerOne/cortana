@@ -26,7 +26,7 @@ The governing rule is:
 
 ## Safe first run
 
-1. Download the matching package from the [latest release](https://github.com/0xPlayerOne/cortana/releases/latest).
+1. Download the matching package from the [latest release](https://github.com/adea-ai/cortana/releases/latest).
 2. Launch Cortana Desktop and approve only the optional tooling you need.
 3. Create a workspace.
 4. Configure and authorize one source.
@@ -88,7 +88,7 @@ never a source, backup, reconciliation, or memory authority.
 
 ## Planning and evidence ownership
 
-[GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) are the only authority for current scope, sequencing, ownership, dates, dependencies, blockers, status, and task-level acceptance evidence.
+[GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues) are the only authority for current scope, sequencing, ownership, dates, dependencies, blockers, status, and task-level acceptance evidence.
 
 Durable documentation has separate ownership:
 

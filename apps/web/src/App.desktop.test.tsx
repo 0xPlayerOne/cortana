@@ -1260,7 +1260,7 @@ test('desktop Help links use the native external URL bridge', async () => {
   const documentation = screen.getByRole('link', { name: /Documentation/ })
   fireEvent.click(documentation)
   await waitFor(() =>
-    expect(state.openUrlCalls).toEqual(['https://github.com/0xPlayerOne/cortana/tree/main/docs'])
+    expect(state.openUrlCalls).toEqual(['https://github.com/adea-ai/cortana/tree/main/docs'])
   )
 })
 
@@ -1271,7 +1271,7 @@ test('desktop Help links surface native browser failures', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Help' }))
   fireEvent.click(screen.getByRole('link', { name: /Documentation/ }))
   await waitFor(() => expect(screen.getByText('browser unavailable')).toBeTruthy())
-  expect(state.openUrlCalls).toEqual(['https://github.com/0xPlayerOne/cortana/tree/main/docs'])
+  expect(state.openUrlCalls).toEqual(['https://github.com/adea-ai/cortana/tree/main/docs'])
 })
 
 test('desktop Help project action surfaces native browser failures', async () => {
@@ -2030,7 +2030,7 @@ test('GitHub code sources expose an explicit workspace-scoped repository allowli
         ...workSource,
         name: 'work-github',
         kind: 'github',
-        repositories: ['0xPlayerOne/cortana'],
+        repositories: ['adea-ai/cortana'],
         token_env: 'GITHUB_TOKEN',
       },
     ],
@@ -2044,7 +2044,7 @@ test('GitHub code sources expose an explicit workspace-scoped repository allowli
     fireEvent.click(screen.getByText('Advanced source settings'))
 
     const repositories = screen.getByRole('textbox', { name: 'GitHub repositories' })
-    expect((repositories as HTMLTextAreaElement).value).toBe('0xPlayerOne/cortana')
+    expect((repositories as HTMLTextAreaElement).value).toBe('adea-ai/cortana')
     expect(screen.getByRole('button', { name: 'Setup' })).toBeTruthy()
     expect(screen.getByText(/only these repositories are indexed/)).toBeTruthy()
   } finally {
