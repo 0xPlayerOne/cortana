@@ -47,11 +47,11 @@ using the matrix in [desktop-ux-audit.md](desktop-ux-audit.md).
 ### v0.34.43 post-release reconciliation incident (historical)
 
 The release publication itself succeeded. The subsequent Code Foundry run
-[`32774655565`](https://github.com/0xPlayerOne/cortana/actions/runs/32774655565) failed only in its
+[`32774655565`](https://github.com/adea-ai/cortana/actions/runs/32774655565) failed only in its
 post-release reconciliation job: it classified old `staging` history as unpromoted, attempted to
 replay commit `9a5b3a7`, and encountered broad conflicts. The published tag and 18 verified assets
 remain valid, but the retained branch history is not a clean starting point for another development
-cycle. Issue [#2099](https://github.com/0xPlayerOne/cortana/issues/2099) was closed after PR #2100
+cycle. Issue [#2099](https://github.com/adea-ai/cortana/issues/2099) was closed after PR #2100
 proved the exact-tree state, removed the obsolete staging ref/ruleset, and passed a clean Code
 Foundry reconciliation run. No force push or automatic conflict resolution was used.
 
@@ -107,7 +107,7 @@ control-plane drills. These records remain valid evidence for the metadata-equiv
 ## v0.34.20 release notes (historical)
 
 The v0.34.20 release published the UI consistency and release-metadata follow-up to the verified
-v0.34.19 runtime. Release-assets workflow [`32603677864`](https://github.com/0xPlayerOne/cortana/actions/runs/32603677864)
+v0.34.19 runtime. Release-assets workflow [`32603677864`](https://github.com/adea-ai/cortana/actions/runs/32603677864)
 verified all 18 assets, checksums, updater signatures, manifest, and packaged core. The installed
 host was upgraded from v0.34.19 and passed readiness, native-memory, shared-agent, MCP, and
 control-plane drills. Its bounded Apple Notes validation and trial evidence remains historical
@@ -132,7 +132,7 @@ and extractive mode remained the safe production default.
 ## v0.34.10 release notes (historical)
 
 Download the Desktop app or a matching core archive from the
-[latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest). The protected
+[latest GitHub release](https://github.com/adea-ai/cortana/releases/latest). The protected
 `v0.34.10` was the protected source and published release at the time. Release-assets workflow
 `32544658079` completed the archive, checksum, updater-signature, manifest, and credential-free
 packaged-core gates; all 18 published assets are verified. v0.34.8 and earlier remain
@@ -155,7 +155,7 @@ the release verifier does not claim those GUI behaviors.
 To re-check the published release without touching the live index or starting a sync:
 
 ```bash
-GH_REPO=0xPlayerOne/cortana CORTANA_REQUIRE_MINISIGN=1 \
+GH_REPO=adea-ai/cortana CORTANA_REQUIRE_MINISIGN=1 \
   scripts/verify-desktop-release.sh v0.34.10
 ```
 

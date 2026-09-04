@@ -8,7 +8,7 @@ Cortana documentation is divided by authority. Each document should define one d
 | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Product purpose and user promise                        | [Project goal](project-goal.md)                                                                                                           |
 | Install and first use                                   | [Getting started](getting-started.md)                                                                                                     |
-| Current work, ownership, sequence, blockers, and status | [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) |
+| Current work, ownership, sequence, blockers, and status | [GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues) |
 | Tagged release evidence                                 | [Release history](releases.md)                                                                                                            |
 | Source lifecycle and connector rules                    | [Ingestion](ingestion.md)                                                                                                                 |
 | Source activation procedure                             | [Source rollout](source-rollout.md)                                                                                                       |
@@ -42,7 +42,7 @@ Cortana documentation is divided by authority. Each document should define one d
 
 ### GitHub
 
-[GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) are canonical for:
+[GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues) are canonical for:
 
 - current product and implementation status;
 - milestone scope and sequence;
@@ -80,7 +80,7 @@ Dated evidence may be linked from a release record or GitHub issue. It should no
 
 ## Planning links
 
-- [Milestones](https://github.com/0xPlayerOne/cortana/milestones)
-- [Issues](https://github.com/0xPlayerOne/cortana/issues)
-- [Pull requests](https://github.com/0xPlayerOne/cortana/pulls)
-- [Latest release](https://github.com/0xPlayerOne/cortana/releases/latest)
+- [Milestones](https://github.com/adea-ai/cortana/milestones)
+- [Issues](https://github.com/adea-ai/cortana/issues)
+- [Pull requests](https://github.com/adea-ai/cortana/pulls)
+- [Latest release](https://github.com/adea-ai/cortana/releases/latest)

@@ -2,7 +2,7 @@
 
 This document defines the durable procedure for moving a configured connector into approved Cortana use. It does not list the current enabled inventory or act as a roadmap.
 
-Current source work, owners, blockers, rollout decisions, and acceptance evidence belong in [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues). Tagged and dated evidence belongs in [Release history](releases.md) or the owning issue.
+Current source work, owners, blockers, rollout decisions, and acceptance evidence belong in [GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues). Tagged and dated evidence belongs in [Release history](releases.md) or the owning issue.
 
 ## Core rule
 
@@ -227,4 +227,4 @@ Do not retain raw tokens, credential paths, source content, private query text, 
 
 ## Planning boundary
 
-The procedure above is durable. The current source inventory, pending trials, activation order, owners, and blockers belong only in [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues).
+The procedure above is durable. The current source inventory, pending trials, activation order, owners, and blockers belong only in [GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues).

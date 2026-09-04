@@ -58,7 +58,7 @@ def test_partial_manifest_omits_missing_platforms(tmp_path: Path) -> None:
     output = tmp_path / "latest.json"
     env = {
         **os.environ,
-        "GH_REPO": "0xPlayerOne/cortana",
+        "GH_REPO": "adea-ai/cortana",
         "PATH": f"{tmp_path}:{os.environ['PATH']}",
     }
 
@@ -89,7 +89,7 @@ def test_strict_manifest_rejects_missing_platforms(tmp_path: Path) -> None:
     _fake_gh(tmp_path, _assets("0.39.0"))
     env = {
         **os.environ,
-        "GH_REPO": "0xPlayerOne/cortana",
+        "GH_REPO": "adea-ai/cortana",
         "PATH": f"{tmp_path}:{os.environ['PATH']}",
     }
 

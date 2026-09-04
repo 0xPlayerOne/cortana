@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 description = "Tauri control plane for the Cortana local second brain"
 license = "Apache-2.0"
-repository = "https://github.com/0xPlayerOne/cortana"
+repository = "https://github.com/adea-ai/cortana"
 
 [lib]
 name = "cortana_desktop"

@@ -2,7 +2,7 @@
 
 This document defines the durable packaged-product acceptance contract for Cortana Desktop. It does not track current implementation status, open blockers, or release-specific pass/fail state.
 
-Current Desktop work and evidence belong in [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues). Tagged release evidence belongs in [Release history](releases.md).
+Current Desktop work and evidence belong in [GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues). Tagged release evidence belongs in [Release history](releases.md).
 
 ## Audit boundary
 
@@ -340,4 +340,4 @@ Do not put credentials, source content, private queries, tokens, or local absolu
 
 ## Planning boundary
 
-This audit defines what must be tested. [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) own which cases are pending, who owns them, their sequence, blockers, and current evidence.
+This audit defines what must be tested. [GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues) own which cases are pending, who owns them, their sequence, blockers, and current evidence.

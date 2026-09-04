@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 description = "Local-first, agent-native second brain with configurable ingestion and hybrid retrieval"
 license = "Apache-2.0"
-repository = "https://github.com/0xPlayerOne/cortana"
+repository = "https://github.com/adea-ai/cortana"
 
 [dependencies]
 anyhow = "1.0"

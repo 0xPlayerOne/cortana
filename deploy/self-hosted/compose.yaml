@@ -2,7 +2,7 @@ name: cortana
 
 services:
   cortana:
-    image: ghcr.io/0xplayerone/cortana:${CORTANA_VERSION:-latest}
+    image: ghcr.io/adea-ai/cortana:${CORTANA_VERSION:-latest}
     build:
       context: ../..
       args:

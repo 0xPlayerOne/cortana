@@ -24,6 +24,6 @@ the deliberate exclusions.
 ## Provenance and refresh
 
 The UI, testing, security, performance, and review skills are synchronized from
-the public `0xPlayerOne/agent-hq` skill set. `code-simplification` is
-synchronized from `0xPlayerOne/control-plane`. Refreshes must be reviewed as
+the public `adea-ai/agent-hq` skill set. `code-simplification` is
+synchronized from `adea-ai/control-plane`. Refreshes must be reviewed as
 normal Cortana changes; do not overwrite local adaptations blindly.
