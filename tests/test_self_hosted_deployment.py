@@ -53,7 +53,7 @@ def test_container_release_workflow_is_tag_scoped_and_publishes_ghcr() -> None:
         in workflow
     )
     assert "sbom: ${{ startsWith(github.ref, 'refs/tags/v') }}" in workflow
-    assert "docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8" in workflow
+    assert "docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a" in workflow
     assert "docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e" in workflow
     assert "docker/login-action@dbcb813823bdd20940b903addbd779551569679f" in workflow
     assert "docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302" in workflow
