@@ -2,7 +2,7 @@
 
 Cortana evaluation turns product, retrieval, memory, source, security, Desktop, and release claims into repeatable evidence. This document defines durable methods and evidence rules; it does not track the current pass/fail state of milestones.
 
-Current evaluation work belongs in [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues). Version-specific evidence belongs in [Release history](releases.md) or the owning issue.
+Current evaluation work belongs in [GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues). Version-specific evidence belongs in [Release history](releases.md) or the owning issue.
 
 ## Principles
 
@@ -507,4 +507,4 @@ Reports must exclude raw source content, memory content, private queries, tokens
 
 ## Planning boundary
 
-This document defines evaluation methods. [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) own the cases currently pending, their owners, sequence, blockers, results, and activation decisions.
+This document defines evaluation methods. [GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues) own the cases currently pending, their owners, sequence, blockers, results, and activation decisions.

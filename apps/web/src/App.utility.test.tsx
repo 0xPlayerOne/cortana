@@ -899,9 +899,9 @@ test('Help lists the real keyboard shortcuts and project links', async () => {
   expect(screen.getByText('Close panels and the palette')).toBeTruthy()
 
   const project = screen.getByRole('link', { name: /GitHub project/ })
-  expect(project.getAttribute('href')).toBe('https://github.com/0xPlayerOne/cortana')
+  expect(project.getAttribute('href')).toBe('https://github.com/adea-ai/cortana')
   const docs = screen.getByRole('link', { name: /Documentation/ })
-  expect(docs.getAttribute('href')).toBe('https://github.com/0xPlayerOne/cortana/tree/main/docs')
+  expect(docs.getAttribute('href')).toBe('https://github.com/adea-ai/cortana/tree/main/docs')
   // The desktop-only project opener must not appear in web mode.
   expect(screen.queryByRole('button', { name: 'Open project page' })).toBeNull()
 })

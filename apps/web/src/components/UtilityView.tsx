@@ -751,12 +751,12 @@ function HelpView({
   const links = [
     {
       label: 'GitHub project',
-      href: 'https://github.com/0xPlayerOne/cortana',
+      href: 'https://github.com/adea-ai/cortana',
       detail: 'Source, releases, and issues.',
     },
     {
       label: 'Documentation',
-      href: 'https://github.com/0xPlayerOne/cortana/tree/main/docs',
+      href: 'https://github.com/adea-ai/cortana/tree/main/docs',
       detail: 'Architecture, ingestion, query, and operations guides.',
     },
   ]

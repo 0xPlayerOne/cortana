@@ -4,45 +4,45 @@ Cortana documentation is divided by authority. Each document should define one d
 
 ## Start here
 
-| Need                                                    | Canonical document                                                                                                                        |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Product purpose and user promise                        | [Project goal](project-goal.md)                                                                                                           |
-| Install and first use                                   | [Getting started](getting-started.md)                                                                                                     |
-| Current work, ownership, sequence, blockers, and status | [GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) |
-| Tagged release evidence                                 | [Release history](releases.md)                                                                                                            |
-| Source lifecycle and connector rules                    | [Ingestion](ingestion.md)                                                                                                                 |
-| Source activation procedure                             | [Source rollout](source-rollout.md)                                                                                                       |
-| Retrieval, context, synthesis, and caching              | [Query](query.md)                                                                                                                         |
-| Native memory lifecycle                                 | [Memory](memory.md)                                                                                                                       |
-| Agent setup and interface use                           | [Integrations](integrations.md)                                                                                                           |
-| Desktop architecture and privilege boundary             | [Desktop architecture](desktop-architecture.md)                                                                                           |
-| Desktop packaged-product acceptance                     | [Desktop UX audit](desktop-ux-audit.md)                                                                                                   |
-| Desktop shadcn migration baseline and architecture      | [Desktop shadcn migration record](desktop-shadcn-migration.md)                                                                            |
-| Services, readiness, backup, restore, and recovery      | [Operations](operations.md)                                                                                                               |
-| Derived Obsidian-compatible Markdown export             | [Derived Obsidian vault](obsidian-vault.md)                                                                                               |
-| Evaluation methods and evidence                         | [Evaluation](evaluation.md)                                                                                                               |
-| Planning and documentation ownership                    | [Planning and tracking](planning.md)                                                                                                      |
-| Architecture diagrams                                   | [Architecture](architecture/)                                                                                                             |
-| Canonical entities and persistence                      | [Core entity contract](contracts/core-entities.md)                                                                                        |
-| Structured retrieval units                              | [Structured chunking](chunking.md)                                                                                                        |
-| Revision-aware code indexes and retrieval               | [Code intelligence](code-intelligence.md)                                                                                                 |
-| ContextBundle identity and pinning                      | [ContextBundle contract](contracts/context-bundle.md)                                                                                     |
-| Connector and reconciliation semantics                  | [Connector contract](contracts/connectors.md)                                                                                             |
-| Workspace, principal, and ACL mapping                   | [Identity contract](contracts/identity.md)                                                                                                |
-| Public API compatibility                                | [Public API contract](contracts/public-api.md)                                                                                            |
-| Knowledge graph identity and relationship semantics     | [Knowledge graph contract](contracts/knowledge-graph.md)                                                                                  |
-| ContextProvider compatibility and fixtures              | [ContextProvider contract](contracts/context-provider.md)                                                                                 |
-| Supported single-node container and VPS operations      | [Self-hosted deployment](self-hosted.md)                                                                                                  |
-| Security assets and trust boundaries                    | [Security and trust model](security-model.md)                                                                                             |
-| Native memory taxonomy                                  | [Memory contract](contracts/memory.md)                                                                                                    |
-| Bounded non-mutating memory reasoning                   | [Reflection contract](contracts/reflection.md)                                                                                            |
-| Extension policy                                        | [Extensions](EXTENSIONS.md)                                                                                                               |
+| Need                                                    | Canonical document                                                                                                                |
+| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Product purpose and user promise                        | [Project goal](project-goal.md)                                                                                                   |
+| Install and first use                                   | [Getting started](getting-started.md)                                                                                             |
+| Current work, ownership, sequence, blockers, and status | [GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues) |
+| Tagged release evidence                                 | [Release history](releases.md)                                                                                                    |
+| Source lifecycle and connector rules                    | [Ingestion](ingestion.md)                                                                                                         |
+| Source activation procedure                             | [Source rollout](source-rollout.md)                                                                                               |
+| Retrieval, context, synthesis, and caching              | [Query](query.md)                                                                                                                 |
+| Native memory lifecycle                                 | [Memory](memory.md)                                                                                                               |
+| Agent setup and interface use                           | [Integrations](integrations.md)                                                                                                   |
+| Desktop architecture and privilege boundary             | [Desktop architecture](desktop-architecture.md)                                                                                   |
+| Desktop packaged-product acceptance                     | [Desktop UX audit](desktop-ux-audit.md)                                                                                           |
+| Desktop shadcn migration baseline and architecture      | [Desktop shadcn migration record](desktop-shadcn-migration.md)                                                                    |
+| Services, readiness, backup, restore, and recovery      | [Operations](operations.md)                                                                                                       |
+| Derived Obsidian-compatible Markdown export             | [Derived Obsidian vault](obsidian-vault.md)                                                                                       |
+| Evaluation methods and evidence                         | [Evaluation](evaluation.md)                                                                                                       |
+| Planning and documentation ownership                    | [Planning and tracking](planning.md)                                                                                              |
+| Architecture diagrams                                   | [Architecture](architecture/)                                                                                                     |
+| Canonical entities and persistence                      | [Core entity contract](contracts/core-entities.md)                                                                                |
+| Structured retrieval units                              | [Structured chunking](chunking.md)                                                                                                |
+| Revision-aware code indexes and retrieval               | [Code intelligence](code-intelligence.md)                                                                                         |
+| ContextBundle identity and pinning                      | [ContextBundle contract](contracts/context-bundle.md)                                                                             |
+| Connector and reconciliation semantics                  | [Connector contract](contracts/connectors.md)                                                                                     |
+| Workspace, principal, and ACL mapping                   | [Identity contract](contracts/identity.md)                                                                                        |
+| Public API compatibility                                | [Public API contract](contracts/public-api.md)                                                                                    |
+| Knowledge graph identity and relationship semantics     | [Knowledge graph contract](contracts/knowledge-graph.md)                                                                          |
+| ContextProvider compatibility and fixtures              | [ContextProvider contract](contracts/context-provider.md)                                                                         |
+| Supported single-node container and VPS operations      | [Self-hosted deployment](self-hosted.md)                                                                                          |
+| Security assets and trust boundaries                    | [Security and trust model](security-model.md)                                                                                     |
+| Native memory taxonomy                                  | [Memory contract](contracts/memory.md)                                                                                            |
+| Bounded non-mutating memory reasoning                   | [Reflection contract](contracts/reflection.md)                                                                                    |
+| Extension policy                                        | [Extensions](EXTENSIONS.md)                                                                                                       |
 
 ## Authority model
 
 ### GitHub
 
-[GitHub milestones](https://github.com/0xPlayerOne/cortana/milestones) and [GitHub issues](https://github.com/0xPlayerOne/cortana/issues) are canonical for:
+[GitHub milestones](https://github.com/adea-ai/cortana/milestones) and [GitHub issues](https://github.com/adea-ai/cortana/issues) are canonical for:
 
 - current product and implementation status;
 - milestone scope and sequence;
@@ -80,7 +80,7 @@ Dated evidence may be linked from a release record or GitHub issue. It should no
 
 ## Planning links
 
-- [Milestones](https://github.com/0xPlayerOne/cortana/milestones)
-- [Issues](https://github.com/0xPlayerOne/cortana/issues)
-- [Pull requests](https://github.com/0xPlayerOne/cortana/pulls)
-- [Latest release](https://github.com/0xPlayerOne/cortana/releases/latest)
+- [Milestones](https://github.com/adea-ai/cortana/milestones)
+- [Issues](https://github.com/adea-ai/cortana/issues)
+- [Pull requests](https://github.com/adea-ai/cortana/pulls)
+- [Latest release](https://github.com/adea-ai/cortana/releases/latest)

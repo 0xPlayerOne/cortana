@@ -12,7 +12,7 @@ condition, not something to bypass.
 ## Choose your installation path
 
 - **Desktop release (recommended):** download the matching installer from the [latest GitHub
-  release](https://github.com/0xPlayerOne/cortana/releases/latest). This is the simplest path for
+  release](https://github.com/adea-ai/cortana/releases/latest). This is the simplest path for
   workspace, source, service, and update settings.
 - **Core archive:** use the matching platform archive when you want the CLI, MCP, or HTTP service
   without the Desktop shell.
@@ -34,7 +34,7 @@ host-acceptance notes in the [Desktop audit](desktop-ux-audit.md).
 
 ## The shortest path to a first result
 
-1. **Download Cortana Desktop.** Open the [latest GitHub release](https://github.com/0xPlayerOne/cortana/releases/latest)
+1. **Download Cortana Desktop.** Open the [latest GitHub release](https://github.com/adea-ai/cortana/releases/latest)
    and choose the installer for your operating system and CPU. The current protected release is
    **v0.39.0**; [Release history](releases.md) records its verifier state and remaining trust gate.
 2. **Install and launch.** Approve the optional tooling that Cortana offers to install. Choose a

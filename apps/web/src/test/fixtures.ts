@@ -167,7 +167,7 @@ export const desktopUpdate: DesktopUpdate = {
   release_date: '2026-07-30T00:00:00Z',
   release_notes: 'Fixes and improvements.',
   changelog: `${webPackage.version} release notes.`,
-  github_url: 'https://github.com/0xPlayerOne/cortana',
+  github_url: 'https://github.com/adea-ai/cortana',
   phase: 'available',
   downloaded_bytes: 0,
   total_bytes: 0,

@@ -37,7 +37,7 @@ const MAX_SCOPE_LENGTH: usize = 256;
 const MAX_DOCUMENT_CURSOR_LENGTH: usize = 1024;
 const MAX_DOCUMENT_ID_LENGTH: usize = 128;
 const MAX_BACKEND_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
-const PROJECT_URL: &str = "https://github.com/0xPlayerOne/cortana";
+const PROJECT_URL: &str = "https://github.com/adea-ai/cortana";
 const STATUS_WARMUP_MESSAGE: &str = "Cortana is warming up; live status will be available shortly";
 static QUITTING: AtomicBool = AtomicBool::new(false);
 

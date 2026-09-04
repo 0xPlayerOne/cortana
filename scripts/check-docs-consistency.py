@@ -22,8 +22,8 @@ PLANNING_AUTHORITY_FILES = [
     ROOT / "docs" / "operations.md",
 ]
 
-MILESTONE_LINK = "https://github.com/0xPlayerOne/cortana/milestones"
-ISSUE_LINK = "https://github.com/0xPlayerOne/cortana/issues"
+MILESTONE_LINK = "https://github.com/adea-ai/cortana/milestones"
+ISSUE_LINK = "https://github.com/adea-ai/cortana/issues"
 
 CURRENT_RELEASE_PATTERN = re.compile(r"(?m)^## Current release: v(?P<version>\d+\.\d+\.\d+)\s*$")
 

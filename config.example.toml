@@ -176,7 +176,7 @@ token = "/secure/path/google-token.json"
 name = "work-github"
 kind = "github"
 project = "work"
-repositories = ["0xPlayerOne/cortana"]
+repositories = ["adea-ai/cortana"]
 # For browser authorization, provide a GitHub OAuth app client-id JSON and a
 # private token destination instead of token_env. The Desktop chooser can
 # create the destination file after authorization.

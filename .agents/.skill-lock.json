@@ -2,8 +2,8 @@
   "version": 1,
   "description": "Curated project skills for Cortana's Rust, Python, and Tauri/React codebase.",
   "sources": {
-    "agent-hq": "0xPlayerOne/agent-hq/.agents/skills",
-    "control-plane": "0xPlayerOne/control-plane/.agents/skills"
+    "agent-hq": "adea-ai/agent-hq/.agents/skills",
+    "control-plane": "adea-ai/control-plane/.agents/skills"
   },
   "skills": [
     "accessibility",
