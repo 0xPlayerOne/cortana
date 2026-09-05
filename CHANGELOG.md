@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.56.5](https://github.com/adea-ai/cortana/compare/v0.56.4...v0.56.5) (2026-09-05)
+
+
+### Maintenance
+
+* **deps:** bump the npm-dependencies group across 1 directory with 9 updates ([71d8dc0](https://github.com/adea-ai/cortana/commit/71d8dc0a5d8ff710fb2e027bb8f66e2405999dcf))
+* **deps:** drop removed baseUrl option for TS7 compat ([0f2a598](https://github.com/adea-ai/cortana/commit/0f2a5988539ec44082f04013c3328d802aadc08a))
+* **deps:** hold eslint-10 toolchain until migration ([6fb49ee](https://github.com/adea-ai/cortana/commit/6fb49eea3d3afaa8a1b39382b7e861b1ce55ca98))
+* **deps:** hold vite/lucide majors pending a11y investigation ([debf58b](https://github.com/adea-ai/cortana/commit/debf58b893d7d74f3c0a67e25c96e93c43a4bd45))
+* **deps:** resolve bun.lock for npm-dependencies group ([087c33c](https://github.com/adea-ai/cortana/commit/087c33c8809a19ab8f030939235a173e4d4bd5ad))
+* **deps:** restore baseUrl with TS 5.9 hold ([0745544](https://github.com/adea-ai/cortana/commit/0745544c95a4c777dcdf6c3b044fe0c6621ca9b1))
+
 ## [0.56.4](https://github.com/adea-ai/cortana/compare/v0.56.3...v0.56.4) (2026-09-05)
 
 
