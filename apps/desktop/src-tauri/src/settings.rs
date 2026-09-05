@@ -371,6 +371,29 @@ fn configure_connector_command_at(config_path: &Path, path: &Path) -> Result<(),
     )
 }
 
+/// Returns whether a connector command was previously configured, which
+/// records an earlier explicit install. The native setup hook uses this to
+/// distinguish upgrades (safe to reconcile automatically) from a true first
+/// run (requires explicit approval from System readiness). Read-only: never
+/// writes to or audits the settings file.
+pub(crate) fn connector_command_configured() -> bool {
+    connector_command_configured_at(&default_config_path())
+}
+
+fn connector_command_configured_at(config_path: &Path) -> bool {
+    let root = match read_config(config_path) {
+        Ok(root) => root,
+        Err(_) => return false,
+    };
+    match root.get("connectors") {
+        Some(Value::Table(connectors)) => match connectors.get("command") {
+            Some(Value::Array(values)) => values.iter().any(|value| value.is_str()),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 pub fn export_portable(path: &Path) -> Result<PortableExport, String> {
     export_portable_at(&default_config_path(), path)
 }
@@ -3202,6 +3225,40 @@ mod tests {
                 .iter()
                 .all(|event| event["secret_values_recorded"] == false)
         );
+    }
+
+    #[test]
+    fn connector_command_configured_tracks_prior_explicit_install() {
+        let temp = tempfile::tempdir().expect("temp directory");
+        let config_path = temp.path().join("config/config.toml");
+        // No config file yet: true first run, never configured.
+        assert!(!connector_command_configured_at(&config_path));
+        fs::create_dir_all(config_path.parent().expect("config parent")).expect("config directory");
+        // Fresh config without a connectors section: still first run.
+        fs::write(
+            &config_path,
+            "[runtime]\ndata_dir = \"/tmp/cortana-data\"\n",
+        )
+        .expect("initial config");
+        assert!(!connector_command_configured_at(&config_path));
+        // An explicit install records the command; upgrades may reconcile.
+        let command = if cfg!(windows) {
+            r"C:\Users\example\.local\share\cortana\venv\Scripts\cortana-connectors.exe"
+        } else {
+            "/Users/example/.local/share/cortana/venv/bin/cortana-connectors"
+        };
+        fs::write(
+            &config_path,
+            format!("[connectors]\ncommand = [\"{command}\"]\n"),
+        )
+        .expect("configured command");
+        assert!(connector_command_configured_at(&config_path));
+        // Malformed or mistyped entries fail closed: no silent install.
+        fs::write(&config_path, "[connectors]\ncommand = \"not-an-array\"\n")
+            .expect("mistyped command");
+        assert!(!connector_command_configured_at(&config_path));
+        fs::write(&config_path, "not toml = [unclosed").expect("unparsable config");
+        assert!(!connector_command_configured_at(&config_path));
     }
 
     #[test]

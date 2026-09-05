@@ -2910,6 +2910,55 @@ test('local embedding readiness explains the approval-gated runtime installer', 
   }
 })
 
+test('connector environment install requires explicit approval from readiness', async () => {
+  const originalConfirm = window.confirm
+  const originalScan = state.readinessScan
+  let confirmation = ''
+  state.readinessScan = () =>
+    Promise.resolve({
+      scanned_at_unix_seconds: 1785000000,
+      platform: 'macos',
+      tools_ready: false,
+      core: null,
+      core_error: null,
+      tools: [
+        {
+          id: 'connectors',
+          label: 'Connector environment',
+          required: true,
+          available: false,
+          path: null,
+          version: null,
+          install_supported: true,
+          detail: 'Install from System readiness to enable connectors.',
+        },
+      ],
+    })
+  state.installerJob = null
+  window.confirm = (message) => {
+    confirmation = message ?? ''
+    return true
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
+    await waitFor(() => expect(screen.getByText('Connector environment')).toBeTruthy())
+    // First-run connector installs are approval-gated: the Install action
+    // must be offered instead of starting automatically.
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+    expect(confirmation).toContain('per-user connector environment')
+    await waitFor(() => expect(screen.getByText('Installing connectors')).toBeTruthy())
+    expect(state.installerJob?.tool).toBe('connectors')
+  } finally {
+    state.readinessScan = originalScan
+    window.confirm = originalConfirm
+    state.installerJob = null
+  }
+})
+
 test('installer progress survives settings section changes', async () => {
   const originalConfirm = window.confirm
   window.confirm = () => true
