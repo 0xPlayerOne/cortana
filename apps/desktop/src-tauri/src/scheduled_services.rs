@@ -16,8 +16,8 @@ const MAX_OUTPUT_BYTES: usize = 64 * 1024;
 /// Install the core service set while applying the Desktop-owned backup
 /// interval. The default path delegates to the existing implementation so
 /// its command behavior remains identical for untouched installations.
-pub async fn install_core(
-    app: &AppHandle,
+pub async fn install_core<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     approved: bool,
 ) -> Result<services::ServiceReport, String> {
     if !approved {
@@ -51,8 +51,8 @@ pub async fn install_core(
 /// The existing service module intentionally retains its CLI-compatible
 /// defaults. Desktop settings live in a separate owner-only file so this path
 /// can evolve without rewriting an active user-owned settings diff.
-pub async fn install_sync(
-    app: &AppHandle,
+pub async fn install_sync<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     approved: bool,
 ) -> Result<services::ServiceReport, String> {
     if !approved {
@@ -109,7 +109,10 @@ fn install_args(
     args
 }
 
-async fn sidecar_output(app: &AppHandle, args: &[String]) -> Result<SidecarOutput, String> {
+async fn sidecar_output<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    args: &[String],
+) -> Result<SidecarOutput, String> {
     let command = app
         .shell()
         .sidecar("cortana")

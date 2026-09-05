@@ -950,6 +950,62 @@ impl Store {
         Ok(true)
     }
 
+    /// Insert a clean, provider-free evaluation corpus in one transaction.
+    /// This is intentionally scoped to synthetic evaluation data: production
+    /// ingestion keeps the per-document upsert semantics above so a partial
+    /// sync can be resumed safely.
+    pub(crate) fn insert_evaluation_corpus(
+        &self,
+        documents: &[Document],
+        embedding: &[f32],
+    ) -> Result<()> {
+        anyhow::ensure!(!embedding.is_empty(), "evaluation embedding is empty");
+        let mut connection = self.connection.lock().expect("store lock poisoned");
+        let transaction = connection.transaction()?;
+        for document in documents {
+            let id = stable_id(&document.source, &document.source_id);
+            let hash = document_hash(document)?;
+            transaction.execute(
+                "INSERT INTO documents(id,source,source_id,title,uri,content_hash,updated_at,project,acl_json,metadata_json,content)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+                params![
+                    id,
+                    document.source,
+                    document.source_id,
+                    document.title,
+                    document.uri,
+                    hash,
+                    document.updated_at.to_rfc3339(),
+                    document.project,
+                    serde_json::to_string(&document.acl)?,
+                    document.metadata.to_string(),
+                    document.content,
+                ],
+            )?;
+            for target in metadata_reference_strings(&document.metadata) {
+                transaction.execute(
+                    "INSERT OR IGNORE INTO document_links(document_id,target) VALUES(?1,?2)",
+                    params![id, target],
+                )?;
+            }
+            let chunk_id = format!("{id}:0");
+            transaction.execute(
+                "INSERT INTO chunks(
+                   id,document_id,ordinal,content,embedding_json,embedding_blob
+                 ) VALUES(?1,?2,0,?3,'[]',?4)",
+                params![chunk_id, id, document.content, encode_embedding(embedding)],
+            )?;
+            transaction.execute(
+                "INSERT INTO chunks_fts(chunk_id,title,content) VALUES(?1,?2,?3)",
+                params![chunk_id, document.title, document.content],
+            )?;
+            replace_code_index(&transaction, &id, document)?;
+            bump_corpus_revision(&transaction)?;
+        }
+        transaction.commit()?;
+        Ok(())
+    }
+
     /// Upsert a document using the versioned structured-chunk contract. The
     /// canonical document row is identical to `upsert`; only derived chunk
     /// identity and lineage fields differ. This makes rollout reversible by
@@ -5701,6 +5757,19 @@ fn row_to_chunk(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredChunk> {
 fn migrate_embedding_blobs(connection: &mut Connection) -> Result<()> {
     ensure_column(connection, "chunks", "embedding_blob", "BLOB")?;
     ensure_column(connection, "embedding_cache", "embedding_blob", "BLOB")?;
+    let migration_complete = connection
+        .query_row(
+            "SELECT value FROM meta WHERE key='embedding_blobs_schema'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .as_deref()
+        == Some("1");
+    if migration_complete {
+        return Ok(());
+    }
+
     for table in ["chunks", "embedding_cache"] {
         let rows = {
             let mut statement = connection.prepare(&format!(
@@ -5727,6 +5796,11 @@ fn migrate_embedding_blobs(connection: &mut Connection) -> Result<()> {
         }
         transaction.commit()?;
     }
+    connection.execute(
+        "INSERT INTO meta(key,value) VALUES('embedding_blobs_schema','1')
+         ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [],
+    )?;
     Ok(())
 }
 
@@ -5805,13 +5879,26 @@ fn migrate_memory_dedupe_scope(connection: &mut Connection) -> Result<()> {
 /// marker makes interrupted initialization safe to resume, while the creator
 /// dimension prevents one principal's retry key from revealing another's.
 fn migrate_memory_candidates(connection: &mut Connection) -> Result<()> {
-    let transaction = connection.transaction()?;
     ensure_column(
-        &transaction,
+        connection,
         "memory_candidates",
         "created_by",
         "TEXT NOT NULL DEFAULT 'legacy-owner'",
     )?;
+    let migration_complete = connection
+        .query_row(
+            "SELECT value FROM meta WHERE key='memory_candidates_schema'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .as_deref()
+        == Some("1");
+    if migration_complete {
+        return Ok(());
+    }
+
+    let transaction = connection.transaction()?;
     transaction.execute_batch(
         "DROP INDEX IF EXISTS idx_memory_candidates_project_dedupe;
          CREATE UNIQUE INDEX idx_memory_candidates_project_dedupe
@@ -8025,6 +8112,9 @@ mod tests {
                 [],
             )
             .expect("legacy cache");
+        connection
+            .execute("DELETE FROM meta WHERE key='embedding_blobs_schema'", [])
+            .expect("legacy embedding schema");
         drop(connection);
 
         let migrated = Store::open(&path).expect("migrate store");
@@ -8052,6 +8142,16 @@ mod tests {
                 .expect("blob count");
             assert_eq!(blob_rows, 1);
         }
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT value FROM meta WHERE key='embedding_blobs_schema'",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )
+                .expect("embedding schema marker"),
+            "1"
+        );
     }
 
     #[test]

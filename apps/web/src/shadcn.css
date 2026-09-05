@@ -4926,7 +4926,7 @@ select:focus-visible {
   }
 
   .graph-kind-filter {
-    top: 142px;
+    top: 150px;
   }
 
   .graph-summary {
@@ -4935,6 +4935,16 @@ select:focus-visible {
 
   .graph-selection {
     top: 260px;
+  }
+}
+
+@media (max-width: 360px) {
+  .m7-knowledge-workspace .graph-kind-filter {
+    top: 190px;
+  }
+
+  .m7-knowledge-workspace .graph-summary {
+    top: 228px;
   }
 }
 .utility-view {

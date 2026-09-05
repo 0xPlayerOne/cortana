@@ -416,6 +416,7 @@ export function M7ApplicationNavigation({
   onWorkspaceChange: (workspace: string) => void
 }) {
   const activeWorkspace = workspaces.find((item) => item.id === workspace)
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false)
   const { isMobile, mobileFinalFocusRef, mobileTriggerRef, setOpenMobile } = useSidebar()
   const runNavigation = (action: () => void, focusDestination = false) => {
     action()
@@ -437,7 +438,7 @@ export function M7ApplicationNavigation({
       className="m7-application-sidebar"
     >
       <SidebarHeader className="m7-workspace-header">
-        <DropdownMenu>
+        <DropdownMenu open={workspaceMenuOpen} onOpenChange={setWorkspaceMenuOpen}>
           <DropdownMenuTrigger
             render={
               <SidebarMenuButton
@@ -470,10 +471,15 @@ export function M7ApplicationNavigation({
               <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={workspace}
-                onValueChange={(value) => runNavigation(() => onWorkspaceChange(value))}
+                onValueChange={(value) =>
+                  runNavigation(() => {
+                    setWorkspaceMenuOpen(false)
+                    onWorkspaceChange(value)
+                  })
+                }
               >
                 {workspaces.map((item) => (
-                  <DropdownMenuRadioItem key={item.id} value={item.id}>
+                  <DropdownMenuRadioItem key={item.id} value={item.id} closeOnClick>
                     <WorkspaceLogo workspace={item} size="small" />
                     {item.name}
                   </DropdownMenuRadioItem>

@@ -72,6 +72,7 @@ import {
 
 import {
   cancelDesktopInstaller,
+  cancelDesktopUpdate,
   checkDesktopUpdate,
   getDesktopAudit,
   getDesktopInstaller,
@@ -1737,6 +1738,15 @@ function UpdatesSection({
     }
   }
 
+  const cancel = async () => {
+    setError('')
+    try {
+      setUpdate(await cancelDesktopUpdate())
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Update cancellation failed')
+    }
+  }
+
   const openProject = async () => {
     setError('')
     try {
@@ -1751,7 +1761,10 @@ function UpdatesSection({
       ? Math.min(100, Math.round((update.downloaded_bytes / update.total_bytes) * 100))
       : null
   const updateInFlight =
-    busy === 'install' || update?.phase === 'downloading' || update?.phase === 'installing'
+    busy === 'install' ||
+    update?.phase === 'downloading' ||
+    update?.phase === 'installing' ||
+    update?.phase === 'cancelling'
   const canInstall =
     Boolean(update?.available_version) && !update?.restart_required && update?.phase !== 'installed'
 
@@ -1765,16 +1778,29 @@ function UpdatesSection({
           <span className="eyebrow">Installed version</span>
           <strong>{update?.current_version || 'Checking…'}</strong>
           <small>
-            {update?.available_version
-              ? `Version ${update.available_version} is available`
-              : update?.phase === 'current'
-                ? 'You are up to date'
-                : update?.phase === 'unavailable'
-                  ? 'No signed package is published for this platform'
-                  : `Updater status: ${update?.phase || 'idle'}`}
+            {update?.phase === 'cancelled'
+              ? 'Update cancelled; you can retry when ready'
+              : update?.available_version
+                ? `Version ${update.available_version} is available`
+                : update?.phase === 'current'
+                  ? 'You are up to date'
+                  : update?.phase === 'unavailable'
+                    ? 'No signed package is published for this platform'
+                    : `Updater status: ${update?.phase || 'idle'}`}
           </small>
         </div>
         <div className="service-actions">
+          {updateInFlight && (
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={update?.phase === 'cancelling'}
+              onClick={() => void cancel()}
+            >
+              <CircleStop size={14} />
+              {update?.phase === 'cancelling' ? 'Cancelling…' : 'Cancel update'}
+            </Button>
+          )}
           <Button
             variant="secondary"
             type="button"

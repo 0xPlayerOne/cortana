@@ -18,7 +18,7 @@ import re
 import sys
 import time
 from collections.abc import Mapping, Sequence
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -43,13 +43,25 @@ MAX_COVERAGE_ENTRIES = 64
 MAX_RETENTION_DAYS = 3650
 MAX_MEMORY_MB = 64 * 1024
 GOVERNANCE_VERSION = "cortana.approved-corpus.v1"
+MANIFEST_VERSION = 2
+ROOT = Path(__file__).resolve().parents[1]
 CASE_MODES = {"retrieval-only", "extractive-answer", "provider-synthesis"}
 _CITATION = re.compile(r"\[(\d+)\]")
 _SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SEMVER = re.compile(r"^\d+\.\d+\.\d+$")
+_PROJECT_VERSION = re.compile(r"(?m)^version\s*=\s*[\"'](?P<version>\d+\.\d+\.\d+)[\"']\s*$")
 
 
 class ManifestError(ValueError):
     """The operator-supplied manifest is outside the safety contract."""
+
+
+def current_project_version() -> str:
+    cargo = (ROOT / "Cargo.toml").read_text(encoding="utf-8")
+    match = _PROJECT_VERSION.search(cargo)
+    if match is None:
+        raise ManifestError("current project release version is unavailable")
+    return match.group("version")
 
 
 def _bounded_text(value: Any, label: str, *, required: bool = False) -> str | None:
@@ -339,17 +351,15 @@ def _governance(value: Any) -> dict[str, Any]:
     }
 
 
-def _corpus_metadata(value: Any) -> dict[str, str] | None:
+def _corpus_metadata(value: Any) -> dict[str, str]:
     """Validate non-secret provenance for an operator-approved corpus.
 
     The manifest still keeps raw queries outside the repository.  This small
     metadata block lets a report distinguish a corpus or approval change from
     a product regression without echoing private content or filesystem paths.
     """
-    if value is None:
-        return None
     if not isinstance(value, dict):
-        raise ManifestError("corpus must be an object")
+        raise ManifestError("corpus must be an object with approved provenance")
 
     def metadata_text(name: str, *, required: bool = True) -> str | None:
         result = _bounded_text(value.get(name), f"corpus.{name}", required=required)
@@ -388,8 +398,11 @@ def _corpus_metadata(value: Any) -> dict[str, str] | None:
         raise ManifestError(
             "corpus approval timestamps must be RFC3339 with a valid window"
         ) from error
+    now = datetime.now(timezone.utc)
+    if approved_time > now or (expires_time is not None and expires_time <= now):
+        raise ManifestError("corpus approval window is not active")
 
-    reviewer = metadata_text("reviewer", required=False)
+    reviewer = metadata_text("reviewer")
     result = {
         "id": corpus_id,
         "revision": revision,
@@ -399,8 +412,8 @@ def _corpus_metadata(value: Any) -> dict[str, str] | None:
     }
     if expires_at is not None:
         result["expires_at"] = expires_at
-    if reviewer is not None:
-        result["reviewer"] = reviewer
+    assert reviewer is not None
+    result["reviewer"] = reviewer
     return result
 
 
@@ -489,9 +502,15 @@ def _case(
     }
 
 
-def validate_manifest(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict) or value.get("version") != 1:
-        raise ManifestError("manifest version must be 1")
+def validate_manifest(value: Any, *, expected_version: str | None = None) -> dict[str, Any]:
+    if not isinstance(value, dict) or value.get("version") != MANIFEST_VERSION:
+        raise ManifestError(f"manifest version must be {MANIFEST_VERSION}")
+    release_version = value.get("release_version")
+    if not isinstance(release_version, str) or not _SEMVER.fullmatch(release_version):
+        raise ManifestError("release_version must be plain semantic version text")
+    expected = expected_version or current_project_version()
+    if not _SEMVER.fullmatch(expected) or release_version != expected:
+        raise ManifestError(f"release version does not match current release {expected}")
     retrieval_cases = value.get("retrieval_cases", [])
     context_cases = value.get("context_cases", [])
     answer_cases = value.get("answer_cases", [])
@@ -507,8 +526,10 @@ def validate_manifest(value: Any) -> dict[str, Any]:
         raise ManifestError(f"manifest contains more than {MAX_CASES} cases")
     corpus = _corpus_metadata(value.get("corpus"))
     governance = _governance(value.get("governance"))
-    if corpus is not None and corpus["storage"] != governance["storage"]["mode"]:
+    if corpus["storage"] != governance["storage"]["mode"]:
         raise ManifestError("corpus.storage must match governance.storage.mode")
+    if corpus["reviewer"] not in governance["reviewer_access"]["reviewers"]:
+        raise ManifestError("corpus.reviewer must identify an authorized reviewer")
     checked_retrieval_cases = [
         _case(item, f"retrieval_cases[{index}]") for index, item in enumerate(retrieval_cases)
     ]
@@ -577,7 +598,8 @@ def validate_manifest(value: Any) -> dict[str, Any]:
                 raise ManifestError(f"thresholds.{name} must be between 0 and 1")
             checked_thresholds[name] = float(threshold)
     return {
-        "version": 1,
+        "version": MANIFEST_VERSION,
+        "release_version": release_version,
         "corpus": corpus,
         "governance": governance,
         "thresholds": checked_thresholds,
@@ -587,7 +609,7 @@ def validate_manifest(value: Any) -> dict[str, Any]:
     }
 
 
-def load_manifest(path: Path) -> dict[str, Any]:
+def load_manifest(path: Path, *, expected_version: str | None = None) -> dict[str, Any]:
     if not path.is_file():
         raise ManifestError("manifest is not a regular file")
     metadata = path.stat()
@@ -598,9 +620,48 @@ def load_manifest(path: Path) -> dict[str, Any]:
         value = json.loads(raw.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ManifestError("manifest is not valid UTF-8 JSON") from error
-    manifest = validate_manifest(value)
+    manifest = validate_manifest(value, expected_version=expected_version)
     manifest["manifest_digest"] = f"sha256:{hashlib.sha256(raw).hexdigest()}"
     return manifest
+
+
+def preflight_report(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    """Return sanitized readiness evidence without contacting the live index."""
+    case_counts = {
+        "retrieval": len(manifest["retrieval_cases"]),
+        "context": len(manifest["context_cases"]),
+        "answer": len(manifest["answer_cases"]),
+    }
+    case_counts["total"] = sum(case_counts.values())
+    provenance: dict[str, Any] = {}
+    manifest_digest = manifest.get("manifest_digest")
+    if isinstance(manifest_digest, str):
+        provenance["manifest_digest"] = manifest_digest
+    corpus = manifest.get("corpus")
+    if isinstance(corpus, dict):
+        provenance["corpus"] = {
+            key: corpus[key] for key in ("id", "revision", "digest") if key in corpus
+        }
+    governance = manifest["governance"]
+    provenance["release_version"] = manifest["release_version"]
+    provenance["governance"] = {
+        "contract_version": governance["contract_version"],
+        "scope_digest": "sha256:"
+        + hashlib.sha256(
+            json.dumps(governance["scope"], sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+        "provider_synthesis_enabled": governance["provider_synthesis_enabled"],
+    }
+    return {
+        "evaluation": "cortana-live-index-v2",
+        "preflight": "passed",
+        "read_only": True,
+        "index_contacted": False,
+        "provenance": provenance,
+        "case_counts": case_counts,
+        "resource_bounds": governance["resource_bounds"],
+        "thresholds": manifest["thresholds"],
+    }
 
 
 def _request_payload(case: Mapping[str, Any], endpoint: str) -> dict[str, Any]:
@@ -1142,6 +1203,7 @@ def evaluate_manifest(
             key: corpus[key] for key in ("id", "revision", "digest") if key in corpus
         }
     governance = manifest.get("governance")
+    provenance["release_version"] = manifest["release_version"]
     if isinstance(governance, dict):
         provenance["governance"] = {
             "contract_version": governance["contract_version"],
@@ -1152,7 +1214,7 @@ def evaluate_manifest(
             "provider_synthesis_enabled": governance["provider_synthesis_enabled"],
         }
     return {
-        "evaluation": "cortana-live-index-v1",
+        "evaluation": "cortana-live-index-v2",
         "passed": passed,
         "read_only": True,
         "provenance": provenance,
@@ -1177,6 +1239,16 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--request-timeout-seconds", type=float, default=DEFAULT_REQUEST_SECONDS)
     parser.add_argument("--total-timeout-seconds", type=float, default=DEFAULT_TOTAL_SECONDS)
     parser.add_argument("--require-synthesis", action="store_true")
+    parser.add_argument(
+        "--version",
+        dest="expected_version",
+        help="expected release version; defaults to the current Cargo project version",
+    )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="validate and report manifest readiness without contacting the live index",
+    )
     return parser
 
 
@@ -1195,9 +1267,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if hostname not in {"127.0.0.1", "localhost", "::1"} and parsed.scheme != "https":
         raise SystemExit("non-loopback --base-url must use HTTPS")
     try:
-        manifest = load_manifest(arguments.manifest)
+        manifest = load_manifest(arguments.manifest, expected_version=arguments.expected_version)
     except (OSError, ManifestError) as error:
         raise SystemExit(f"invalid live evaluation manifest: {error}") from error
+    if arguments.validate_only:
+        json.dump(preflight_report(manifest), sys.stdout, indent=2, sort_keys=True)
+        sys.stdout.write("\n")
+        return 0
     headers: dict[str, str] = {}
     if arguments.token_env:
         token = os.environ.get(arguments.token_env)

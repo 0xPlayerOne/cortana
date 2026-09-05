@@ -4,7 +4,7 @@ The provider-neutral connector and reconciliation contract is [Connector contrac
 
 ## Current release boundary
 
-The current protected source and published package are `v0.39.0`. This release retains the bounded
+The current protected source and published package are `v0.56.10`. This release retains the bounded
 connector, cursor, cache, retry, cancellation, and deletion-safety contracts described below. It
 does not authorize accounts, enable disabled sources, reconcile the index, or install recurring
 sync; source validation remains an explicit, bounded operator gate.

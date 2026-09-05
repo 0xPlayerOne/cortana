@@ -1,8 +1,11 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use serde::Serialize;
 use tauri_plugin_updater::{Error as UpdaterError, Update, UpdaterExt};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 
 use crate::settings;
 
@@ -49,6 +52,9 @@ pub struct UpdaterState {
     operation: Arc<AsyncMutex<()>>,
     pending: Arc<AsyncMutex<Option<Update>>>,
     snapshot: Arc<Mutex<UpdateSnapshot>>,
+    install_active: Arc<AtomicBool>,
+    cancel_requested: Arc<AtomicBool>,
+    cancel_notify: Arc<Notify>,
 }
 
 impl UpdaterState {
@@ -182,6 +188,9 @@ impl UpdaterState {
             }
         };
 
+        self.cancel_requested.store(false, Ordering::Release);
+        self.install_active.store(true, Ordering::Release);
+
         self.update_snapshot(|snapshot| {
             snapshot.phase = "downloading";
             snapshot.downloaded_bytes = 0;
@@ -193,45 +202,71 @@ impl UpdaterState {
         let progress = self.snapshot.clone();
         let progress_finished = self.snapshot.clone();
         let retry = update.clone();
-        let result = match tokio::time::timeout(
-            UPDATE_TIMEOUT,
-            update.download_and_install(
-                move |chunk, total| {
-                    let mut snapshot = progress
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    snapshot.phase = "downloading";
-                    snapshot.downloaded_bytes =
-                        snapshot.downloaded_bytes.saturating_add(chunk as u64);
-                    snapshot.total_bytes = total;
-                },
-                move || {
-                    let mut snapshot = progress_finished
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    snapshot.phase = "installing";
-                },
-            ),
-        )
+        let mut install_future = Box::pin(update.download_and_install(
+            move |chunk, total| {
+                let mut snapshot = progress
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                snapshot.phase = "downloading";
+                snapshot.downloaded_bytes = snapshot.downloaded_bytes.saturating_add(chunk as u64);
+                snapshot.total_bytes = total;
+            },
+            move || {
+                let mut snapshot = progress_finished
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                snapshot.phase = "installing";
+            },
+        ));
+        let mut cancel_future = Box::pin(wait_for_cancel(
+            self.cancel_requested.clone(),
+            self.cancel_notify.clone(),
+        ));
+        let result = match tokio::time::timeout(UPDATE_TIMEOUT, async {
+            tokio::select! {
+                // If installation has already completed, a late cancel
+                // request must not relabel an installed update.
+                biased;
+                result = install_future.as_mut() => result.map_err(|error| {
+                    InstallFailure::Error(format!(
+                        "verify and install signed Cortana update: {error}"
+                    ))
+                }),
+                _ = cancel_future.as_mut() => Err(InstallFailure::Cancelled),
+            }
+        })
         .await
         {
-            Ok(result) => {
-                result.map_err(|error| format!("verify and install signed Cortana update: {error}"))
-            }
-            Err(_) => Err(format!(
+            Ok(result) => result,
+            Err(_) => Err(InstallFailure::Error(format!(
                 "signed Cortana update timed out after {} seconds",
                 UPDATE_TIMEOUT.as_secs()
-            )),
+            ))),
         };
 
-        if let Err(error) = result {
+        self.install_active.store(false, Ordering::Release);
+
+        if let Err(failure) = result {
             *self.pending.lock().await = Some(retry);
-            self.update_snapshot(|snapshot| {
-                snapshot.phase = "failed";
-                snapshot.error = Some(error.clone());
-            });
-            audit("update.install.failed", Some(expected_version), restart);
-            return Err(error);
+            match failure {
+                InstallFailure::Cancelled => {
+                    self.update_snapshot(|snapshot| {
+                        snapshot.phase = "cancelled";
+                        snapshot.error = None;
+                        snapshot.restart_required = false;
+                    });
+                    audit("update.install.cancelled", Some(expected_version), restart);
+                    return Ok(self.status());
+                }
+                InstallFailure::Error(error) => {
+                    self.update_snapshot(|snapshot| {
+                        snapshot.phase = "failed";
+                        snapshot.error = Some(error.clone());
+                    });
+                    audit("update.install.failed", Some(expected_version), restart);
+                    return Err(error);
+                }
+            }
         }
 
         self.update_snapshot(|snapshot| {
@@ -245,6 +280,21 @@ impl UpdaterState {
             app.request_restart();
         }
         Ok(snapshot)
+    }
+
+    pub async fn cancel(&self) -> Result<UpdateSnapshot, String> {
+        if !self.install_active.load(Ordering::Acquire) {
+            return Ok(self.status());
+        }
+
+        self.cancel_requested.store(true, Ordering::Release);
+        self.update_snapshot(|snapshot| {
+            if matches!(snapshot.phase, "downloading" | "installing") {
+                snapshot.phase = "cancelling";
+            }
+        });
+        self.cancel_notify.notify_waiters();
+        Ok(self.status())
     }
 
     fn update_snapshot(&self, update: impl FnOnce(&mut UpdateSnapshot)) {
@@ -265,6 +315,27 @@ enum InstallGuardError {
     InvalidVersion,
     NoPendingUpdate,
     VersionMismatch,
+}
+
+enum InstallFailure {
+    Cancelled,
+    Error(String),
+}
+
+async fn wait_for_cancel(flag: Arc<AtomicBool>, notify: Arc<Notify>) {
+    loop {
+        if flag.load(Ordering::Acquire) {
+            return;
+        }
+        let notified = notify.notified();
+        tokio::pin!(notified);
+        // Register the notification before the second flag check so a cancel
+        // between the first check and await cannot be lost.
+        if flag.load(Ordering::Acquire) {
+            return;
+        }
+        notified.await;
+    }
 }
 
 impl InstallGuardError {
@@ -459,5 +530,45 @@ mod tests {
         })
         .unwrap_err();
         assert_eq!(error, "check for an update before installing");
+    }
+
+    #[test]
+    fn cancel_without_active_install_is_a_noop() {
+        let state = UpdaterState::default();
+        let snapshot = tauri::async_runtime::block_on(state.cancel()).expect("cancel status");
+        assert_eq!(snapshot.phase, "idle");
+        assert!(!snapshot.restart_required);
+    }
+
+    #[test]
+    fn cancel_marks_an_active_install_without_requesting_restart() {
+        let state = UpdaterState::default();
+        state.install_active.store(true, Ordering::Release);
+        state.update_snapshot(|snapshot| snapshot.phase = "downloading");
+
+        let snapshot = tauri::async_runtime::block_on(state.cancel()).expect("cancel status");
+
+        assert_eq!(snapshot.phase, "cancelling");
+        assert!(!snapshot.restart_required);
+        assert!(state.cancel_requested.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn cancel_wakes_the_in_flight_install_waiter() {
+        let state = UpdaterState::default();
+        state.install_active.store(true, Ordering::Release);
+
+        let completed = tauri::async_runtime::block_on(async {
+            let waiter = tokio::spawn(wait_for_cancel(
+                state.cancel_requested.clone(),
+                state.cancel_notify.clone(),
+            ));
+            state.cancel().await.expect("cancel status");
+            tokio::time::timeout(std::time::Duration::from_millis(100), waiter)
+                .await
+                .is_ok()
+        });
+
+        assert!(completed, "cancellation must release the in-flight waiter");
     }
 }

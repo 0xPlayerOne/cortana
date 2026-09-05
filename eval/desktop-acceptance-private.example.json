@@ -1,0 +1,387 @@
+{
+  "contract_version": "cortana.desktop-acceptance-private.v2",
+  "approved": false,
+  "governance": {
+    "raw_data_location": "external-encrypted-store",
+    "reviewer_ids": ["opaque-reviewer-id"],
+    "secrets_allowed": false,
+    "private_paths_allowed": false,
+    "retention_days": 90,
+    "deletion_contact": "local-owner"
+  },
+  "support_scope": {
+    "supported_targets": [
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ],
+    "unsupported_targets": [
+      "x86_64-apple-darwin",
+      "aarch64-unknown-linux-gnu",
+      "aarch64-pc-windows-msvc"
+    ]
+  },
+  "case_checks": {
+    "clean-install-first-run": [
+      "install",
+      "launch",
+      "core-sidecar",
+      "optional-tooling",
+      "approval-gated-setup",
+      "progress-cancel-retry",
+      "workspace-create-switch",
+      "readiness",
+      "query-only-default",
+      "no-implicit-source-sync-model-memory-write",
+      "package-version-agreement"
+    ],
+    "source-authorization-discovery": [
+      "workspace-isolation",
+      "provider-authorization",
+      "provider-discovery",
+      "source-scope",
+      "read-only-validation",
+      "no-implicit-sync",
+      "credential-redaction",
+      "denied-revoked-malformed-recovery"
+    ],
+    "services-tray-autostart": [
+      "service-lifecycle",
+      "tray-window-quit",
+      "single-instance-autostart",
+      "crash-stale-state-port-conflict",
+      "sleep-wake-login-restart",
+      "durable-status",
+      "retrieval-preserved",
+      "allowlisted-boundary",
+      "no-implicit-sync",
+      "mcp-http-lifecycle"
+    ],
+    "backup-restore-dialogs": [
+      "native-file-directory-dialogs",
+      "redacted-import-export",
+      "verified-snapshot",
+      "explicit-restore-confirmation",
+      "recovery-copy",
+      "cancelled-inaccessible-low-disk-path-attack",
+      "corrupt-version-mismatch",
+      "post-restore-search-memory-acl",
+      "packaged-rollback"
+    ],
+    "updater-lifecycle": [
+      "version-channel-release-notes",
+      "approval-download-install",
+      "progress-cancellation",
+      "signature-archive-version-safety",
+      "application-service-restart",
+      "data-policy-preservation",
+      "network-malformed-disk-failure",
+      "incompatible-interrupted-restart",
+      "upgrade",
+      "rollback",
+      "no-recurring-sync-or-synthesis"
+    ],
+    "recovery-failure-paths": [
+      "corrupt-config",
+      "missing-sidecar",
+      "stale-service",
+      "provider-outage",
+      "low-disk",
+      "permission-denial",
+      "crash-restart",
+      "upgrade-recovery",
+      "actionable-remediation"
+    ],
+    "accessibility-screen-reader": [
+      "keyboard-focus",
+      "screen-reader",
+      "contrast",
+      "reduced-motion",
+      "status-error-semantics",
+      "zoom-responsive",
+      "target-size",
+      "error-recovery",
+      "packaged-screen-reader"
+    ],
+    "resource-large-list": [
+      "startup-idle-active-resource",
+      "large-list-virtualization",
+      "graph-bounds",
+      "background-service-overhead",
+      "slow-storage-low-memory",
+      "cancellation-cleanup",
+      "security-regressions"
+    ],
+    "uninstall-and-data-preservation": [
+      "uninstall-record",
+      "data-preservation",
+      "credentials-index-memory-backups",
+      "services-cleanup",
+      "reinstall-recovery"
+    ],
+    "os-trust": [
+      "package-signing",
+      "gatekeeper-smartscreen-trust",
+      "native-boundary",
+      "supported-session-display",
+      "platform-specific-credentials",
+      "release-asset-identity"
+    ]
+  },
+  "release": {
+    "version": "0.56.10",
+    "release_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "source": "published-release-assets"
+  },
+  "platforms": [
+    {
+      "target": "aarch64-apple-darwin",
+      "platform": "macOS",
+      "architecture": "arm64",
+      "package_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "installer": "dmg",
+      "query_only_default": true,
+      "no_implicit_side_effects": true,
+      "cases": [
+        {
+          "case_id": "clean-install-first-run",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "source-authorization-discovery",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "services-tray-autostart",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "backup-restore-dialogs",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "updater-lifecycle",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "recovery-failure-paths",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "accessibility-screen-reader",
+          "method": "manual-screen-reader-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "resource-large-list",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "uninstall-and-data-preservation",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "os-trust",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        }
+      ],
+      "metrics": {
+        "startup_p95_ms": null,
+        "idle_cpu_pct": null,
+        "active_cpu_pct": null,
+        "idle_rss_bytes": null,
+        "active_rss_bytes": null,
+        "large_list_p95_ms": null,
+        "graph_p95_ms": null
+      }
+    },
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "platform": "Linux",
+      "architecture": "x64",
+      "package_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "installer": "AppImage",
+      "query_only_default": true,
+      "no_implicit_side_effects": true,
+      "cases": [
+        {
+          "case_id": "clean-install-first-run",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "source-authorization-discovery",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "services-tray-autostart",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "backup-restore-dialogs",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "updater-lifecycle",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "recovery-failure-paths",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "accessibility-screen-reader",
+          "method": "manual-screen-reader-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "resource-large-list",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "uninstall-and-data-preservation",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "os-trust",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        }
+      ],
+      "metrics": {
+        "startup_p95_ms": null,
+        "idle_cpu_pct": null,
+        "active_cpu_pct": null,
+        "idle_rss_bytes": null,
+        "active_rss_bytes": null,
+        "large_list_p95_ms": null,
+        "graph_p95_ms": null
+      }
+    },
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "platform": "Windows",
+      "architecture": "x64",
+      "package_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "installer": "msi",
+      "query_only_default": true,
+      "no_implicit_side_effects": true,
+      "cases": [
+        {
+          "case_id": "clean-install-first-run",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "source-authorization-discovery",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "services-tray-autostart",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "backup-restore-dialogs",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "updater-lifecycle",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "recovery-failure-paths",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "accessibility-screen-reader",
+          "method": "manual-screen-reader-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "resource-large-list",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "uninstall-and-data-preservation",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        },
+        {
+          "case_id": "os-trust",
+          "method": "manual-review",
+          "result": "not-run",
+          "evidence_ids": ["opaque-evidence-id"]
+        }
+      ],
+      "metrics": {
+        "startup_p95_ms": null,
+        "idle_cpu_pct": null,
+        "active_cpu_pct": null,
+        "idle_rss_bytes": null,
+        "active_rss_bytes": null,
+        "large_list_p95_ms": null,
+        "graph_p95_ms": null
+      }
+    }
+  ],
+  "thresholds": {
+    "max_startup_p95_ms": 10000,
+    "max_idle_cpu_pct": 25,
+    "max_active_cpu_pct": 100,
+    "max_idle_rss_bytes": 1073741824,
+    "max_active_rss_bytes": 2147483648,
+    "max_large_list_p95_ms": 5000,
+    "max_graph_p95_ms": 5000
+  }
+}

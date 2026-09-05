@@ -8,6 +8,7 @@ import {
   buildIsolatedEnvironment,
   describeHostTarget,
   hostFailureEvidence,
+  inspectFirstRunState,
   runHostAcceptance,
   runHostLaunch,
   writeIsolatedConfig,
@@ -62,6 +63,29 @@ test('isolated config is disposable and points runtime data inside the host root
     expect(readFileSync(configPath, 'utf8')).toContain(
       `data_dir = ${JSON.stringify(join(root, 'data'))}`
     )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('clean host state can detect an implicit connector installation', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cortana-host-first-run-test-'))
+  try {
+    const configPath = writeIsolatedConfig(root)
+    expect(inspectFirstRunState(root, configPath)).toEqual({
+      no_implicit_connector_install: true,
+      query_only_default: true,
+      no_implicit_side_effects: true,
+    })
+    writeFileSync(
+      configPath,
+      `${readFileSync(configPath, 'utf8')}\n[connectors]\ncommand = [\"/tmp/cortana-connectors\"]\n`
+    )
+    expect(inspectFirstRunState(root, configPath)).toEqual({
+      no_implicit_connector_install: false,
+      query_only_default: true,
+      no_implicit_side_effects: false,
+    })
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -150,6 +174,11 @@ test('host failure evidence is bounded and redacted', () => {
   ).toMatchObject({
     schema_version: 1,
     status: 'failed',
+    target: {
+      target: 'x86_64-pc-windows-msvc',
+      platform: 'Windows',
+      architecture: 'x64',
+    },
     error: 'token=[REDACTED]; process failed',
   })
 })

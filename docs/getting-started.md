@@ -23,20 +23,21 @@ The installer preserves an existing configuration, index, backups, and secrets. 
 authorize an account, download a connector corpus, start a sync, or enable a scheduler by itself.
 
 Before you begin, use a supported release package for your operating system and CPU and keep at
-least one backup location available. The current v0.39.0 release publishes Linux x86_64 and
-Windows x86_64 Desktop packages plus macOS/Linux core archives. The macOS Desktop package remains
-blocked on Developer ID signing and notarization credentials, so macOS Desktop users should wait
-for the next trusted package or use the core archive. The updater endpoint remains valid and
-reports when no signed package is available for the current platform. Core archives have their own
-target matrix and do not expand Desktop support. No account credentials are required for the first
-launch. On macOS, an unsigned or non-notarized build may be rejected by Gatekeeper; follow the
-host-acceptance notes in the [Desktop audit](desktop-ux-audit.md).
+least one backup location available. The current v0.56.10 release publishes Linux x86_64, Windows
+x86_64, and macOS arm64 Desktop packages plus macOS/Linux core archives. The macOS Desktop package
+is ad-hoc because Developer ID signing and notarization credentials are not configured, so it is
+downloadable but not trusted Gatekeeper distribution; macOS users should use the core archive or
+wait for a trusted package. The updater endpoint remains valid and reports when no signed package
+is available for the current platform. Core archives have their own target matrix and do not expand
+Desktop support. No account credentials are required for the first launch. On macOS, an unsigned or
+non-notarized build may be rejected by Gatekeeper; follow the host-acceptance notes in the
+[Desktop audit](desktop-ux-audit.md).
 
 ## The shortest path to a first result
 
 1. **Download Cortana Desktop.** Open the [latest GitHub release](https://github.com/adea-ai/cortana/releases/latest)
    and choose the installer for your operating system and CPU. The current protected release is
-   **v0.39.0**; [Release history](releases.md) records its verifier state and remaining trust gate.
+   **v0.56.10**; [Release history](releases.md) records its verifier state and remaining trust gate.
 2. **Install and launch.** Approve the optional tooling that Cortana offers to install. Choose a
    local Qwen-compatible embedding runtime if you want local embeddings; choose a cloud provider
    if you do not want local model tooling.

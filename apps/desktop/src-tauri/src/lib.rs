@@ -851,16 +851,16 @@ async fn desktop_services_status<R: tauri::Runtime>(
 }
 
 #[tauri::command]
-async fn desktop_services_install(
-    app: AppHandle,
+async fn desktop_services_install<R: tauri::Runtime>(
+    app: AppHandle<R>,
     approved: bool,
 ) -> Result<services::ServiceReport, String> {
     scheduled_services::install_core(&app, approved).await
 }
 
 #[tauri::command]
-async fn desktop_services_install_sync(
-    app: AppHandle,
+async fn desktop_services_install_sync<R: tauri::Runtime>(
+    app: AppHandle<R>,
     approved: bool,
 ) -> Result<services::ServiceReport, String> {
     scheduled_services::install_sync(&app, approved).await
@@ -879,8 +879,8 @@ fn desktop_schedule_save(
 }
 
 #[tauri::command]
-async fn desktop_service_action(
-    app: AppHandle,
+async fn desktop_service_action<R: tauri::Runtime>(
+    app: AppHandle<R>,
     service: String,
     action: String,
     approved: bool,
@@ -889,8 +889,8 @@ async fn desktop_service_action(
 }
 
 #[tauri::command]
-async fn desktop_services_action_all(
-    app: AppHandle,
+async fn desktop_services_action_all<R: tauri::Runtime>(
+    app: AppHandle<R>,
     action: String,
     approved: bool,
 ) -> Result<services::ServiceReport, String> {
@@ -898,16 +898,16 @@ async fn desktop_services_action_all(
 }
 
 #[tauri::command]
-async fn desktop_database_backup(
-    app: AppHandle,
+async fn desktop_database_backup<R: tauri::Runtime>(
+    app: AppHandle<R>,
     approved: bool,
 ) -> Result<Option<backups::DatabaseActionResult>, String> {
     backups::backup(&app, approved).await
 }
 
 #[tauri::command]
-async fn desktop_database_restore(
-    app: AppHandle,
+async fn desktop_database_restore<R: tauri::Runtime>(
+    app: AppHandle<R>,
     approved: bool,
 ) -> Result<Option<backups::DatabaseActionResult>, String> {
     backups::restore(&app, approved).await
@@ -927,8 +927,8 @@ async fn desktop_update_check<R: tauri::Runtime>(
 }
 
 #[tauri::command]
-async fn desktop_update_install(
-    app: AppHandle,
+async fn desktop_update_install<R: tauri::Runtime>(
+    app: AppHandle<R>,
     updater: State<'_, updater::UpdaterState>,
     expected_version: String,
     approved: bool,
@@ -937,6 +937,13 @@ async fn desktop_update_install(
     updater
         .install(&app, &expected_version, approved, restart)
         .await
+}
+
+#[tauri::command]
+async fn desktop_update_cancel(
+    updater: State<'_, updater::UpdaterState>,
+) -> Result<updater::UpdateSnapshot, String> {
+    updater.cancel().await
 }
 
 #[tauri::command]
@@ -1174,8 +1181,8 @@ async fn desktop_readiness_scan(app: AppHandle) -> readiness::ReadinessSnapshot 
 }
 
 #[tauri::command]
-async fn desktop_embedding_generation_migrate(
-    app: AppHandle,
+async fn desktop_embedding_generation_migrate<R: tauri::Runtime>(
+    app: AppHandle<R>,
     from: String,
     approved: bool,
 ) -> Result<String, String> {
@@ -1186,7 +1193,10 @@ async fn desktop_embedding_generation_migrate(
 }
 
 #[tauri::command]
-async fn desktop_path_pick(app: AppHandle, kind: String) -> Result<Option<String>, String> {
+async fn desktop_path_pick<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    kind: String,
+) -> Result<Option<String>, String> {
     paths::pick(app, &kind).await
 }
 
@@ -1364,7 +1374,22 @@ fn validate_document_id(id: &str) -> Result<(), String> {
 }
 
 fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
+    let window = app.get_webview_window(MAIN_WINDOW).or_else(|| {
+        let config = app
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|window| window.label == MAIN_WINDOW)?;
+        match tauri::WebviewWindowBuilder::from_config(app, config).and_then(|builder| builder.build()) {
+            Ok(window) => Some(window),
+            Err(error) => {
+                eprintln!("create configured Cortana window: {error}");
+                None
+            }
+        }
+    });
+    if let Some(window) = window {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
@@ -1538,6 +1563,10 @@ fn source_jobs_label(snapshots: &[source_jobs::SourceJobSnapshot]) -> String {
     }
 }
 
+fn app_context() -> tauri::Context<Wry> {
+    tauri::generate_context!()
+}
+
 pub fn run() {
     let backend = BackendClient::new().expect("build loopback Cortana client");
     tauri::Builder::default()
@@ -1589,6 +1618,7 @@ pub fn run() {
             desktop_update_status,
             desktop_update_check,
             desktop_update_install,
+            desktop_update_cancel,
             desktop_settings_get,
             desktop_settings_save,
             desktop_secret_storage_migrate,
@@ -1621,6 +1651,11 @@ pub fn run() {
         ])
         .setup(move |app| {
             let tray = install_tray(app)?;
+            // Keep the configured primary window visible when the app is
+            // launched directly by an installer, LaunchServices, or the
+            // native acceptance harness. The tray remains available for
+            // reopening it after the user closes it.
+            show_main_window(app.handle());
             let backend = backend.clone();
             let jobs = app.state::<source_jobs::SourceJobState>().inner().clone();
             tauri::async_runtime::spawn(async move {
@@ -1655,7 +1690,7 @@ pub fn run() {
                 let _ = window.hide();
             }
         })
-        .run(tauri::generate_context!())
+        .run(app_context())
         .expect("run Cortana desktop");
 }
 
@@ -1797,7 +1832,16 @@ mod tests {
                 desktop_source_validation_start,
                 desktop_source_connection_check_start,
                 desktop_source_validation_status,
+                desktop_services_install,
+                desktop_services_install_sync,
+                desktop_service_action,
+                desktop_services_action_all,
+                desktop_database_backup,
+                desktop_database_restore,
+                desktop_embedding_generation_migrate,
                 desktop_update_check,
+                desktop_update_install,
+                desktop_update_cancel,
                 desktop_update_status,
                 brain_memory_candidates,
                 brain_memory_candidate_action,
@@ -1982,6 +2026,72 @@ mod tests {
         let response = invoke_json(&window, "desktop_update_status").expect("IPC response");
         assert_eq!(response["phase"], "idle");
         assert_eq!(response["restart_required"], false);
+    }
+
+    #[test]
+    fn native_destructive_commands_require_explicit_approval_over_ipc() {
+        let app = ipc_test_app();
+        let window = tauri::WebviewWindowBuilder::new(&app, MAIN_WINDOW, Default::default())
+            .build()
+            .expect("build mock desktop window");
+
+        let cases = [
+            (
+                "desktop_services_install",
+                json!({ "approved": false }),
+                "service installation requires explicit approval",
+            ),
+            (
+                "desktop_services_install_sync",
+                json!({ "approved": false }),
+                "recurring sync installation requires explicit approval",
+            ),
+            (
+                "desktop_service_action",
+                json!({ "service": "server", "action": "stop", "approved": false }),
+                "service action requires explicit approval",
+            ),
+            (
+                "desktop_services_action_all",
+                json!({ "action": "stop", "approved": false }),
+                "whole-app service action requires explicit approval",
+            ),
+            (
+                "desktop_database_backup",
+                json!({ "approved": false }),
+                "database backup requires explicit approval",
+            ),
+            (
+                "desktop_database_restore",
+                json!({ "approved": false }),
+                "database restore requires explicit approval",
+            ),
+            (
+                "desktop_update_install",
+                json!({ "expectedVersion": "0.56.3", "approved": false, "restart": false }),
+                "update installation requires explicit approval",
+            ),
+            (
+                "desktop_secret_storage_migrate",
+                json!({ "approved": false }),
+                "secure-storage migration requires explicit approval",
+            ),
+            (
+                "desktop_embedding_generation_migrate",
+                json!({ "from": "generation-1", "approved": false }),
+                "embedding generation migration requires explicit approval",
+            ),
+        ];
+
+        for (command, payload, expected) in cases {
+            let error = invoke_json_with(&window, command, payload)
+                .expect_err("destructive command must reject missing approval");
+            assert_eq!(
+                error.as_str(),
+                Some(expected),
+                "unexpected error for {command}"
+            );
+        }
     }
 
     #[test]
@@ -2898,6 +3008,10 @@ mod tests {
                 .contains("does not have any endpoints"),
             "unexpected update status error: {status}"
         );
+
+        let cancelled = invoke_json(&window, "desktop_update_cancel")
+            .expect("idle update cancellation must return status");
+        assert_eq!(cancelled["phase"], "failed");
     }
 
     #[test]
@@ -3091,6 +3205,20 @@ mod tests {
 
         on_tray_menu_event(app.handle(), "unknown-menu-item");
         assert!(app.get_webview_window(MAIN_WINDOW).is_some());
+    }
+
+    #[test]
+    fn bundled_context_declares_a_visible_main_window() {
+        let context = app_context();
+        let window = context
+            .config()
+            .app
+            .windows
+            .iter()
+            .find(|window| window.label == MAIN_WINDOW)
+            .expect("bundled Tauri context must declare the main window");
+        assert!(window.create, "the main window must be created at startup");
+        assert!(window.visible, "the main window must start visible");
     }
 
     #[test]

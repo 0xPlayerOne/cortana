@@ -109,15 +109,19 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
 /// approval from System readiness.
 pub async fn connector_needs_reconcile(app: &AppHandle) -> bool {
     let connector = connector_status(app).await;
-    if !connector.install_supported {
-        return false;
-    }
-    if !connector.available {
-        return true;
-    }
     let bundled_version = sidecar_output(app, &["--version"], VERSION_TIMEOUT).await;
     let cortana = bundled_runtime_status(bundled_version.as_ref());
-    !enforce_connector_version_match(connector, cortana.version.as_deref()).available
+    should_reconcile_connector(&connector, cortana.version.as_deref())
+}
+
+fn should_reconcile_connector(connector: &ToolStatus, bundled_version: Option<&str>) -> bool {
+    // A missing connector is a clean-install state. Leave installation behind
+    // the explicit Readiness action instead of downloading or writing a
+    // per-user environment during first launch. Existing environments may be
+    // repaired automatically after an app update when their version drifts.
+    connector.install_supported
+        && connector.available
+        && !enforce_connector_version_match(connector.clone(), bundled_version).available
 }
 
 fn bundled_runtime_status(result: Result<&ProcessOutput, &String>) -> ToolStatus {
@@ -145,12 +149,15 @@ fn bundled_runtime_status(result: Result<&ProcessOutput, &String>) -> ToolStatus
     }
 }
 
-async fn sidecar_readiness(app: &AppHandle) -> Result<Value, String> {
+async fn sidecar_readiness<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<Value, String> {
     let output = sidecar_output(app, &["readiness"], READINESS_TIMEOUT).await?;
     parse_readiness_output(&output.stdout, &output.stderr)
 }
 
-pub async fn migrate_embedding_generation(app: &AppHandle, from: &str) -> Result<String, String> {
+pub async fn migrate_embedding_generation<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    from: &str,
+) -> Result<String, String> {
     validate_embedding_fingerprint(from)?;
     let args = ["migrate-embedding", "--from", from, "--force"];
     let output = migration_sidecar_output(app, &args).await?;
@@ -175,7 +182,10 @@ struct ProcessOutput {
     stderr: Vec<u8>,
 }
 
-async fn migration_sidecar_output(app: &AppHandle, args: &[&str]) -> Result<ProcessOutput, String> {
+async fn migration_sidecar_output<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    args: &[&str],
+) -> Result<ProcessOutput, String> {
     let command = app
         .shell()
         .sidecar("cortana")
@@ -252,8 +262,8 @@ fn validate_embedding_fingerprint(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-async fn sidecar_output(
-    app: &AppHandle,
+async fn sidecar_output<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     args: &[&str],
     duration: Duration,
 ) -> Result<ProcessOutput, String> {
@@ -817,6 +827,33 @@ mod tests {
             Some(&format!("cortana {current_version}")),
         )
         .available);
+    }
+
+    #[test]
+    fn missing_connector_never_triggers_automatic_reconciliation() {
+        let connector = ToolStatus {
+            id: "connectors",
+            label: "Connector environment",
+            required: true,
+            available: false,
+            path: None,
+            version: None,
+            install_supported: true,
+            detail: "Install the bundled connector environment after approval.".into(),
+        };
+
+        assert!(!should_reconcile_connector(&connector, Some("0.56.3")));
+
+        let installed_connector = ToolStatus {
+            available: true,
+            path: Some("/tmp/cortana-connectors".into()),
+            version: Some("0.55.0".into()),
+            ..connector
+        };
+        assert!(should_reconcile_connector(
+            &installed_connector,
+            Some("0.56.3")
+        ));
     }
 
     #[test]

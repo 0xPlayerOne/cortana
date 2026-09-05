@@ -66,7 +66,10 @@ pub async fn status<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<Serv
 /// This deliberately does not install recurring ingestion. The operator can
 /// still opt into that separately with the CLI after validating source
 /// budgets, preserving the same safe default as `cortana service install`.
-pub async fn install(app: &AppHandle, approved: bool) -> Result<ServiceReport, String> {
+pub async fn install<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    approved: bool,
+) -> Result<ServiceReport, String> {
     if !approved {
         return Err("service installation requires explicit approval".into());
     }
@@ -159,7 +162,10 @@ pub async fn install(app: &AppHandle, approved: bool) -> Result<ServiceReport, S
 
 /// Install the explicitly approved recurring sync job after the bundled CLI
 /// re-checks validation coverage for every enabled source.
-pub async fn install_sync(app: &AppHandle, approved: bool) -> Result<ServiceReport, String> {
+pub async fn install_sync<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    approved: bool,
+) -> Result<ServiceReport, String> {
     if !approved {
         return Err("recurring sync installation requires explicit approval".into());
     }
@@ -250,8 +256,8 @@ pub async fn install_sync(app: &AppHandle, approved: bool) -> Result<ServiceRepo
     Ok(with_latest_activity(report))
 }
 
-pub async fn action(
-    app: &AppHandle,
+pub async fn action<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     service: &str,
     action: &str,
     approved: bool,
@@ -326,8 +332,8 @@ pub async fn action(
     Ok(with_latest_activity(report))
 }
 
-pub async fn action_all(
-    app: &AppHandle,
+pub async fn action_all<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     action: &str,
     approved: bool,
 ) -> Result<ServiceReport, String> {
@@ -730,11 +736,13 @@ mod tests {
         assert_eq!(activity.target, "embedding");
         assert_eq!(activity.status, "failed");
         assert_eq!(activity.elapsed_ms, Some(42));
-        assert!(!activity
-            .detail
-            .as_deref()
-            .unwrap_or_default()
-            .contains("private-value"));
+        assert!(
+            !activity
+                .detail
+                .as_deref()
+                .unwrap_or_default()
+                .contains("private-value")
+        );
         assert!(activity.last_output.as_deref().unwrap_or_default().len() <= MAX_OUTPUT_BYTES);
     }
 

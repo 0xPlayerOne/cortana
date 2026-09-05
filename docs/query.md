@@ -7,7 +7,7 @@ Cortana separates agent retrieval from human-facing answers.
 
 ## Current release boundary
 
-The current protected source and published package are `v0.39.0`. Query-only retrieval, native
+The current protected source and published package are `v0.56.10`. Query-only retrieval, native
 memory separation, ACL filtering, bounded context, citations, cache invalidation, and extractive
 fallback remain the safe defaults; provider-backed synthesis is still an explicit opt-in.
 

@@ -22,6 +22,7 @@ import type {
   DesktopVaultExport,
   DesktopSourceJob,
   DesktopInstallJob,
+  DesktopUpdate,
   SourceSettings,
 } from './types'
 
@@ -91,6 +92,12 @@ afterEach(() => {
   state.deferDesktopSettings = false
   state.deferredDesktopSettings = []
   state.getDesktopUpdateCalls = 0
+  state.installDesktopUpdateCalls = 0
+  state.lastInstallDesktopUpdate = null
+  state.installDesktopUpdateError = null
+  state.cancelDesktopUpdateCalls = 0
+  state.deferDesktopUpdateInstall = false
+  state.deferredDesktopUpdateInstall = []
   state.serviceStatusError = null
   state.serviceSyncInstallCalls = 0
   state.schedule = { sync_interval_seconds: 900, backup_interval_seconds: 86400 }
@@ -186,6 +193,12 @@ const state = {
   deferredDesktopSettings: [] as Array<(settings: DesktopSettings) => void>,
   getDesktopServicesCalls: 0,
   getDesktopUpdateCalls: 0,
+  installDesktopUpdateCalls: 0,
+  lastInstallDesktopUpdate: null as { expectedVersion: string; restart: boolean } | null,
+  installDesktopUpdateError: null as Error | null,
+  cancelDesktopUpdateCalls: 0,
+  deferDesktopUpdateInstall: false,
+  deferredDesktopUpdateInstall: [] as Array<(update: DesktopUpdate) => void>,
   serviceStatusError: null as Error | null,
   saveSettingsCalls: 0,
   applySettingsUpdate: false,
@@ -409,7 +422,21 @@ mock.module('./api', () => ({
     return state.serviceAction ? state.serviceAction() : Promise.resolve(installedServiceReport)
   },
   runDesktopServiceAction: () => Promise.resolve(installedServiceReport),
-  installDesktopUpdate: () => Promise.resolve(desktopUpdate),
+  installDesktopUpdate: (expectedVersion: string, restart: boolean) => {
+    state.installDesktopUpdateCalls += 1
+    state.lastInstallDesktopUpdate = { expectedVersion, restart }
+    if (state.installDesktopUpdateError) return Promise.reject(state.installDesktopUpdateError)
+    if (state.deferDesktopUpdateInstall) {
+      return new Promise<DesktopUpdate>((resolve) => {
+        state.deferredDesktopUpdateInstall.push(resolve)
+      })
+    }
+    return Promise.resolve({ ...desktopUpdate, phase: 'installed', restart_required: true })
+  },
+  cancelDesktopUpdate: () => {
+    state.cancelDesktopUpdateCalls += 1
+    return Promise.resolve({ ...desktopUpdate, phase: 'cancelled' })
+  },
   checkDesktopUpdate: () => Promise.resolve(desktopUpdate),
   getRuntimeAudit: (limit: number) => Promise.resolve(runtimeAuditEvents.slice(0, limit)),
   getDesktopAudit: (limit: number) => Promise.resolve(desktopAuditEvents.slice(0, limit)),
@@ -1242,6 +1269,86 @@ test('updates project link surfaces native browser failures', async () => {
     expect(state.openProjectCalls).toBe(1)
   } finally {
     state.openProjectError = originalError
+  }
+})
+
+test('updates require confirmation before invoking native installation', async () => {
+  const originalConfirm = window.confirm
+  state.installDesktopUpdateCalls = 0
+  state.lastInstallDesktopUpdate = null
+  window.confirm = () => false
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: updatesButtonName }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Updates' })).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Install and restart' }))
+    expect(state.installDesktopUpdateCalls).toBe(0)
+
+    window.confirm = () => true
+    fireEvent.click(screen.getByRole('button', { name: 'Install and restart' }))
+    await waitFor(() => expect(state.installDesktopUpdateCalls).toBe(1))
+    expect(state.lastInstallDesktopUpdate as unknown).toEqual({
+      expectedVersion: '9.9.9',
+      restart: true,
+    })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Restart required' })).toBeTruthy()
+    )
+  } finally {
+    window.confirm = originalConfirm
+  }
+})
+
+test('updates surface native install failures while retaining retryable update state', async () => {
+  const originalConfirm = window.confirm
+  const originalError = state.installDesktopUpdateError
+  window.confirm = () => true
+  state.installDesktopUpdateCalls = 0
+  state.installDesktopUpdateError = new Error('signed update verification failed')
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: updatesButtonName }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Updates' })).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Install and restart' }))
+    await waitFor(() => expect(state.installDesktopUpdateCalls).toBe(1))
+    await waitFor(() => expect(screen.getByText('signed update verification failed')).toBeTruthy())
+    expect(screen.getByRole('button', { name: 'Install and restart' })).toBeTruthy()
+  } finally {
+    state.installDesktopUpdateError = originalError
+    window.confirm = originalConfirm
+  }
+})
+
+test('updates can cancel native installation and retain a retryable state', async () => {
+  const originalConfirm = window.confirm
+  window.confirm = () => true
+  state.deferDesktopUpdateInstall = true
+  state.cancelDesktopUpdateCalls = 0
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: updatesButtonName }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Updates' })).toBeTruthy())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Install and restart' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel update' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel update' }))
+    await waitFor(() => expect(state.cancelDesktopUpdateCalls).toBe(1))
+
+    const resolveInstall = state.deferredDesktopUpdateInstall.shift()
+    resolveInstall?.({ ...desktopUpdate, phase: 'cancelled' })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Install and restart' })).toBeTruthy()
+    )
+    expect(screen.getByText('Update cancelled; you can retry when ready')).toBeTruthy()
+  } finally {
+    state.deferDesktopUpdateInstall = false
+    state.deferredDesktopUpdateInstall = []
+    window.confirm = originalConfirm
   }
 })
 
@@ -2953,6 +3060,54 @@ test('connector environment install requires explicit approval from readiness', 
     await waitFor(() => expect(screen.getByText('Installing connectors')).toBeTruthy())
     const installerJob = state.installerJob as { tool: string } | null
     expect(installerJob?.tool).toBe('connectors')
+  } finally {
+    state.readinessScan = originalScan
+    window.confirm = originalConfirm
+    state.installerJob = null
+  }
+})
+
+test('missing connector readiness exposes an approval-gated installer', async () => {
+  const originalConfirm = window.confirm
+  const originalScan = state.readinessScan
+  let confirmation = ''
+  state.readinessScan = () =>
+    Promise.resolve({
+      scanned_at_unix_seconds: 1785000000,
+      platform: 'macos',
+      tools_ready: false,
+      core: null,
+      core_error: null,
+      tools: [
+        {
+          id: 'connectors',
+          label: 'Connector environment',
+          required: true,
+          available: false,
+          path: null,
+          version: null,
+          install_supported: true,
+          detail: 'Install the bundled connector environment after explicit approval.',
+        },
+      ],
+    })
+  state.installerJob = null
+  window.confirm = (message) => {
+    confirmation = message ?? ''
+    return false
+  }
+  try {
+    render(<App />)
+    await waitFor(() => expect(screen.getByLabelText('Search your knowledge')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Settings' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: 'Run readiness scan' }))
+    await waitFor(() =>
+      expect(screen.getByText(/bundled connector environment after explicit approval/)).toBeTruthy()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Install' }))
+    expect(confirmation).toContain('per-user connector environment')
+    expect(state.installerJob).toBeNull()
   } finally {
     state.readinessScan = originalScan
     window.confirm = originalConfirm

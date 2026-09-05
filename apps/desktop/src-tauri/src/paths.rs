@@ -4,7 +4,10 @@ use tauri::AppHandle;
 use tauri_plugin_dialog::{DialogExt, FilePath};
 use tokio::sync::oneshot;
 
-pub async fn pick(app: AppHandle, kind: &str) -> Result<Option<String>, String> {
+pub async fn pick<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    kind: &str,
+) -> Result<Option<String>, String> {
     let (sender, receiver) = oneshot::channel();
     let dialog = app.dialog().file();
     match kind {
