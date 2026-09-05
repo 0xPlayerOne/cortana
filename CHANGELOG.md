@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.56.4](https://github.com/adea-ai/cortana/compare/v0.56.3...v0.56.4) (2026-09-05)
+
+
+### Maintenance
+
+* **deps:** bump the cargo-dependencies group with 2 updates ([27be383](https://github.com/adea-ai/cortana/commit/27be3831faaa34e52e21a30d2a5a6687826cdb72))
+* **deps:** bump the github-actions group across 1 directory with 2 updates ([#2239](https://github.com/adea-ai/cortana/issues/2239)) ([bffa786](https://github.com/adea-ai/cortana/commit/bffa78617f39257421fcd78198340308c87cb857))
+* update repository references from 0xPlayerOne to adea-ai ([#2241](https://github.com/adea-ai/cortana/issues/2241)) ([8f45ebb](https://github.com/adea-ai/cortana/commit/8f45ebb56bfc8b6a1b5ebec95abc7ca94944d55a))
+
 ## [0.56.3](https://github.com/0xPlayerOne/cortana/compare/v0.56.2...v0.56.3) (2026-09-03)
 
 
