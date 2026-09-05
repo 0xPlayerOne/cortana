@@ -3,6 +3,7 @@ import type {
   BrainStatus,
   DerivedMemoryResponse,
   Evidence,
+  BrainDocumentReference,
   MemoryCandidate,
   MemoryCandidateClassification,
 } from './types'
@@ -61,6 +62,38 @@ export const demoEvidence: Evidence[] = [
     updated_at: '2026-07-13T09:30:00Z',
   },
 ]
+
+export function demoDocumentId(item: Evidence): string {
+  return item.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0')
+}
+
+export function demoDocumentReference(
+  item: Evidence,
+  project = 'demo'
+): BrainDocumentReference {
+  return {
+    id: demoDocumentId(item),
+    source: item.source,
+    source_id: item.source_id,
+    title: item.title,
+    uri: item.uri,
+    updated_at: item.updated_at,
+    project,
+  }
+}
+
+export function demoDocumentRelations(item: Evidence): {
+  backlinks: BrainDocumentReference[]
+  surrounding: BrainDocumentReference[]
+} {
+  if (item.source_id !== 'deployment-playbook') {
+    return { backlinks: [], surrounding: [] }
+  }
+  return {
+    backlinks: [demoDocumentReference(demoEvidence[0])],
+    surrounding: [demoDocumentReference(demoEvidence[3])],
+  }
+}
 
 export const demoMemoryCandidates: MemoryCandidate[] = [
   {

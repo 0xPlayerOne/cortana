@@ -13,6 +13,17 @@ Environment:
 EOF
 }
 
+digest_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    echo "No SHA-256 utility is available" >&2
+    return 1
+  fi
+}
+
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   usage
   exit 0
@@ -72,6 +83,19 @@ echo "Restoring into disposable data directory: $drill_dir/data"
 run_step "$binary" --config "$drill_config" init --data-dir "$drill_dir/data"
 run_step "$binary" --config "$drill_config" restore "$drill_dir/source.sqlite3" --force
 run_step "$binary" --config "$drill_config" verify "$drill_dir/data/cortana.sqlite3"
+
+restored_digest="$(digest_file "$drill_dir/data/cortana.sqlite3")"
+invalid_snapshot="$drill_dir/invalid.sqlite3"
+printf '%s\n' 'not a SQLite database' >"$invalid_snapshot"
+echo "Rejecting corrupt restore without replacing the disposable index"
+if "$binary" --config "$drill_config" restore "$invalid_snapshot" --force >>"$log" 2>&1; then
+  echo "Corrupt restore unexpectedly succeeded" >&2
+  exit 1
+fi
+if [[ "$restored_digest" != "$(digest_file "$drill_dir/data/cortana.sqlite3")" ]]; then
+  echo "Corrupt restore changed the active disposable index" >&2
+  exit 1
+fi
 
 echo "Recovery drill passed"
 if [[ "$keep" == "1" ]]; then

@@ -1,0 +1,298 @@
+{
+  "contract_version": "cortana.relationship-quality-private.v3",
+  "release_version": "0.56.9",
+  "approved": false,
+  "raw_data_location": "external-encrypted-store",
+  "graph_activation_authorized": false,
+  "governance": {
+    "reviewer_ids": ["opaque-reviewer-id"],
+    "corpus_revision": "opaque-approved-corpus-revision",
+    "deletion_contact": "local-owner",
+    "secrets_allowed": false
+  },
+  "relationship_cases": [
+    {
+      "id": "explicit-links",
+      "category": "explicit",
+      "edge_kinds": ["contains", "references", "supports", "derives"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    },
+    {
+      "id": "thread-series",
+      "category": "thread",
+      "edge_kinds": ["same-thread"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    },
+    {
+      "id": "temporal-adjacency",
+      "category": "temporal",
+      "edge_kinds": ["temporal", "nearby"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    },
+    {
+      "id": "entity-mentions",
+      "category": "entity",
+      "edge_kinds": ["mentions", "authored-by"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    },
+    {
+      "id": "backlink-navigation",
+      "category": "backlink",
+      "edge_kinds": ["backlink"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    },
+    {
+      "id": "semantic-neighbors",
+      "category": "semantic-neighbor",
+      "edge_kinds": ["semantically-related", "reinforces", "observes"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    },
+    {
+      "id": "contradiction-review",
+      "category": "contradiction",
+      "edge_kinds": ["contradicts"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    },
+    {
+      "id": "supersession-review",
+      "category": "supersession",
+      "edge_kinds": ["supersedes"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    },
+    {
+      "id": "code-dependencies",
+      "category": "code-dependency",
+      "edge_kinds": ["depends-on", "defines", "calls", "imports"],
+      "result": "not-run",
+      "metrics": {
+        "edge_precision": null,
+        "edge_coverage": null,
+        "provenance_completeness": null,
+        "invalidation_correctness": null,
+        "false_inference_rate": null,
+        "acl_leaks": null,
+        "stale_edge_failures": null,
+        "deleted_record_failures": null,
+        "low_confidence_disclosure_failures": null,
+        "large_neighborhood_failures": null,
+        "latency_p95_ms": null,
+        "peak_rss_bytes": null
+      }
+    }
+  ],
+  "user_tasks": [
+    {
+      "id": "graph-assisted-navigation",
+      "control": "document-only",
+      "treatment": "graph-assisted",
+      "result": "not-run",
+      "task_success_rate": null,
+      "control_steps": null,
+      "treatment_steps": null,
+      "retrieval_lift": null
+    },
+    {
+      "id": "relationship-explanation",
+      "control": "document-only",
+      "treatment": "graph-assisted",
+      "result": "not-run",
+      "task_success_rate": null,
+      "control_steps": null,
+      "treatment_steps": null,
+      "retrieval_lift": null
+    },
+    {
+      "id": "graph-assisted-retrieval",
+      "control": "search-only",
+      "treatment": "graph-assisted",
+      "result": "not-run",
+      "task_success_rate": null,
+      "control_steps": null,
+      "treatment_steps": null,
+      "retrieval_lift": null
+    },
+    {
+      "id": "graph-assisted-memory-review",
+      "control": "document-only",
+      "treatment": "graph-assisted",
+      "result": "not-run",
+      "task_success_rate": null,
+      "control_steps": null,
+      "treatment_steps": null,
+      "retrieval_lift": null
+    }
+  ],
+  "metrics": {
+    "edge_precision": null,
+    "edge_coverage": null,
+    "provenance_completeness": null,
+    "invalidation_correctness": null,
+    "task_completion_rate": null,
+    "navigation_step_reduction": null,
+    "retrieval_lift": null,
+    "false_inference_rate": null,
+    "acl_leaks": null,
+    "stale_edge_failures": null,
+    "deleted_record_failures": null,
+    "low_confidence_disclosure_failures": null,
+    "large_neighborhood_failures": null,
+    "latency_p95_ms": null,
+    "peak_rss_bytes": null
+  },
+  "thresholds": {
+    "min_edge_precision": 1.0,
+    "min_edge_coverage": 1.0,
+    "min_provenance_completeness": 1.0,
+    "min_invalidation_correctness": 1.0,
+    "min_task_completion_rate": 0.8,
+    "min_navigation_step_reduction": 0.0,
+    "min_retrieval_lift": 0.0,
+    "max_false_inference_rate": 0.0,
+    "max_acl_leaks": 0,
+    "max_stale_edge_failures": 0,
+    "max_deleted_record_failures": 0,
+    "max_low_confidence_disclosure_failures": 0,
+    "max_large_neighborhood_failures": 0,
+    "max_latency_p95_ms": 5000,
+    "max_peak_rss_bytes": 1073741824
+  },
+  "release_policy": {
+    "graph_required_for_search": false,
+    "graph_required_for_exact_document": false,
+    "enabled_by_default": [
+      "contains",
+      "references",
+      "backlink",
+      "nearby",
+      "same-thread",
+      "authored-by",
+      "mentions",
+      "temporal",
+      "supports",
+      "contradicts",
+      "derives"
+    ],
+    "optional_edge_kinds": [
+      "semantically-related",
+      "reinforces",
+      "supersedes",
+      "observes",
+      "depends-on",
+      "defines",
+      "calls",
+      "imports"
+    ]
+  }
+}

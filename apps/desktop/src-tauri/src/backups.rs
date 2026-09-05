@@ -27,8 +27,8 @@ pub struct DatabaseActionResult {
     pub detail: String,
 }
 
-pub async fn backup(
-    app: &AppHandle,
+pub async fn backup<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     approved: bool,
 ) -> Result<Option<DatabaseActionResult>, String> {
     if !approved {
@@ -99,8 +99,8 @@ pub async fn backup(
     }))
 }
 
-pub async fn restore(
-    app: &AppHandle,
+pub async fn restore<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     approved: bool,
 ) -> Result<Option<DatabaseActionResult>, String> {
     if !approved {
@@ -323,7 +323,10 @@ fn service_is_running(service: &services::ServiceStatus) -> bool {
     service.state.as_deref() == Some("running") || (service.loaded && service.state.is_none())
 }
 
-async fn sidecar_output(app: &AppHandle, args: &[String]) -> Result<SidecarOutput, String> {
+async fn sidecar_output<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    args: &[String],
+) -> Result<SidecarOutput, String> {
     let command = app
         .shell()
         .sidecar("cortana")

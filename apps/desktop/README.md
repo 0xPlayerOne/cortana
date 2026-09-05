@@ -155,3 +155,35 @@ Headless harness boundaries that are deliberately not faked and remain manual ac
 desktop session: native file dialogs (settings import/export, path picking), window/tray GUI
 events, autostart enable/disable, OAuth browser flows, OS service installation, and signed update
 download/install. The tests never perform network requests or modify host configuration.
+
+The packaged source-authorization safety lane can be run against a target-specific core without
+credentials:
+
+```bash
+node scripts/desktop-source-authorization-acceptance.mjs \
+  --target aarch64-apple-darwin \
+  --version 0.56.9 \
+  --core apps/desktop/src-tauri/binaries/cortana-aarch64-apple-darwin \
+  --evidence-dir artifacts/desktop-acceptance
+```
+
+It verifies fail-closed handling for unknown sources, missing token destinations, and malformed
+provider OAuth clients without reading source data or changing the isolated state root. It is a
+safety preflight, not proof of successful provider consent or discovery.
+
+On macOS, the supplemental packaged lifecycle harness exercises the real extracted application
+under an isolated temporary configuration and uses Accessibility to inspect the status item,
+close the window to the tray, and reopen it through **Show Cortana**:
+
+```bash
+node scripts/desktop-macos-lifecycle-acceptance.mjs \
+  --version 0.56.9 \
+  --app apps/desktop/src-tauri/target/release/bundle/macos/Cortana.app \
+  --evidence-dir artifacts/desktop-acceptance
+```
+
+It records only bounded lifecycle booleans and menu-presence flags. It is supplemental evidence,
+not the three-target private Desktop acceptance record; renderer controls, native dialogs, OAuth,
+services, autostart, updater installation, recovery UI, screen readers, and operating-system trust
+remain separate gates. Close other Cortana Desktop processes first so the single-instance plugin
+cannot redirect the probe to an existing user session.

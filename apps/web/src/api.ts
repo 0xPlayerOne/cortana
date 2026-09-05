@@ -4,6 +4,8 @@ import {
   demoCanonicalMemories,
   demoDerivedMemories,
   demoEvidence,
+  demoDocumentId,
+  demoDocumentRelations,
   demoMemoryCandidates,
   demoMemoryClassification,
   demoStatus,
@@ -52,7 +54,9 @@ import type {
   MemoryReviewPolicy,
 } from './types'
 
-export const isDemoMode = new URLSearchParams(window.location.search).has('demo')
+const demoMode = new URLSearchParams(window.location.search).get('demo')
+export const isDemoMode = demoMode !== null
+const isLargeDemoMode = demoMode === 'large'
 export const isDesktopApp = isTauri()
 
 let tokenPromptInFlight: Promise<string | null> | null = null
@@ -208,6 +212,11 @@ export async function installDesktopUpdate(
     approved: true,
     restart,
   })
+}
+
+export async function cancelDesktopUpdate(): Promise<DesktopUpdate> {
+  if (!isDesktopApp) throw new Error('Updates are available in Cortana Desktop')
+  return invokeDesktop<DesktopUpdate>('desktop_update_cancel')
 }
 
 export async function getRuntimeAudit(limit = 100): Promise<AuditEvent[]> {
@@ -706,6 +715,10 @@ export async function getDocuments(
   signal?: AbortSignal
 ): Promise<BrainDocumentPage> {
   if (isDemoMode) {
+    if (isLargeDemoMode) {
+      const { getLargeDemoDocuments } = await import('./demoLargeApi')
+      return getLargeDemoDocuments(project, source, query, cursor)
+    }
     const normalizedQuery = query?.trim().toLowerCase()
     const documents = demoEvidence
       .filter(
@@ -717,7 +730,7 @@ export async function getDocuments(
             ))
       )
       .map((item) => ({
-        id: item.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0'),
+        id: demoDocumentId(item),
         source: item.source,
         source_id: item.source_id,
         title: item.title,
@@ -756,10 +769,15 @@ export async function getDocuments(
 
 export async function getDocument(id: string, signal?: AbortSignal): Promise<BrainDocument> {
   if (isDemoMode) {
+    if (isLargeDemoMode) {
+      const { getLargeDemoDocumentDetails } = await import('./demoLargeApi')
+      return getLargeDemoDocumentDetails(id)
+    }
     const item = demoEvidence.find(
       (candidate) => candidate.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0') === id
     )
     if (!item) throw new Error('Document not found')
+    const relations = demoDocumentRelations(item)
     return {
       id,
       source: item.source,
@@ -773,8 +791,7 @@ export async function getDocument(id: string, signal?: AbortSignal): Promise<Bra
       content: item.content,
       metadata: {},
       acl: [],
-      backlinks: [],
-      surrounding: [],
+      ...relations,
       truncated: false,
     }
   }

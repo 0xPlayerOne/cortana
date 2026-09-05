@@ -93,7 +93,8 @@ class Client:
 
 def manifest() -> dict:
     return {
-        "version": 1,
+        "version": 2,
+        "release_version": "0.56.9",
         "corpus": {
             "id": "approved-fixture-corpus",
             "revision": "2026-08-25",
@@ -180,6 +181,8 @@ def test_live_evaluation_measures_retrieval_answer_citations_and_cache() -> None
     )
 
     assert report["passed"] is True
+    assert report["evaluation"] == "cortana-live-index-v2"
+    assert report["provenance"]["release_version"] == "0.56.9"
     assert report["read_only"] is True
     assert report["cache_invalidation_checked"] is False
     assert report["provenance"]["corpus"]["id"] == "approved-fixture-corpus"
@@ -208,10 +211,69 @@ def test_live_manifest_rejects_unsafe_query_and_unknown_version() -> None:
         live.validate_manifest(invalid)
 
 
+def test_live_manifest_rejects_a_stale_release_version() -> None:
+    invalid = manifest()
+    invalid["release_version"] = "0.56.2"
+
+    with pytest.raises(live.ManifestError, match="release version"):
+        live.validate_manifest(invalid, expected_version="0.56.3")
+
+
+def test_live_manifest_supports_an_explicit_historical_release_override() -> None:
+    historical = manifest()
+    historical["release_version"] = "0.39.0"
+
+    checked = live.validate_manifest(historical, expected_version="0.39.0")
+
+    assert checked["release_version"] == "0.39.0"
+
+
+def test_live_cli_accepts_an_explicit_historical_release_override(tmp_path, capsys) -> None:
+    historical = manifest()
+    historical["release_version"] = "0.39.0"
+    path = tmp_path / "historical-manifest.json"
+    path.write_text(json.dumps(historical), encoding="utf-8")
+
+    assert live.main([str(path), "--validate-only", "--version", "0.39.0"]) == 0
+
+    report = json.loads(capsys.readouterr().out)
+    assert report["provenance"]["release_version"] == "0.39.0"
+
+
+def test_live_manifest_preflight_is_sanitized_and_does_not_contact_an_index(tmp_path) -> None:
+    path = tmp_path / "approved-manifest.json"
+    path.write_text(json.dumps(manifest()), encoding="utf-8")
+
+    report = live.preflight_report(live.load_manifest(path))
+
+    assert report["preflight"] == "passed"
+    assert report["read_only"] is True
+    assert report["index_contacted"] is False
+    assert report["case_counts"] == {"retrieval": 1, "context": 0, "answer": 1, "total": 2}
+    assert report["provenance"]["corpus"]["id"] == "approved-fixture-corpus"
+    assert report["provenance"]["release_version"] == "0.56.9"
+    serialized = json.dumps(report)
+    assert "release verification" not in serialized
+    assert "work-release" not in serialized
+    assert "test-reviewer" not in serialized
+
+
 def test_manifest_rejects_unsafe_or_expired_corpus_metadata() -> None:
     invalid = manifest()
     invalid["corpus"]["digest"] = "sha256:not-a-digest"
     with pytest.raises(live.ManifestError, match="corpus.digest"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["corpus"]["approved_at"] = "2099-01-01T00:00:00Z"
+    invalid["corpus"]["expires_at"] = "2100-01-01T00:00:00Z"
+    with pytest.raises(live.ManifestError, match="approval window"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["corpus"]["approved_at"] = "2020-01-01T00:00:00Z"
+    invalid["corpus"]["expires_at"] = "2021-01-01T00:00:00Z"
+    with pytest.raises(live.ManifestError, match="approval window"):
         live.validate_manifest(invalid)
 
 
@@ -259,9 +321,27 @@ def test_manifest_rejects_private_paths_and_unsafe_lifecycle() -> None:
         live.validate_manifest(invalid)
 
 
+def test_manifest_requires_corpus_provenance_and_reviewer_approval() -> None:
+    invalid = manifest()
+    invalid.pop("corpus")
+    with pytest.raises(live.ManifestError, match="corpus"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["corpus"].pop("reviewer")
+    with pytest.raises(live.ManifestError, match="corpus.reviewer"):
+        live.validate_manifest(invalid)
+
+    invalid = manifest()
+    invalid["corpus"]["reviewer"] = "unlisted-reviewer"
+    with pytest.raises(live.ManifestError, match="authorized reviewer"):
+        live.validate_manifest(invalid)
+
+
 def test_checked_in_live_manifest_example_is_valid() -> None:
     checked = live.load_manifest(ROOT / "eval/live-manifest.example.json")
-    assert checked["version"] == 1
+    assert checked["version"] == 2
+    assert checked["release_version"] == "0.56.9"
     assert checked["manifest_digest"].startswith("sha256:")
     assert checked["corpus"]["storage"] == "encrypted-local"
     assert len(checked["retrieval_cases"]) == 1
@@ -276,7 +356,7 @@ def test_live_cli_rejects_remote_http_and_embedded_url_credentials() -> None:
         live.main([example, "--base-url", "https://user:secret@example.test"])
 
     invalid = manifest()
-    invalid["version"] = 2
+    invalid["version"] = 3
     with pytest.raises(live.ManifestError):
         live.validate_manifest(invalid)
 

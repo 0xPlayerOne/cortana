@@ -833,7 +833,7 @@ function CortanaApplication() {
     if (
       !isDesktopApp ||
       !desktopUpdate ||
-      !['downloading', 'installing'].includes(desktopUpdate.phase) ||
+      !['downloading', 'installing', 'cancelling'].includes(desktopUpdate.phase) ||
       !pageVisible
     ) {
       return
@@ -2360,7 +2360,11 @@ export function ServiceHealthIndicator({
 
 function desktopUpdateStatusSuffix(update: DesktopUpdate | null): string {
   if (!update) return ''
-  if (update.phase === 'downloading' || update.phase === 'installing') {
+  if (
+    update.phase === 'downloading' ||
+    update.phase === 'installing' ||
+    update.phase === 'cancelling'
+  ) {
     const percent =
       update.total_bytes && update.total_bytes > 0
         ? ` ${Math.min(100, Math.round((update.downloaded_bytes / update.total_bytes) * 100))}%`
@@ -2369,6 +2373,7 @@ function desktopUpdateStatusSuffix(update: DesktopUpdate | null): string {
   }
   if (update.restart_required || update.phase === 'installed') return ' · Restart required'
   if (update.phase === 'failed') return ' · update failed'
+  if (update.phase === 'cancelled') return ' · update cancelled'
   if (update.phase === 'unavailable') return ' · no signed package for this platform'
   if (update.phase === 'available' && update.available_version) {
     return ` · ${update.available_version} available`

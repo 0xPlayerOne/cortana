@@ -713,6 +713,8 @@ export type DesktopUpdate = {
     | 'available'
     | 'downloading'
     | 'installing'
+    | 'cancelling'
+    | 'cancelled'
     | 'installed'
     | 'failed'
   downloaded_bytes: number

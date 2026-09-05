@@ -6,6 +6,8 @@ import { basename, isAbsolute, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 
+import { resolveAcceptanceInstallationType } from './acceptance-provenance.mjs'
+
 import { redactEvidence, validateEvidenceOutputPath } from './desktop-package-acceptance.mjs'
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -36,7 +38,13 @@ const SAFE_ENVIRONMENT_KEYS = Object.freeze([
   'WEBKIT_DISABLE_DMABUF_RENDERER',
 ])
 
-const CASES = Object.freeze(['isolated-user-state', 'packaged-process-startup'])
+const CASES = Object.freeze([
+  'isolated-user-state',
+  'packaged-process-startup',
+  'no-implicit-connector-install',
+  'query-only-first-run',
+  'no-implicit-side-effects',
+])
 
 export function describeHostTarget(target) {
   const descriptor = TARGETS[target]
@@ -84,6 +92,28 @@ export function writeIsolatedConfig(root) {
     mode: 0o600,
   })
   return configPath
+}
+
+export function inspectFirstRunState(root, configPath) {
+  let config
+  try {
+    config = readFileSync(configPath, 'utf8')
+  } catch {
+    return { no_implicit_connector_install: false }
+  }
+  const connectorSection = config.match(/(?:^|\n)\[connectors\]\n([\s\S]*?)(?=\n\[|$)/)?.[1] ?? ''
+  const connectorConfigured = /^\s*command\s*=/m.test(connectorSection)
+  const connectorEnvironment = resolve(root, '.local', 'share', 'cortana', 'venv')
+  const querySection = config.match(/(?:^|\n)\[query\]\n([\s\S]*?)(?=\n\[|$)/)?.[1] ?? ''
+  const queryOnlyDefault = !/^\s*synthesis_enabled\s*=\s*true\s*$/m.test(querySection)
+  const sourceConfigured = /^\s*\[\[sources\]\]\s*$/m.test(config)
+  const scheduleInstalled = existsSync(resolve(configPath, '..', 'service-schedule.toml'))
+  const noImplicitConnectorInstall = !connectorConfigured && !existsSync(connectorEnvironment)
+  return {
+    no_implicit_connector_install: noImplicitConnectorInstall,
+    query_only_default: queryOnlyDefault,
+    no_implicit_side_effects: noImplicitConnectorInstall && !sourceConfigured && !scheduleInstalled,
+  }
 }
 
 function boundedOutput(stream) {
@@ -299,10 +329,22 @@ export function hostFailureEvidence({ target, version, error }) {
   return {
     schema_version: 1,
     status: 'failed',
-    ...(target ? { target: { target } } : {}),
+    ...(target ? { target: failureTargetMetadata(target) } : {}),
     ...(version ? { version } : {}),
+    installation_type: resolveAcceptanceInstallationType({
+      published: 'published-package-host-launch',
+      prospective: 'prospective-source-host-launch',
+    }),
     error: redactEvidence(error instanceof Error ? error.message : error),
     generated_at: new Date().toISOString(),
+  }
+}
+
+function failureTargetMetadata(target) {
+  try {
+    return describeHostTarget(target)
+  } catch {
+    return { target }
   }
 }
 
@@ -337,6 +379,12 @@ export async function runHostAcceptance(options) {
       stableMs: options.stableMs,
       timeoutMs: options.timeoutMs,
     })
+    const firstRun = inspectFirstRunState(stateRoot, configPath)
+    if (!firstRun.no_implicit_connector_install) {
+      throw new Error(
+        'clean first run implicitly installed or configured the connector environment'
+      )
+    }
     const cases = [...CASES]
     if (!sourceVersionMatch) cases.push('source-project-version-drift-recorded')
     return {
@@ -344,7 +392,10 @@ export async function runHostAcceptance(options) {
       status: 'passed',
       target: descriptor,
       version,
-      installation_type: 'published-package-host-launch',
+      installation_type: resolveAcceptanceInstallationType({
+        published: 'published-package-host-launch',
+        prospective: 'prospective-source-host-launch',
+      }),
       component_versions: {
         application: version,
         web: version,
@@ -359,6 +410,7 @@ export async function runHostAcceptance(options) {
         launcher: basename(launcher),
         isolated_state: true,
       },
+      first_run: firstRun,
       gui: 'process startup only; interactive GUI controls require host automation',
       known_limitations: [
         'does not exercise interactive GUI controls, native dialogs, OAuth, services, updater lifecycle, or OS trust',

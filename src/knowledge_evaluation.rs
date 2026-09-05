@@ -600,15 +600,18 @@ fn populate_corpus(
     fixture: &KnowledgeEvaluationFixture,
 ) -> Result<HashMap<String, SyntheticRecord>> {
     let mut records = HashMap::new();
+    let mut documents =
+        Vec::with_capacity(fixture.corpus.workspaces * fixture.corpus.documents_per_workspace);
     for workspace in 0..fixture.corpus.workspaces {
         for index in 0..fixture.corpus.documents_per_workspace {
             let document = synthetic_document(workspace, index, &fixture.corpus);
             let record = synthetic_record(workspace, index, &fixture.corpus);
             let id = stable_id(&document.source, &document.source_id);
-            store.upsert(&document, &[(document.content.clone(), vec![1.0; 256])])?;
+            documents.push(document);
             records.insert(id, record);
         }
     }
+    store.insert_evaluation_corpus(&documents, &[1.0; 256])?;
     Ok(records)
 }
 
@@ -1143,5 +1146,30 @@ mod tests {
     fn percentile_uses_nearest_rank() {
         assert_eq!(percentile(&[1, 2, 3, 4, 5], 50), 3);
         assert_eq!(percentile(&[1, 2, 3, 4, 5], 95), 5);
+    }
+
+    #[test]
+    fn evaluation_corpus_batch_preserves_documents_chunks_and_revision() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("evaluation.sqlite3");
+        let store = Store::open(&path).unwrap();
+        let corpus = CorpusConfig {
+            workspaces: 1,
+            sources_per_workspace: 1,
+            documents_per_workspace: 2,
+            content_bytes_per_document: 64,
+        };
+        let documents = (0..2)
+            .map(|index| synthetic_document(0, index, &corpus))
+            .collect::<Vec<_>>();
+
+        store
+            .insert_evaluation_corpus(&documents, &[1.0; 256])
+            .unwrap();
+
+        let stats = store.stats().unwrap();
+        assert_eq!(stats.documents, 2);
+        assert_eq!(stats.chunks, 2);
+        assert_eq!(store.corpus_revision().unwrap(), 2);
     }
 }

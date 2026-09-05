@@ -1284,10 +1284,7 @@ fn prioritized_workspace_projects(projects: BTreeSet<String>) -> Vec<WorkspaceSe
 
 fn referenced_secret_names(root: &Table) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
-    for (section, key) in [
-        ("embedding", "api_key_env"),
-        ("query", "api_key_env"),
-    ] {
+    for (section, key) in [("embedding", "api_key_env"), ("query", "api_key_env")] {
         if let Some(name) = optional_string(root, section, key) {
             names.insert(name);
         }
@@ -1459,9 +1456,20 @@ fn validate_update_with_legacy_scopes(
         604_800,
     )?;
 
-    bounded("active native memories", update.memory.max_active, 1, 1_000_000)?;
-    bounded_f32("default memory confidence", update.memory.default_confidence)?;
-    bounded_f32("default memory importance", update.memory.default_importance)?;
+    bounded(
+        "active native memories",
+        update.memory.max_active,
+        1,
+        1_000_000,
+    )?;
+    bounded_f32(
+        "default memory confidence",
+        update.memory.default_confidence,
+    )?;
+    bounded_f32(
+        "default memory importance",
+        update.memory.default_importance,
+    )?;
 
     bounded(
         "documents per source",
@@ -1646,9 +1654,24 @@ fn apply_update(root: &mut Table, update: &SettingsUpdate, secret_path: &Path) {
         set_integer(root, "query", key, value);
     }
 
-    set_integer(root, "memory", "max_active", update.memory.max_active as i64);
-    set_float(root, "memory", "default_confidence", update.memory.default_confidence);
-    set_float(root, "memory", "default_importance", update.memory.default_importance);
+    set_integer(
+        root,
+        "memory",
+        "max_active",
+        update.memory.max_active as i64,
+    );
+    set_float(
+        root,
+        "memory",
+        "default_confidence",
+        update.memory.default_confidence,
+    );
+    set_float(
+        root,
+        "memory",
+        "default_importance",
+        update.memory.default_importance,
+    );
 
     for (key, value) in [
         (
@@ -2258,12 +2281,10 @@ fn validate_source_paths_and_credentials(source: &SourceSettings) -> Result<(), 
         "filesystem" if source.root.is_none() => {
             Err(format!("filesystem source `{}` needs a root", source.name))
         }
-        "slack" if source.channels.is_empty() || source.token_env.is_none() => {
-            Err(format!(
-                "Slack source `{}` needs channels and a token environment name",
-                source.name
-            ))
-        }
+        "slack" if source.channels.is_empty() || source.token_env.is_none() => Err(format!(
+            "Slack source `{}` needs channels and a token environment name",
+            source.name
+        )),
         "discord"
             if source.channels.is_empty()
                 || source.token_path.is_none()
@@ -3491,7 +3512,6 @@ mod tests {
         let mut update = valid_update(temp.path());
         update.auth_principals[0].scopes = vec!["root".into()];
         assert!(validate_update(&mut update).is_err());
-
     }
 
     #[test]

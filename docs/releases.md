@@ -9,32 +9,56 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.53.5
+## Current release: v0.56.9
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/adea-ai/cortana/releases/latest). The protected
-`v0.53.5` tag is the current source and release boundary, published by
-[release PR #2208](https://github.com/adea-ai/cortana/pull/2208) after the M4-M7 product-polish
-changes in [PR #2205](https://github.com/adea-ai/cortana/pull/2205) and the Windows acceptance
-fix in [PR #2207](https://github.com/adea-ai/cortana/pull/2207).
+`v0.56.3` tag was the last fully-evidenced source and release boundary when this matrix was captured. It includes the M10 knowledge graph,
+large-corpus, Desktop, accessibility, and derived-vault implementation from
+[PR #2231](https://github.com/adea-ai/cortana/pull/2231), followed by the protected patch releases
+`v0.56.1` through `v0.56.3`. The current release is `v0.56.9`.
 
-The packaged release gate is complete. Release-assets workflow
-[`33223028418`](https://github.com/adea-ai/cortana/actions/runs/33223028418) built and uploaded
+The v0.56.3 release-assets workflow
+[`33732982983`](https://github.com/adea-ai/cortana/actions/runs/33732982983) built and uploaded
 the Linux, macOS ARM64, and Windows Desktop packages, both core archives, and the updater manifest.
 Its final cross-platform verifier passed, and the strict local verifier confirmed all 18 expected
-`v0.53.5` assets. The published package-acceptance workflow
-[`33223745099`](https://github.com/adea-ai/cortana/actions/runs/33223745099) passed on macOS
+`v0.56.3` assets and updater signatures, including the fixed-feed Tauri updater configuration
+binding. The v0.56.3 published package-acceptance workflow
+[`33777924364`](https://github.com/adea-ai/cortana/actions/runs/33777924364) passed on macOS
 ARM64, Linux x64, and Windows x64, covering package download/extraction, version checks, offline
-core acceptance, and isolated Desktop host startup.
+core acceptance, and isolated Desktop host startup. Its historical Knowledge accessibility workflow
+[`33778045953`](https://github.com/adea-ai/cortana/actions/runs/33778045953) also passed the
+limited provider-free Chromium, axe, keyboard, reduced-motion, zoom, and mobile renderer gate.
+An exact published-bundle rerun of the expanded packaged renderer acceptance found that the
+immutable v0.56.3 web bundle fails at 320 CSS pixels: the graph's “Filter graph minimum confidence”
+control is obscured by another graph control. The current source branch contains the responsive
+layout fix, but v0.56.3 remains a partial packaged-renderer result until a new release is built and
+verified. The current acceptance runner also waits for settled browser layout after responsive
+viewport changes, preventing stale media-query geometry from producing a false overlap result in the
+prospective source workflow.
+
+The acceptance verifier now also runs the Unix release archive installer in a disposable prefix and
+requires those reports in the strict macOS/Linux matrix. The exact published v0.56.3 arm64 package,
+archive installer, packaged control plane, host launch, and supplemental native lifecycle records are
+captured under the local exact-release evidence matrix. The historical v0.56.3 workflow artifacts
+predate these lanes and must be regenerated from a rerun before the cross-platform matrix can be
+considered current.
+
+The shipped v0.56.3 core passed the provider-free M10 knowledge evaluator against 25 workspaces,
+100 sources, and 2,500 documents/chunks: all operation p95, response, index, RSS, working-set,
+relationship, ACL, and invalidation thresholds passed. This is synthetic evidence; the report
+still records `approved_corpus_gate: not-run` and visual usability as a separate packaged gate.
 
 The macOS package uses the explicitly enabled ad-hoc recovery path because Apple Developer ID and
 notarization credentials are not configured in Actions. It is a valid downloadable package but is
 not evidence of trusted Gatekeeper distribution. Native GUI behavior, OAuth, tray/background
-services, native dialogs, updater interaction, accessibility, resource behavior, uninstall, and
-manual recovery remain OS-specific acceptance gates.
+services, native dialogs, updater interaction, manual assistive-technology review, resource
+behavior, uninstall, and manual recovery remain OS-specific acceptance gates.
 
 The deterministic memory evaluation and disposable control-plane, native-memory, and backup/restore
-drills passed locally. These checks use synthetic or disposable fixtures and do not authorize
+drills passed locally; the control-plane report now also proves that a rejected corrupt restore leaves
+the active index unchanged, and the shipped Unix recovery drill checks the same invariant in its
+disposable restore target. These checks use synthetic or disposable fixtures and do not authorize
 sources, recurring sync, automatic retention, or access to an approved production corpus.
 
 The governed-corpus gate remains intentionally open. The evaluation contract and template manifest
@@ -42,7 +66,15 @@ are documented in [evaluation.md](evaluation.md), but the template is not an app
 the final gate requires an authorized operator-owned, read-only manifest and index with provenance.
 No private or personal index was promoted to satisfy this requirement. Manual evidence must be
 recorded with package checksum, exact case results, OS/architecture, reviewer/date, and limitations
-using the matrix in [desktop-ux-audit.md](desktop-ux-audit.md).
+using the matrix in [desktop-ux-audit.md](desktop-ux-audit.md). The sanitized record format and
+fail-closed verifier are documented in [evaluation.md](evaluation.md); the checked-in template is
+intentionally not an acceptance result.
+
+The approved relationship-quality gate is open for the same reason. The provider-free graph
+correctness report passed, but no governed relationship corpus or control-versus-graph user-task
+record has been promoted. Its transport-safe external-evidence template and verifier are documented
+in [evaluation.md](evaluation.md); graph activation and optional inferred edges remain separately
+gated.
 
 ### v0.34.43 post-release reconciliation incident (historical)
 
@@ -58,34 +90,34 @@ Foundry reconciliation run. No force push or automatic conflict resolution was u
 ## v0.34.40 release notes (historical)
 
 The v0.34.40 metadata release carried forward the verified v0.34.39 runtime evidence. Its package,
-host, and synthetic evaluation claims are historical; current source and package claims belong to
-v0.34.44 above, while the latest installed-host evidence remains v0.34.42.
+host, and synthetic evaluation claims are historical; at that time, the source and package claims
+belonged to v0.34.44, while the latest installed-host evidence was v0.34.42.
 
 ## v0.34.39 release notes (historical)
 
 The v0.34.39 metadata release carried forward the verified v0.34.38 runtime evidence. Its package
-and host claims are historical; current source and package claims belong to v0.34.44 above, while
-the latest installed-host evidence remains v0.34.42.
+and host claims are historical; at that time, the source and package claims belonged to v0.34.44,
+while the latest installed-host evidence was v0.34.42.
 
 ## v0.34.38 release notes (historical)
 
 The v0.34.38 metadata release carried the control-plane readiness hardening from PR #1954 and
 its verified runtime, source-validation, and synthetic provider evidence. Its package and host
-claims are historical; current source and package claims belong to v0.34.44 above, while the latest
-installed-host evidence remains v0.34.42.
+claims are historical; at that time, the source and package claims belonged to v0.34.44, while the
+latest installed-host evidence was v0.34.42.
 
 ## v0.34.37 release notes (historical)
 
 The v0.34.37 metadata release carried forward the verified v0.34.36 runtime evidence. Its package
-and host claims are historical; current source and package claims belong to v0.34.44 above, while
-the latest installed-host evidence remains v0.34.42.
+and host claims are historical; at that time, the source and package claims belonged to v0.34.44,
+while the latest installed-host evidence was v0.34.42.
 
 ## v0.34.36 release notes (historical)
 
 The v0.34.36 metadata release carried forward the verified v0.34.34 runtime evidence and the
 protected UI action-button hardening from PR #1864. Its package verification and host evidence are
-historical; current source and package claims belong to v0.34.44 above, while the latest
-installed-host evidence remains v0.34.42.
+historical; at that time, the source and package claims belonged to v0.34.44, while the latest
+installed-host evidence was v0.34.42.
 
 ## v0.34.29 release intent (published and verified; historical)
 
@@ -611,6 +643,23 @@ Desktop artifacts also carry the connector package source as a Tauri resource. T
 application never embeds credentials or a machine-specific virtual environment; after an
 explicit Readiness approval, native Rust uses the local `uv` executable to create the per-user
 connector environment and install the bounded ingestion extra.
+
+The published-package acceptance workflow also runs
+`scripts/desktop-control-plane-acceptance.mjs` on each supported target. This disposable,
+provider-free lane verifies packaged-core initialization, bounded ingestion and retrieval,
+metadata-only audit export, verified backup, restore into a second isolated data directory,
+integrity verification, and post-restore search. It also runs a read-only packaged service-status
+probe that validates all five managed-service records without requesting lifecycle mutation.
+`--offline` prevents provider-backed work in the
+plan; it does not create an OS-level network sandbox, so the report explicitly records that network
+isolation was not asserted. The workflow's aggregate matrix job fails closed unless exactly one
+passing `published-package-control-plane`, `published-package-service-status`,
+`published-package-source-authorization`, package, and host-launch report exists for each supported
+target. The source-authorization lane rejects
+unknown sources, missing token destinations, and malformed provider OAuth-client inputs without
+starting a provider flow or changing isolated state; it does not replace successful OAuth, discovery, or the separate GUI,
+native-dialog, service/tray, updater, accessibility, recovery-UI, uninstall, or operating-system
+trust gates.
 
 ## Binary archive verification
 

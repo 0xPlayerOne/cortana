@@ -31,6 +31,7 @@ jobs:
               Cortana_*_aarch64.app.tar.gz.sig
               Cortana_*_aarch64.dmg
               cortana-*-aarch64-apple-darwin.tar.gz
+              latest.json
           - runner: ubuntu-24.04
             platform: Linux
             target: x86_64-unknown-linux-gnu
@@ -43,6 +44,7 @@ jobs:
               Cortana-*-1.x86_64.rpm
               Cortana-*-1.x86_64.rpm.sig
               cortana-*-x86_64-unknown-linux-gnu.tar.gz
+              latest.json
           - runner: windows-latest
             platform: Windows
             target: x86_64-pc-windows-msvc
@@ -52,6 +54,7 @@ jobs:
               Cortana_*_x64-setup.exe.sig
               Cortana_*_x64_en-US.msi
               Cortana_*_x64_en-US.msi.sig
+              latest.json
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
@@ -65,6 +68,18 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Install uv (macOS/Linux)
+        if: runner.os != 'Windows'
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Install JavaScript dependencies
+        run: bun install --frozen-lockfile
 
       - name: Validate release input
         if: runner.os != 'Windows'
@@ -97,6 +112,14 @@ jobs:
             libayatana-appindicator3-1 \
             librsvg2-2
 
+      - name: Install Chromium (Linux)
+        if: runner.os == 'Linux'
+        run: bunx playwright install --with-deps chromium
+
+      - name: Install Chromium (macOS/Windows)
+        if: runner.os != 'Linux'
+        run: bunx playwright install chromium
+
       - name: Download published package assets
         if: runner.os != 'Windows'
         shell: bash
@@ -120,7 +143,8 @@ jobs:
             'Cortana_*_x64-setup.exe',
             'Cortana_*_x64-setup.exe.sig',
             'Cortana_*_x64_en-US.msi',
-            'Cortana_*_x64_en-US.msi.sig'
+            'Cortana_*_x64_en-US.msi.sig',
+            'latest.json'
           )
           foreach ($pattern in $patterns) {
             gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern $pattern --dir $releaseDir
@@ -139,6 +163,12 @@ jobs:
           core="$(find "$core_dir" -type f -path '*/bin/cortana' -print -quit)"
           [[ -n "$core" && -x "$core" ]] || { echo "extracted packaged core is missing or not executable" >&2; exit 1; }
           echo "CORTANA_CORE=$core" >> "$GITHUB_ENV"
+          web_dir="$(find "$core_dir" -type d -path '*/share/cortana/web' -print -quit)"
+          [[ -n "$web_dir" ]] || { echo "extracted packaged web directory is missing" >&2; exit 1; }
+          echo "CORTANA_KNOWLEDGE_WEB_DIR=$web_dir" >> "$GITHUB_ENV"
+          installer="$(find "$core_dir" -type f -path '*/install.sh' -print -quit)"
+          [[ -n "$installer" && -x "$installer" ]] || { echo "extracted release installer is missing or not executable" >&2; exit 1; }
+          echo "CORTANA_RELEASE_ARCHIVE_ROOT=$(dirname "$installer")" >> "$GITHUB_ENV"
 
       - name: Extract packaged core (Windows)
         if: runner.os == 'Windows'
@@ -149,12 +179,16 @@ jobs:
           New-Item -ItemType Directory -Force -Path $coreDir | Out-Null
           $msi = Get-ChildItem -Path $releaseDir -Filter 'Cortana_*_x64_en-US.msi' | Select-Object -First 1
           if ($null -eq $msi) { throw 'published Windows MSI was not downloaded' }
+          "CORTANA_WINDOWS_MSI=$($msi.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $target = "TARGETDIR=$coreDir"
           $process = Start-Process msiexec.exe -Wait -PassThru -NoNewWindow -ArgumentList @('/a', $msi.FullName, '/qn', $target)
           if ($process.ExitCode -ne 0) { throw "MSI administrative extraction failed: $($process.ExitCode)" }
           $core = Get-ChildItem -Path $coreDir -Recurse -File -Filter 'cortana.exe' | Select-Object -First 1
           if ($null -eq $core) { throw 'extracted Windows package is missing cortana.exe' }
           "CORTANA_CORE=$($core.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $web = Get-ChildItem -Path $coreDir -Directory -Recurse | Where-Object { $_.FullName -match '[\\/]share[\\/]cortana[\\/]web$' } | Select-Object -First 1
+          if ($null -eq $web) { throw 'extracted packaged web directory is missing' }
+          "CORTANA_KNOWLEDGE_WEB_DIR=$($web.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $desktop = Get-ChildItem -Path $coreDir -Recurse -File -Filter 'cortana-desktop.exe' | Select-Object -First 1
           if ($null -eq $desktop) { throw 'extracted Windows package is missing cortana-desktop.exe' }
           "CORTANA_DESKTOP_APP=$($desktop.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -209,6 +243,95 @@ jobs:
             --evidence-dir $evidenceDir `
             --allow-source-version-drift true
 
+      - name: Run Windows MSI installer acceptance
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $evidenceDir = Join-Path $env:RUNNER_TEMP 'cortana-acceptance-evidence'
+          New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
+          node scripts/desktop-install-acceptance.mjs `
+            --target $env:CORTANA_TARGET `
+            --version $env:CORTANA_VERSION `
+            --msi $env:CORTANA_WINDOWS_MSI `
+            --evidence-dir $evidenceDir
+
+      - name: Run release archive installer acceptance (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence"
+          node scripts/desktop-install-acceptance.mjs \
+            --target "$CORTANA_TARGET" \
+            --version "$CORTANA_VERSION" \
+            --archive-dir "$CORTANA_RELEASE_ARCHIVE_ROOT" \
+            --evidence-dir "$evidence_dir"
+
+      - name: Run packaged control-plane acceptance (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence"
+          node scripts/desktop-control-plane-acceptance.mjs \
+            --target "$CORTANA_TARGET" \
+            --version "$CORTANA_VERSION" \
+            --core "$CORTANA_CORE" \
+            --evidence-dir "$evidence_dir"
+
+      - name: Run packaged control-plane acceptance (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $evidenceDir = Join-Path $env:RUNNER_TEMP 'cortana-acceptance-evidence'
+          node scripts/desktop-control-plane-acceptance.mjs `
+            --target $env:CORTANA_TARGET `
+            --version $env:CORTANA_VERSION `
+            --core $env:CORTANA_CORE `
+            --evidence-dir $evidenceDir
+
+      - name: Run packaged service-status safety acceptance (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence"
+          node scripts/desktop-service-status-acceptance.mjs \
+            --target "$CORTANA_TARGET" \
+            --version "$CORTANA_VERSION" \
+            --core "$CORTANA_CORE" \
+            --evidence-dir "$evidence_dir"
+
+      - name: Run packaged service-status safety acceptance (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $evidenceDir = Join-Path $env:RUNNER_TEMP 'cortana-acceptance-evidence'
+          node scripts/desktop-service-status-acceptance.mjs `
+            --target $env:CORTANA_TARGET `
+            --version $env:CORTANA_VERSION `
+            --core $env:CORTANA_CORE `
+            --evidence-dir $evidenceDir
+
+      - name: Run packaged source-authorization safety acceptance (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence"
+          node scripts/desktop-source-authorization-acceptance.mjs \
+            --target "$CORTANA_TARGET" \
+            --version "$CORTANA_VERSION" \
+            --core "$CORTANA_CORE" \
+            --evidence-dir "$evidence_dir"
+
+      - name: Run packaged source-authorization safety acceptance (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $evidenceDir = Join-Path $env:RUNNER_TEMP 'cortana-acceptance-evidence'
+          node scripts/desktop-source-authorization-acceptance.mjs `
+            --target $env:CORTANA_TARGET `
+            --version $env:CORTANA_VERSION `
+            --core $env:CORTANA_CORE `
+            --evidence-dir $evidenceDir
+
       - name: Run packaged desktop host launch (macOS)
         if: runner.os == 'macOS'
         shell: bash
@@ -236,6 +359,16 @@ jobs:
             --evidence-dir "$evidence_dir" \
             --allow-source-version-drift true
 
+      - name: Run supplemental macOS native lifecycle acceptance
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence"
+          node scripts/desktop-macos-lifecycle-acceptance.mjs \
+            --version "$CORTANA_VERSION" \
+            --app "$CORTANA_DESKTOP_APP" \
+            --evidence-dir "$evidence_dir"
+
       - name: Run packaged desktop host launch (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -248,6 +381,35 @@ jobs:
             --evidence-dir $evidenceDir `
             --allow-source-version-drift true
 
+      - name: Run packaged knowledge accessibility acceptance (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          evidence_dir="$RUNNER_TEMP/cortana-acceptance-evidence/knowledge-accessibility"
+          mkdir -p "$evidence_dir"
+          CORTANA_KNOWLEDGE_WEB_DIR="$CORTANA_KNOWLEDGE_WEB_DIR" \
+          CORTANA_KNOWLEDGE_EVIDENCE_DIRECTORY="$evidence_dir" \
+          CORTANA_KNOWLEDGE_TARGET="$CORTANA_TARGET" \
+          CORTANA_KNOWLEDGE_VERSION="$CORTANA_VERSION" \
+          CORTANA_KNOWLEDGE_REVISION="$RELEASE_TAG" \
+          CORTANA_KNOWLEDGE_INSTALLATION_TYPE=published-package-renderer \
+          CORTANA_KNOWLEDGE_RUN_LARGE=false \
+          node scripts/knowledge-accessibility-acceptance.mjs
+
+      - name: Run packaged knowledge accessibility acceptance (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $evidenceDir = Join-Path $env:RUNNER_TEMP 'cortana-acceptance-evidence\knowledge-accessibility'
+          New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
+          $env:CORTANA_KNOWLEDGE_EVIDENCE_DIRECTORY = $evidenceDir
+          $env:CORTANA_KNOWLEDGE_TARGET = $env:CORTANA_TARGET
+          $env:CORTANA_KNOWLEDGE_VERSION = $env:CORTANA_VERSION
+          $env:CORTANA_KNOWLEDGE_REVISION = $env:RELEASE_TAG
+          $env:CORTANA_KNOWLEDGE_INSTALLATION_TYPE = 'published-package-renderer'
+          $env:CORTANA_KNOWLEDGE_RUN_LARGE = 'false'
+          node scripts/knowledge-accessibility-acceptance.mjs
+
       - name: Upload acceptance evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -255,3 +417,47 @@ jobs:
           name: desktop-acceptance-${{ matrix.target }}
           path: ${{ runner.temp }}/cortana-acceptance-evidence
           if-no-files-found: warn
+
+  matrix:
+    name: Aggregate published evidence matrix
+    needs: package
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - name: Checkout release verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.0
+
+      - name: Download target acceptance evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: desktop-acceptance-*
+          path: ${{ runner.temp }}/cortana-acceptance-matrix
+          # Keep each target artifact in its own directory. Renderer reports
+          # intentionally share the relative path knowledge-accessibility/report.json.
+          merge-multiple: false
+
+      - name: Verify complete target matrix
+        run: |
+          version="${RELEASE_TAG#v}"
+          node scripts/desktop-acceptance-matrix.mjs \
+            --version "$version" \
+            --evidence-dir "$RUNNER_TEMP/cortana-acceptance-matrix"
+
+      - name: Upload aggregate evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: desktop-acceptance-matrix-${{ inputs.tag }}
+          path: ${{ runner.temp }}/cortana-acceptance-matrix
+          if-no-files-found: error

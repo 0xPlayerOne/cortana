@@ -58,6 +58,49 @@ response bytes, store/index bytes, peak RSS, CPU and wall time, and sanitized fa
 fixture is synthetic release-regression evidence; it is not an approved private corpus, a live
 connector trial, an interactive packaged-GUI review, or an operating-system trust result.
 
+The synthetic relationship metrics are correctness and safety evidence for the provider-free graph
+projection, not proof that graph-assisted workflows improve a governed corpus. Prepare the separate
+approved relationship lane with
+[`eval/relationship-quality-private.example.json`](../eval/relationship-quality-private.example.json).
+It covers explicit links, threads, temporal relations, entities, backlinks, semantic neighbors,
+contradictions, supersession, and code dependencies, plus document-only/search-only control tasks
+for navigation, explanation, retrieval, and memory review.
+The raw cases remain external; only sanitized case outcomes, task success, navigation-step
+reduction, retrieval lift, provenance, invalidation, ACL, false-inference, latency, and memory
+metrics may be recorded.
+
+The relationship record must include bounded quality, safety, and resource metrics for each
+relationship case, not only an aggregate. Every control-versus-treatment task must also meet the
+configured task-success and retrieval-lift thresholds. Its edge-kind union must exactly match the
+enabled and optional release-policy edge kinds, and those policy sets must be duplicate-free and
+disjoint, so an aggregate result cannot hide an unmeasured or ambiguously classified released edge
+type.
+
+Verify a completed external evidence record without loading its raw corpus:
+
+```bash
+uv run python scripts/verify-relationship-evidence.py /path/to/approved-relationship-evidence.json
+```
+
+Before collecting private results, validate the checked-in contract or an operator-owned copy
+without approving or promoting it:
+
+```bash
+uv run python scripts/verify-relationship-evidence.py --preflight eval/relationship-quality-private.example.json
+```
+
+Preflight requires every case and task to remain `not-run`, all measured values to remain null, and
+the release policy to keep graph-assisted behavior optional. It emits `preflight_passed: true` with
+`promotable: false`; it is preparation evidence, not a relationship-quality result.
+
+The verifier requires all nine relationship categories and all four control-versus-treatment task
+records, checks the zero-disclosure and resource thresholds, and emits only bounded aggregate
+evidence. Each record includes the release version it evaluated, and the verifier binds it to the
+current Cargo project release by default. Use `--version` only when deliberately verifying an
+explicitly historical record. The checked-in `not-run` template intentionally fails verification.
+A passing report cannot authorize graph activation, enable optional edge derivations, or make the
+graph a requirement for search or exact document access.
+
 ### Approved-corpus retrieval
 
 Run read-only against an explicitly approved local index and private manifest.
@@ -90,6 +133,24 @@ Raw queries and source content remain outside the repository. Reports contain on
 The checked-in `eval/live-manifest.example.json` is a schema template only. Replace its
 placeholders in an operator-controlled local or encrypted manifest; do not commit real queries,
 source IDs, or corpus content.
+
+Before opening the approved index, validate the external manifest without contacting any service:
+
+```bash
+uv run python scripts/evaluate-live-index.py --validate-only /path/to/approved-manifest.json
+```
+
+Manifest version 2 binds the manifest to `release_version`. By default the validator requires that
+version to match the current Cargo release; use `--version X.Y.Z` only when intentionally replaying
+an explicitly historical record. The required corpus provenance block rejects a future `approved_at`
+and, when supplied, an `expires_at` that is no longer active. The preflight report contains only
+case counts, bounded resource thresholds, release/contract/scope provenance, and non-secret corpus
+provenance. It records `index_contacted: false`. Run the live evaluator only after the operator has
+approved the manifest and read-only index:
+
+```bash
+uv run python scripts/evaluate-live-index.py /path/to/approved-manifest.json
+```
 
 ### Provider-backed answers
 
@@ -236,12 +297,109 @@ Cover:
 
 Headless tests and static package verification do not substitute for this lane.
 
+The checked-in [`eval/desktop-acceptance-private.example.json`](../eval/desktop-acceptance-private.example.json)
+is a sanitized schema template for recording the manual lane outside repository history. A separate
+copy must contain one approved record for each supported target and all ten cases covering clean
+install, source authorization, services/tray, backup/restore, updater, recovery, accessibility,
+large-list resources, uninstall, and operating-system trust. Raw screenshots, logs, queries, private
+paths, and credentials remain in the external encrypted evidence store. Verify the sanitized record
+without loading those artifacts:
+
+```bash
+uv run python scripts/verify-desktop-acceptance-evidence.py /path/to/approved-desktop-evidence.json
+```
+
+Before collecting platform results, validate the three-target contract without approving or
+promoting it:
+
+```bash
+uv run python scripts/verify-desktop-acceptance-evidence.py --preflight eval/desktop-acceptance-private.example.json
+```
+
+Preflight requires every supported target and all ten acceptance cases to remain `not-run`, permits
+the template placeholder digests, and emits `preflight_passed: true` with `promotable: false`. It
+does not provide packaged, manual, screen-reader, or operating-system evidence.
+
+The verifier also checks query-only first-run behavior, absence of implicit side effects, package
+identity, and per-platform startup, CPU, memory, large-list, and graph timing thresholds. The
+checked-in `not-run` template intentionally fails verification. By default it binds the record to
+the current Cargo project release; use `--version` only when deliberately verifying an explicitly
+historical package record.
+
+The sanitized record also names the complete supported target set and explicitly lists unsupported
+targets. This prevents a three-platform result from being read as an unbounded claim about other
+operating-system or architecture combinations.
+Its top-level case matrix enumerates the required subchecks behind each of the ten platform cases;
+each platform's evidence IDs must cover that same matrix before the record can be approved.
+
 The repository's `bun run test:knowledge-accessibility` gate is a deterministic renderer check for
-the knowledge and graph surfaces. It uses the provider-free demo fixture and headless Chromium to
-exercise keyboard navigation, graph selection, accessible names, WCAG 2.2 AA axe rules, reduced
-motion, 200% zoom, mobile layout, and browser-console cleanliness. CI uploads its JSON report and
-screenshots as non-secret artifacts. This catches renderer regressions before packaging but does
-not replace the supported-platform package launch or manual VoiceOver, NVDA, or equivalent review.
+the knowledge/document-browser and graph surfaces. It uses the provider-free demo fixture and
+headless Chromium to exercise keyboard navigation, virtualized document opening, canonical content
+and provenance, graph selection, accessible names, WCAG 2.2 AA axe rules, reduced motion, 200% zoom,
+responsive layouts, and browser-console cleanliness. CI builds `apps/web/dist` first and runs the
+same command with `CORTANA_KNOWLEDGE_SERVER=preview`, so its uploaded JSON report and screenshots
+cover the production Vite renderer rather than the development server. Local iteration may omit
+that variable to use Vite development mode. The report also records provider-free demo-fixture
+resource samples with p50 and p95 navigation/document/graph timings, peak request and response bytes,
+DOM and visible-node counts, and Chromium heap observations against explicit browser ceilings. The
+production-preview run includes a paginated 2,500-document fixture and verifies that document
+rendering stays bounded at no more than 100 visible list rows and 200 graph nodes. These measurements
+gate renderer regressions and document the observation method, but do not replace approved
+large-corpus, supported-platform package launch, or manual VoiceOver, NVDA, or equivalent review.
+The acceptance runner waits for two browser animation frames after each viewport change so media-query
+assertions and screenshots observe the settled layout instead of stale geometry during rapid responsive
+resizes.
+
+The published-package acceptance workflow also extracts the exact release bundle's
+`share/cortana/web` directory and runs the standard document/graph acceptance against that immutable
+renderer through a loopback static server. The current `v0.56.9` bundle predates the provider-free
+large-corpus fixture, so the workflow sets `CORTANA_KNOWLEDGE_RUN_LARGE=false` for that release and
+records the release-compatible document/graph screenshots and resource measurements. The current
+source/preview lane sets the large fixture explicitly; a future published bundle that contains it
+may set `CORTANA_KNOWLEDGE_RUN_LARGE=true`. That lane still checks keyboard operation, responsive layout,
+axe, provenance, graph controls, console cleanliness, screenshots, and resource observations; a
+failure is written as `report.json` and remains a failure. It does not convert the current source
+renderer report into evidence for an older immutable package.
+
+When collecting local current-source package evidence, set
+`CORTANA_ACCEPTANCE_PROVENANCE=prospective-source`; the renderer and Desktop acceptance helpers then
+label their reports as prospective source evidence. The published workflow explicitly sets
+`CORTANA_KNOWLEDGE_INSTALLATION_TYPE=published-package-renderer` for its immutable bundle, and the
+aggregate release matrix accepts only the published installation types, so a prospective report
+cannot accidentally satisfy an immutable-release matrix.
+
+The headless packaged-core lane also downloads `latest.json` and binds the target-specific updater
+entry to the requested release version, HTTPS URL, non-empty signature, and expected application
+archive. Cryptographic signature verification remains part of the release-assets verifier; this
+package lane prevents a target from passing with detached or stale updater metadata.
+
+The aggregate Desktop matrix keeps each operating-system artifact in a separate directory because
+renderer reports intentionally use the same relative `knowledge-accessibility/report.json` path.
+It also requires the renderer report revision to equal the requested immutable release tag and
+requires exactly the knowledge, document, and graph axe surfaces. It also verifies the exact six
+document and six graph viewport records plus every referenced screenshot as a non-empty file within
+the report directory, together with the complete latency p50/p95, request/response, DOM, visible-node,
+heap, sample-count, and threshold records. A working-tree renderer report, incomplete viewport
+matrix, mismatched screenshot manifest, missing measurement, missing image, or path traversal
+therefore cannot be combined with published package records to produce a release pass.
+The renderer fixture must be one of the approved provider-free fixtures; a large-corpus fixture must
+also contain its bounded-rendering case and both large-corpus screenshots.
+
+On macOS, the workflow requires a native lifecycle report for the packaged app's status item,
+close-to-tray behavior, and tray reopen. That supplemental report is surfaced in the matrix but does
+not replace the required renderer, source-authorization, service, dialog, updater, recovery,
+accessibility, or OS-trust lanes.
+
+For Unix release archives, the same workflow runs
+`scripts/desktop-install-acceptance.mjs` against the extracted root `install.sh` in a disposable
+prefix. On Windows it runs the same harness against the published MSI with silent, non-restarting
+install and uninstall, and verifies the installed desktop executable, core sidecar, web assets, and
+offline core evaluation. These lanes record the installed binary/version, explicitly installed
+connector where applicable, query-only defaults, absence of source or service-schedule side effects,
+and bounded cleanup with an explicit removed-state result. They do not exercise services, OAuth, native dialogs, updater lifecycle,
+recovery UI, interactive first-run UI, accessibility, or operating-system trust; they also record
+that installer dependency installation may use package-manager network access while provider-backed
+work is not requested.
 
 ### Release trust
 
@@ -399,14 +557,15 @@ Safety thresholds such as ACL leaks, unauthorized deletion, and accepted invalid
 
 ## Product-claim evidence matrix
 
-| Claim                             | Deterministic gate                                                   | Private/manual gate                                           | Hard failure                                                  |
-| --------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------- |
-| Canonical entities and migrations | Rust store/model contract tests and migration fixtures               | Backup/restore drill for the supported release                | Lost canonical field or unrecoverable migration               |
-| ContextBundle pinning             | Digest, revision, scope-isolation, and compatibility tests           | Agent replay against an approved manifest                     | Accepted stale, mismatched, degraded, or unauthorized bundle  |
-| Connector safety                  | JSONL certification, budgets, cancellation, and reconciliation tests | Bounded source trial for each account/source                  | Deletion after partial/stale/failed run                       |
-| Memory lifecycle                  | Remember/recall/expiry/forget/supersession/ACL tests                 | Approved-corpus memory quality and review-load evidence       | Unauthorized recall/write or ungrounded automatic write       |
-| Public API compatibility          | HTTP/MCP/CLI schema snapshots and envelope tests                     | Disposable client/provider conformance run                    | Credential/path disclosure or incompatible unannounced change |
-| Desktop trust                     | Headless native tests and package verifier                           | Real install, updater, OS trust, and accessibility acceptance | Package/runtime mismatch or unsafe native privilege           |
+| Claim                             | Deterministic gate                                                            | Private/manual gate                                            | Hard failure                                                                           |
+| --------------------------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Canonical entities and migrations | Rust store/model contract tests and migration fixtures                        | Backup/restore drill for the supported release                 | Lost canonical field or unrecoverable migration                                        |
+| ContextBundle pinning             | Digest, revision, scope-isolation, and compatibility tests                    | Agent replay against an approved manifest                      | Accepted stale, mismatched, degraded, or unauthorized bundle                           |
+| Connector safety                  | JSONL certification, budgets, cancellation, and reconciliation tests          | Bounded source trial for each account/source                   | Deletion after partial/stale/failed run                                                |
+| Memory lifecycle                  | Remember/recall/expiry/forget/supersession/ACL tests                          | Approved-corpus memory quality and review-load evidence        | Unauthorized recall/write or ungrounded automatic write                                |
+| Knowledge graph relationships     | Synthetic edge correctness, provenance, ACL, invalidation, and resource tests | Approved relationship cases and control-vs-graph task evidence | False/inferred edge disclosure, stale edge, ACL leak, or graph-required core retrieval |
+| Public API compatibility          | HTTP/MCP/CLI schema snapshots and envelope tests                              | Disposable client/provider conformance run                     | Credential/path disclosure or incompatible unannounced change                          |
+| Desktop trust                     | Headless native tests and package verifier                                    | Real install, updater, OS trust, and accessibility acceptance  | Package/runtime mismatch or unsafe native privilege                                    |
 
 Every M2 contract names its deterministic fixture and its separate private/manual gate. A green CI
 run is not evidence that a live source, private corpus, packaged GUI, or operating-system trust gate
@@ -448,7 +607,8 @@ the following controls:
   these values; a threshold cannot grant an unbounded run.
 - `storage` is `local` or `encrypted-local`; credentials must remain
   external. `reviewer_access` names authorized reviewer identifiers and
-  requires explicit approval. Reviewer IDs are not emitted in reports.
+  requires explicit approval; the corpus reviewer must be one of those
+  identifiers. Reviewer IDs are not emitted in reports.
 - `lifecycle` records retention days, operator/reviewer-confirmed deletion,
   controlled redaction, and stop/revoke incident handling. These are required
   governance decisions, not prose-only recommendations.
@@ -464,11 +624,11 @@ the evaluator safety caps. This is a contract check only: it never opens a
 source connector, writes to an index, mutates memory, or verifies corpus
 content.
 
-An approved live manifest should also carry a non-secret `corpus` block with an operator-chosen
-`id`, `revision`, `sha256:` digest, storage class (`local` or `encrypted-local`), and approval
-window. The bounded live evaluator hashes the manifest file and emits only the manifest digest plus
-the corpus identifiers/revision/digest in its report. Approval timestamps, reviewer labels, raw
-queries, source content, private paths, and credentials never leave the local run.
+An approved live manifest must carry a non-secret `corpus` block with an operator-chosen `id`,
+`revision`, `sha256:` digest, storage class (`local` or `encrypted-local`), approval window, and
+reviewer identifier. The bounded live evaluator hashes the manifest file and emits only the manifest
+digest plus the corpus identifiers/revision/digest in its report. Approval timestamps, reviewer
+labels, raw queries, source content, private paths, and credentials never leave the local run.
 
 The evaluator records the non-secret governance contract version and a digest
 of the normalized workspace/source scope. A changed corpus digest, manifest

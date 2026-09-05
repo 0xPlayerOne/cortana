@@ -295,6 +295,7 @@ test('workspace and source selection scopes the source tree and document request
 
   // Selecting a workspace filters the source tree to that project.
   await chooseWorkspace(targetWorkspace)
+  await waitFor(() => expect(screen.queryByRole('menuitemradio')).toBeNull())
   const primaryHiddenSource = new RegExp(
     `^${primaryWorkspace === 'work' ? 'work-code' : 'personal-notes'}`
   )
