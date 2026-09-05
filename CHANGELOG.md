@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.11](https://github.com/adea-ai/cortana/compare/v0.56.10...v0.56.11) (2026-09-05)
+
+
+### Maintenance
+
+* M10-M12 acceptance evidence (rebased onto v0.56.9) ([#2253](https://github.com/adea-ai/cortana/issues/2253)) ([c7e65ac](https://github.com/adea-ai/cortana/commit/c7e65acc23c9c461ce1bcb6cb25eb661ddad669d))
+
 ## [0.56.10](https://github.com/adea-ai/cortana/compare/v0.56.9...v0.56.10) (2026-09-05)
 
 
