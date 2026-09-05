@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.7](https://github.com/adea-ai/cortana/compare/v0.56.6...v0.56.7) (2026-09-05)
+
+
+### Maintenance
+
+* **deps:** hold breaking eslint-10 and vite-8 majors ([#2247](https://github.com/adea-ai/cortana/issues/2247)) ([97fb581](https://github.com/adea-ai/cortana/commit/97fb58175644a63ba040851219f58a98804fed91))
+
 ## [0.56.6](https://github.com/adea-ai/cortana/compare/v0.56.5...v0.56.6) (2026-09-05)
 
 
