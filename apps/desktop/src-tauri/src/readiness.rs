@@ -101,9 +101,12 @@ pub async fn scan(app: &AppHandle) -> ReadinessSnapshot {
 }
 
 /// Returns whether the user-scoped connector environment should be repaired
-/// from the connector workspace bundled with this Desktop release. The
-/// installer is started by the native setup hook, so normal updates do not
-/// require the user to rediscover or approve this maintenance step.
+/// from the connector workspace bundled with this Desktop release. A missing
+/// or version-mismatched environment needs attention; the native setup hook
+/// only starts the repair automatically for previously configured
+/// environments, so normal updates do not require the user to rediscover or
+/// approve this maintenance step. A true first run waits for explicit
+/// approval from System readiness.
 pub async fn connector_needs_reconcile(app: &AppHandle) -> bool {
     let connector = connector_status(app).await;
     if !connector.install_supported {
@@ -358,7 +361,7 @@ async fn connector_status(app: &AppHandle) -> ToolStatus {
                 if !resource_available {
                     "This Desktop build is missing its bundled connector workspace.".into()
                 } else if uv_available {
-                    "Installed automatically when this Desktop release starts.".into()
+                    "Install from System readiness to enable connectors; previously installed environments are repaired automatically after Desktop updates.".into()
                 } else {
                     "Install uv before installing the bundled ingestion workspace.".into()
                 }

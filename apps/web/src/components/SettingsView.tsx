@@ -2386,7 +2386,7 @@ function ReadinessSection({
   return (
     <SettingsSection
       title="System readiness"
-      description="A read-only scan checks local tools and Cortana's production gates. The Connector environment is maintained automatically after Desktop updates; this scan never starts a connector, installs a schedule, or writes indexed data."
+      description="A read-only scan checks local tools and Cortana's production gates. The first Connector environment install needs explicit approval here; previously installed environments are maintained automatically after Desktop updates. This scan never starts a connector, installs a schedule, or writes indexed data."
     >
       <div className="readiness-actions">
         <Button variant="secondary" type="button" disabled={readinessInFlight} onClick={scan}>
@@ -2436,7 +2436,7 @@ function ReadinessSection({
                   <span>{tool.version || tool.detail}</span>
                   {tool.path && <code>{tool.path}</code>}
                 </div>
-                {!tool.available && tool.install_supported && tool.id !== 'connectors' && (
+                {!tool.available && tool.install_supported && (
                   <Button
                     variant="compact"
                     type="button"

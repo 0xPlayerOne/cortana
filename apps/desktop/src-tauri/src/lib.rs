@@ -1632,7 +1632,11 @@ pub fn run() {
             let app_handle = app.handle().clone();
             let installer = app.state::<installer::InstallerState>().inner().clone();
             tauri::async_runtime::spawn(async move {
+                // Only a previously configured connector environment may be
+                // repaired without asking: a true first run must wait for
+                // explicit approval from System readiness.
                 if readiness::connector_needs_reconcile(&app_handle).await
+                    && settings::connector_command_configured()
                     && let Err(error) =
                         installer.start_with_app(Some(&app_handle), "connectors", true)
                 {
