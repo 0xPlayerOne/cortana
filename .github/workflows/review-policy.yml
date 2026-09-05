@@ -1,0 +1,72 @@
+name: Review Policy
+
+# Enforces the repository review contract that GitHub rulesets cannot express
+# natively: rulesets apply one review count to every author, and the only
+# author-scoped mechanism (bypass actors) would also skip CI, which is never
+# allowed here. Policy:
+# - organization owners/members: no review required.
+# - automation identities (*[bot]: release-please, promotion, dependabot,
+#   code-foundry reconciliation): exempt; their output is already gated by
+#   validation and release policy.
+# - everyone else: one approving review from an organization owner/member.
+#   Reviews from outside collaborators do not satisfy the requirement, and a
+#   later CHANGES_REQUESTED from an owner/member revokes a prior approval.
+#
+# pull_request_target runs the base-branch version of this file with a
+# read-only token, so fork PRs are evaluated safely.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: review-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Review Policy / Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Evaluate review policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          pr="$(gh api repos/"$REPOSITORY"/pulls/"$PR_NUMBER" --jq '{author: .user.login, association: .author_association}')"
+          author="$(jq -r '.author' <<<"$pr")"
+          association="$(jq -r '.association' <<<"$pr")"
+          echo "author=@$author association=$association"
+          case "$association" in
+            OWNER|MEMBER)
+              echo "PASS: @$author is an organization $association; no review required."
+              exit 0
+              ;;
+          esac
+          case "$author" in
+            *"[bot]")
+              echo "PASS: @$author is automation; validation and release policy already gate its output."
+              exit 0
+              ;;
+          esac
+          approved="$(gh api repos/"$REPOSITORY"/pulls/"$PR_NUMBER"/reviews --paginate --jq '
+            [ .[] | select(.state != "DISMISSED") ]
+            | group_by(.user.login)
+            | map(max_by(.submitted_at))
+            | map(select(.state == "APPROVED" and (.author_association == "OWNER" or .author_association == "MEMBER")))
+            | length
+          ')"
+          if [ "$approved" -gt 0 ]; then
+            echo "PASS: at least one organization owner/member approved."
+            exit 0
+          fi
+          echo "FAIL: @$author is not an organization owner/member and no organization owner/member has approved. Request a review from the repository owners."
+          exit 1
