@@ -346,7 +346,7 @@ and screenshots use settled media-query geometry.
 The same acceptance script can validate an immutable published renderer by setting
 `CORTANA_KNOWLEDGE_WEB_DIR` to the extracted package's `share/cortana/web` directory and recording
 the release tag in `CORTANA_KNOWLEDGE_REVISION`. The published-package workflow does this on each
-supported target and sets `CORTANA_KNOWLEDGE_RUN_LARGE=false` for the current `v0.56.9` release,
+supported target and sets `CORTANA_KNOWLEDGE_RUN_LARGE=false` for the current `v0.56.10` release,
 whose bundle predates the large fixture. The current source/preview lane records the bounded
 large-corpus screenshots and resource observations; a future published bundle that contains the
 fixture may enable it in the package lane. Its report and screenshots are uploaded with the package evidence; any responsive or

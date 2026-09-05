@@ -9,14 +9,14 @@ single-package flow. The following patch release reconciles the Release Please
 manifest, Rust crate, Python package, web application, and lockfile versions
 under the automated manifest flow.
 
-## Current release: v0.56.9
+## Current release: v0.56.10
 
 Download the Desktop app or a matching core archive from the
 [latest GitHub release](https://github.com/adea-ai/cortana/releases/latest). The protected
 `v0.56.3` tag was the last fully-evidenced source and release boundary when this matrix was captured. It includes the M10 knowledge graph,
 large-corpus, Desktop, accessibility, and derived-vault implementation from
 [PR #2231](https://github.com/adea-ai/cortana/pull/2231), followed by the protected patch releases
-`v0.56.1` through `v0.56.3`. The current release is `v0.56.9`.
+`v0.56.1` through `v0.56.3`. The current release is `v0.56.10`.
 
 The v0.56.3 release-assets workflow
 [`33732982983`](https://github.com/adea-ai/cortana/actions/runs/33732982983) built and uploaded

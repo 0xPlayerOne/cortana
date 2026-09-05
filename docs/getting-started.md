@@ -23,7 +23,7 @@ The installer preserves an existing configuration, index, backups, and secrets. 
 authorize an account, download a connector corpus, start a sync, or enable a scheduler by itself.
 
 Before you begin, use a supported release package for your operating system and CPU and keep at
-least one backup location available. The current v0.56.9 release publishes Linux x86_64, Windows
+least one backup location available. The current v0.56.10 release publishes Linux x86_64, Windows
 x86_64, and macOS arm64 Desktop packages plus macOS/Linux core archives. The macOS Desktop package
 is ad-hoc because Developer ID signing and notarization credentials are not configured, so it is
 downloadable but not trusted Gatekeeper distribution; macOS users should use the core archive or
@@ -37,7 +37,7 @@ non-notarized build may be rejected by Gatekeeper; follow the host-acceptance no
 
 1. **Download Cortana Desktop.** Open the [latest GitHub release](https://github.com/adea-ai/cortana/releases/latest)
    and choose the installer for your operating system and CPU. The current protected release is
-   **v0.56.9**; [Release history](releases.md) records its verifier state and remaining trust gate.
+   **v0.56.10**; [Release history](releases.md) records its verifier state and remaining trust gate.
 2. **Install and launch.** Approve the optional tooling that Cortana offers to install. Choose a
    local Qwen-compatible embedding runtime if you want local embeddings; choose a cloud provider
    if you do not want local model tooling.

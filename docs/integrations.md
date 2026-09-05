@@ -15,7 +15,7 @@ configuration only.
 
 ## Current release boundary
 
-The current protected source and published package are `v0.56.9`. The portable skill, MCP, HTTP,
+The current protected source and published package are `v0.56.10`. The portable skill, MCP, HTTP,
 and CLI contracts below are version-aligned with that release. Installing the skill does not expose
 credentials, authorize a source, enable recurring sync, or change client configuration implicitly.
 

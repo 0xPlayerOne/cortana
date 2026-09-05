@@ -1,6 +1,6 @@
 {
   "contract_version": "cortana.relationship-quality-private.v3",
-  "release_version": "0.56.9",
+  "release_version": "0.56.10",
   "approved": false,
   "raw_data_location": "external-encrypted-store",
   "graph_activation_authorized": false,

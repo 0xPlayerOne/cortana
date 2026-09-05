@@ -3114,8 +3114,6 @@ test('missing connector readiness exposes an approval-gated installer', async ()
     state.installerJob = null
   }
 })
-  }
-})
 
 test('installer progress survives settings section changes', async () => {
   const originalConfirm = window.confirm
