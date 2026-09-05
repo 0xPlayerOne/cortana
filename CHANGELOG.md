@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.6](https://github.com/adea-ai/cortana/compare/v0.56.5...v0.56.6) (2026-09-05)
+
+
+### Maintenance
+
+* **deps:** hold typescript majors until TS7 toolchain migration ([1ef76c9](https://github.com/adea-ai/cortana/commit/1ef76c9542ee57847eccc4a4a2daad706951774a))
+
 ## [0.56.5](https://github.com/adea-ai/cortana/compare/v0.56.4...v0.56.5) (2026-09-05)
 
 
