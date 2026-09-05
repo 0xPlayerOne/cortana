@@ -362,7 +362,9 @@ async function run() {
       'canonical document actions are missing'
     )
     await page.getByRole('option', { name: /Deployment playbook/ }).click()
-    await page.getByRole('heading', { level: 1, name: 'Deployment playbook', exact: true }).waitFor()
+    await page
+      .getByRole('heading', { level: 1, name: 'Deployment playbook', exact: true })
+      .waitFor()
     ensure(
       await page.getByRole('heading', { name: 'Backlinks', exact: true }).isVisible(),
       'canonical document backlinks are missing'
@@ -373,7 +375,9 @@ async function run() {
     )
     const relatedDocument = page.getByRole('button', { name: /^How do releases work\?/ })
     await relatedDocument.click()
-    await page.getByRole('heading', { level: 1, name: 'How do releases work?', exact: true }).waitFor()
+    await page
+      .getByRole('heading', { level: 1, name: 'How do releases work?', exact: true })
+      .waitFor()
     progress.completed_cases.push('document-relations')
     const documentAxe = await assertAxe(page, 'document')
     progress.axe.push(documentAxe)

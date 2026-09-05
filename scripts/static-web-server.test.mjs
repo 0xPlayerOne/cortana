@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
@@ -7,7 +7,11 @@ import { tmpdir } from 'node:os'
 
 import { expect, test } from 'bun:test'
 
-import { contentTypeForPath, resolveStaticFilePath } from './static-web-server.mjs'
+import {
+  assertStaticFileInsideRoot,
+  contentTypeForPath,
+  resolveStaticFilePath,
+} from './static-web-server.mjs'
 
 const SERVER_SCRIPT = fileURLToPath(new URL('./static-web-server.mjs', import.meta.url))
 
@@ -26,6 +30,24 @@ test('static web server reports browser content types for packaged assets', () =
   expect(contentTypeForPath('assets/app.css')).toBe('text/css; charset=utf-8')
   expect(contentTypeForPath('assets/font.woff2')).toBe('font/woff2')
   expect(contentTypeForPath('assets/unknown.bin')).toBe('application/octet-stream')
+})
+
+test('static web server rejects symlink escapes from the packaged web root', () => {
+  const root = mkdtempSync(join(tmpdir(), 'cortana-static-web-root-'))
+  const outside = mkdtempSync(join(tmpdir(), 'cortana-static-web-outside-'))
+  try {
+    writeFileSync(join(outside, 'secrets.txt'), 'secret')
+    const link = join(root, 'link.txt')
+    symlinkSync(join(outside, 'secrets.txt'), link)
+    expect(() => assertStaticFileInsideRoot(root, link)).toThrow('static request escapes web root')
+    writeFileSync(join(root, 'index.html'), '<!doctype html>')
+    expect(assertStaticFileInsideRoot(root, join(root, 'index.html'))).toBe(
+      realpathSync(join(root, 'index.html'))
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(outside, { recursive: true, force: true })
+  }
 })
 
 test('static web server serves a packaged index on an ephemeral loopback port', async () => {

@@ -21,8 +21,7 @@ const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const MAX_OUTPUT_LENGTH = 1_000
 const COMMAND_TIMEOUT_MS = 60_000
 const TAURI_CONFIG_PATH = resolve(ROOT, 'apps/desktop/src-tauri/tauri.conf.json')
-const UPDATER_ENDPOINT =
-  'https://github.com/adea-ai/cortana/releases/latest/download/latest.json'
+const UPDATER_ENDPOINT = 'https://github.com/adea-ai/cortana/releases/latest/download/latest.json'
 
 const TARGETS = Object.freeze({
   'aarch64-apple-darwin': Object.freeze({

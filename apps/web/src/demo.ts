@@ -67,10 +67,7 @@ export function demoDocumentId(item: Evidence): string {
   return item.chunk_id.replace(/[^a-f0-9]/gi, '').padEnd(16, '0')
 }
 
-export function demoDocumentReference(
-  item: Evidence,
-  project = 'demo'
-): BrainDocumentReference {
+export function demoDocumentReference(item: Evidence, project = 'demo'): BrainDocumentReference {
   return {
     id: demoDocumentId(item),
     source: item.source,

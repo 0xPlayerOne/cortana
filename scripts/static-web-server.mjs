@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, realpathSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { extname, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -41,6 +41,16 @@ export function resolveStaticFilePath(directory, requestPath) {
   return filePath
 }
 
+export function assertStaticFileInsideRoot(root, filePath) {
+  const realRoot = realpathSync(root)
+  const realPath = realpathSync(filePath)
+  const realPrefix = realRoot.endsWith(sep) ? realRoot : `${realRoot}${sep}`
+  if (realPath !== realRoot && !realPath.startsWith(realPrefix)) {
+    throw new Error('static request escapes web root')
+  }
+  return realPath
+}
+
 export function createStaticWebServer({ directory, address = '127.0.0.1', port = 0 }) {
   if (!directory || !existsSync(directory) || !statSync(directory).isDirectory()) {
     throw new Error(`static web directory does not exist: ${directory}`)
@@ -71,6 +81,13 @@ export function createStaticWebServer({ directory, address = '127.0.0.1', port =
     if (!fileStats.isFile()) {
       response.writeHead(404)
       response.end('not found')
+      return
+    }
+    try {
+      assertStaticFileInsideRoot(root, filePath)
+    } catch {
+      response.writeHead(400)
+      response.end('invalid static request')
       return
     }
     response.writeHead(200, {
