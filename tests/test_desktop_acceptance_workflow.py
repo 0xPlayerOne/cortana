@@ -55,9 +55,8 @@ def test_acceptance_workflow_uses_the_release_compatible_renderer_fixture() -> N
 def test_acceptance_workflow_labels_published_renderer_provenance() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
-    assert workflow.count(
-        "CORTANA_KNOWLEDGE_INSTALLATION_TYPE=published-package-renderer"
-    ) == 1
-    assert workflow.count(
-        "$env:CORTANA_KNOWLEDGE_INSTALLATION_TYPE = 'published-package-renderer'"
-    ) == 1
+    assert workflow.count("CORTANA_KNOWLEDGE_INSTALLATION_TYPE=published-package-renderer") == 1
+    assert (
+        workflow.count("$env:CORTANA_KNOWLEDGE_INSTALLATION_TYPE = 'published-package-renderer'")
+        == 1
+    )

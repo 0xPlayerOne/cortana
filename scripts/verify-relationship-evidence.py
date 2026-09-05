@@ -361,9 +361,7 @@ def _validate_case_and_task_sets(
     if not isinstance(tasks, list) or len(tasks) != len(REQUIRED_TASKS):
         raise EvidenceError("relationship evidence must contain all required user tasks")
     task_validator = (
-        _validate_preflight_task
-        if preflight
-        else lambda task: _validate_task(task, thresholds)
+        _validate_preflight_task if preflight else lambda task: _validate_task(task, thresholds)
     )
     task_ids = {task_validator(task) for task in tasks}
     if task_ids != REQUIRED_TASKS:
