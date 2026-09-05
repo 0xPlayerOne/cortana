@@ -30,6 +30,27 @@ updates:
       # coordinated TS7 toolchain migration.
       - dependency-name: typescript
         update-types: ['version-update:semver-major']
+      # eslint 10 core (no-useless-assignment), react-hooks 7
+      # (setState-in-effect) and @eslint/js 10 introduce violations across the
+      # app. Hold at 9.x/6.x alongside the TS 5.9 hold; migrate the toolchain
+      # as a coordinated change (see 6fb49eea). Prevents recurrence of #2246
+      # which failed Format (frozen lockfile), Lint, Type-Check, Build and
+      # Desktop/a11y jobs.
+      - dependency-name: eslint
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@eslint/js'
+        update-types: ['version-update:semver-major']
+      - dependency-name: eslint-plugin-react-hooks
+        update-types: ['version-update:semver-major']
+      # vite 8.2.2, @vitejs/plugin-react 6.1.1 and lucide-react 1.39.0 break
+      # the keyboard-first-stop acceptance. Hold at vite 7 / plugin-react 4 /
+      # lucide 0.536 pending a11y investigation (see debf58b8).
+      - dependency-name: vite
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@vitejs/plugin-react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: lucide-react
+        update-types: ['version-update:semver-major']
     groups:
       npm-dependencies:
         applies-to: version-updates
