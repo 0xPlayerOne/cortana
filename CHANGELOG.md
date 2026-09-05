@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.8](https://github.com/adea-ai/cortana/compare/v0.56.7...v0.56.8) (2026-09-05)
+
+
+### Maintenance
+
+* enforce owner-exempt review policy via required check ([#2248](https://github.com/adea-ai/cortana/issues/2248)) ([26067df](https://github.com/adea-ai/cortana/commit/26067dfeaffd3cdaf9a89afe9cf2a53c18b322fe))
+
 ## [0.56.7](https://github.com/adea-ai/cortana/compare/v0.56.6...v0.56.7) (2026-09-05)
 
 
