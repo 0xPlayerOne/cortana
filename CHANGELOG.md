@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.10](https://github.com/adea-ai/cortana/compare/v0.56.9...v0.56.10) (2026-09-05)
+
+
+### Bug Fixes
+
+* **desktop:** require explicit approval for first-run connector install ([#2254](https://github.com/adea-ai/cortana/issues/2254)) ([1490aaa](https://github.com/adea-ai/cortana/commit/1490aaa51831aa81712edf899de90e4347b81420))
+
 ## [0.56.9](https://github.com/adea-ai/cortana/compare/v0.56.8...v0.56.9) (2026-09-05)
 
 

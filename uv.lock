@@ -145,7 +145,7 @@ wheels = [
 
 [[package]]
 name = "cortana-brain"
-version = "0.56.9" # x-release-please-version
+version = "0.56.10" # x-release-please-version
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
