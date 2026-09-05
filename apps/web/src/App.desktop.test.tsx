@@ -2951,7 +2951,8 @@ test('connector environment install requires explicit approval from readiness', 
     fireEvent.click(screen.getByRole('button', { name: 'Install' }))
     expect(confirmation).toContain('per-user connector environment')
     await waitFor(() => expect(screen.getByText('Installing connectors')).toBeTruthy())
-    expect(state.installerJob?.tool).toBe('connectors')
+    const installerJob = state.installerJob as { tool: string } | null
+    expect(installerJob?.tool).toBe('connectors')
   } finally {
     state.readinessScan = originalScan
     window.confirm = originalConfirm
