@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.9](https://github.com/adea-ai/cortana/compare/v0.56.8...v0.56.9) (2026-09-05)
+
+
+### Maintenance
+
+* **deps:** bump lucide-react from 0.536.0 to 0.577.0 in the npm-dependencies group ([#2250](https://github.com/adea-ai/cortana/issues/2250)) ([a9b953c](https://github.com/adea-ai/cortana/commit/a9b953c2f6d44e8e85f663494a5152ee28b52655))
+
 ## [0.56.8](https://github.com/adea-ai/cortana/compare/v0.56.7...v0.56.8) (2026-09-05)
 
 
